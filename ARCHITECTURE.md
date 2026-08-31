@@ -12,12 +12,17 @@ itself:
    authorization, in the CLI and in the Models settings UI.
 
 Neither bundle patches, copies, or forks any file under
-`packages/_vendor/deepseek-harness/`. Every package here only *depends on*
-published seams (`ctx.authorization`, Typert-registered Host controllers
-auto-discovered by `dsh-typert-loader`, `dsh-cmdline`'s multi-plugin
-argument parsing, and the `SlotMap` extension points `ui-workspace`,
-`ui-conversation`, and `ui-settings-models` already declare) and installs
-into a profile via `dsh plugin --profile <name> add <package>` (see
+`packages/_vendor/deepseek-harness/`. Every package here either *depends
+on* published seams (`ctx.authorization`, Typert-registered Host
+controllers auto-discovered by `dsh-typert-loader`, `dsh-cmdline`'s
+multi-plugin argument parsing, and the `SlotMap` extension points
+`ui-conversation` and `ui-settings-models` already declare), or — where no
+such seam exists yet — *replaces* one existing plugin registration
+wholesale with an enhanced out-of-tree one, using `cordis.patch.yml`'s own
+`disabled: true` operation to turn the original off first (see
+`dsh-plugins-client-ui-workspace-enhanced` below and "Why replace the
+plugin instead of patching it"). Either way, installation is `dsh plugin
+--profile <name> add <package>` (see
 `packages/_vendor/deepseek-harness/packages/bundle/README.md`).
 
 ## Why this repo exists
@@ -100,6 +105,24 @@ browser-side loader, `packages/client/web`) — the same two-entry-point
 shape pristine `dsh-client-ui-workspace` and `yga/deepseek-harness`'s own
 `ui-conversation-files` package already use, whose purpose is now clear.
 
+One more Client-side gotcha, once `./client` genuinely needed to be a real
+browser bundle: **the vendored `clientConfig()`/`clientBundle()` tsdown
+preset (`packages/client/tsdown.client.ts`) can't build an out-of-tree
+package.** It locates a package's manifest by globbing
+`packages/*​/*​/package.json` under the vendored submodule's own hardcoded
+root (`workspaceManifest()`), with no override — a package under this
+repo's own `packages/` is invisible to it. `tsdown.client-plugin-preset.ts`
+(repo root) reproduces the same wire contract instead — the closure-factory
+banner/footer (`window.__ModuleLoader__.load({id, factory})`), the CSS
+Modules inline transform, and the cross-plugin import purity gate — reusing
+what's genuinely exported for reuse (`requestedExternals`, a pure function;
+`PLATFORM_MODULES`/`PRELOADED_CLIENT_EXTERNALS` via `dsh-client-web`'s own
+declared `./src/*` export) rather than the internals. Its `extraInlineSafe`
+option exists for exactly one case: `dsh-plugins-client-ui-workspace-
+enhanced` imports another package's internals as real values (see below),
+which the purity gate would otherwise reject as a forbidden cross-plugin
+import.
+
 Confirmed working fully end to end (`dsh plugin --profile <name> add`
 against a real, if temporary, `$DSH_HOME`, then a real boot):
 `dsh-plugins-api-authorization-controller` builds `lib/typert.host.js` +
@@ -128,9 +151,10 @@ profile they land in.
 | `dsh-plugins-api-workspace-git-controller` | New Typert Host controller (auto-discovered by `dsh-typert-loader`; no edit to `api/workspace-controller`) | `packages/api/workspace-controller/src/workspace-git.ts` (status, commit-all, fetch, pull --rebase, push, discard-all) + `tests/workspace-git.host.spec.ts` |
 | `dsh-plugins-api-workspace-file-controller` | New Typert Host controller | `packages/api/workspace-controller/src/{files,file-commands}.ts` (list/read/write/create/delete/diff) + their host specs |
 | `dsh-plugins-client-ui-file-editing` | Standalone components (no shared-package dependency) | `packages/client/ui-primitives/src/{FileEditor,FilePreview,SideBySideDiff}.tsx` + `.module.css` + `codemirror/theme.ts` + `useSplitRatio.ts` + tests — moved out of the shared `ui-primitives` package, which every other UI plugin depends on |
-| `dsh-plugins-client-ui-workspace-files` | **Confirmed working (typecheck + build)** — optional `workspaceFilesNode` Context service (same pattern as `conversationFileOpener`, which is itself fork-only, not pristine prior art). Its mount point is a small drafted-and-verified diff, `upstream-patches/0001-workspace-files-node-optional-service.patch`, not yet proposed upstream (see "Files tree: why an optional service, not a slot") | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
-| `dsh-plugins-client-ui-conversation-files` | **Confirmed working (typecheck + build)** — registers into the *pristine* `conversation.view` list slot (`dsh-client-ui-conversation`), no upstream diff needed for the tab itself. `conversationFileOpener` (the cross-session open trigger) is separately fork-only and still needs its own upstream diff — see "File tab: a pristine slot, but a fork-only trigger" | `packages/client/ui-conversation-files/**` (already a clean, separate package in the fork — ported near-verbatim, repointed at `dsh-plugins-client-ui-file-editing`/this repo's own controllers instead of `ui-primitives`/the fork-extended `dsh-api-workspace-controller` client) |
-| `dsh-plugins-bundle-workspace-git` | **Confirmed working** — installs via `dsh plugin --profile web-app add`; `dsh --profile acp` (with the bundle installed) boots to a clean `exit 0`, and a real `dsh --profile web-app` run stays alive and crash-free well past the point the pre-fix version threw (see the Client-face `.` export gotcha above). Genuine browser-side rendering (does the File tab/Files tree actually appear in a running web UI) is not verified — no live browser runtime available in this environment | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml`; mounts `@deepseek-ai/dsh-workspace` itself (only `web-app` mounts it by default, mirroring `authorization-seam` below) |
+| `dsh-plugins-client-ui-workspace-files` | **Confirmed working** — the sidebar Files tree and the optional `workspaceFilesNode` Context service it provides; typecheck + build + a real closure-factory bundle, confirmed present in a live `dsh web` combo-script manifest (see "Confirmed working" below) | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
+| `dsh-plugins-client-ui-workspace-enhanced` | **Confirmed working** — replaces `dsh-client-ui-workspace`'s own `sidebar.workspaces`/`conversation.hero.workspace` registrations wholesale (not a patch to that package); the only behavior change is rendering `workspaceFilesNode`'s `Component` as a Files sibling row. See "Why replace the plugin instead of patching it" | New package; forks only `rows/WorkspaceBrowser.tsx` from `packages/client/ui-workspace/src/client/`, near-verbatim plus the Files row; everything else (`WorkspacePicker`, `navigation.ts`, `stores.ts`, `tree.ts`, `locales.ts`, `Rows.tsx`) is imported unchanged from the original package's own `./src/*` export, not duplicated |
+| `dsh-plugins-client-ui-conversation-files` | **Confirmed working** — registers into the *pristine* `conversation.view` list slot (`dsh-client-ui-conversation`), no upstream diff needed for the tab itself. `conversationFileOpener` (the cross-session open trigger) is separately fork-only and still needs its own upstream diff — see "File tab: a pristine slot, but a fork-only trigger" | `packages/client/ui-conversation-files/**` (already a clean, separate package in the fork — ported near-verbatim, repointed at `dsh-plugins-client-ui-file-editing`/this repo's own controllers instead of `ui-primitives`/the fork-extended `dsh-api-workspace-controller` client) |
+| `dsh-plugins-bundle-workspace-git` | **Confirmed working** — installs via `dsh plugin --profile <name> add`; a real `dsh web` server boots and serves a working page whose combo-script manifest lists exactly the expected rows (all Client packages here present, `@deepseek-ai/dsh-client-ui-workspace/client.js` absent — the disable took effect). See "Confirmed working" below for exactly what that checked and didn't | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml`; mounts `@deepseek-ai/dsh-workspace` itself (only `web-app` mounts it by default, mirroring `authorization-seam` below); disables and replaces the `ui-workspace` row (only present once `@deepseek-ai/dsh-web-app`'s own bundle has already inserted it — install order matters, see below) |
 
 ### `packages/anthropic-subscription/` — Anthropic subscription authorization
 
@@ -206,12 +230,95 @@ independently reached the same conclusion, but it — provider and consumer
 both — is a fork addition, not pristine code to build against.)
 `dsh-plugins-client-ui-workspace-files` follows the documented convention
 directly: `workspaceFilesNode: WorkspaceFilesNodeService | undefined`,
-resolved once via `ctx.get('workspaceFilesNode')`. The upstream-ready diff
-is then two small, mechanical touches to `ui-workspace/src/client/{index.ts,
-rows/WorkspaceBrowser.tsx}` — resolve the service, thread it through
-`WorkspaceBrowserInjected`/`SessionTreeProps` as a new prop, and render its
-`Component` where `FilesNode` sat in the fork — not a new slot-registration
-contract.
+resolved once via `ctx.get('workspaceFilesNode')`.
+
+#### Why replace the plugin instead of patching it
+
+The service exists; something still has to *resolve* it and render its
+`Component` where `FilesNode` sat in the fork, and `dsh-client-ui-workspace`
+itself doesn't do that. Two ways to get there were considered:
+
+1. **A small source patch** to `ui-workspace/src/client/{contract/slots.ts,
+   index.ts, rows/WorkspaceBrowser.tsx}` — drafted and verified as
+   `upstream-patches/0001-workspace-files-node-optional-service.patch`
+   (`git apply --check` clean against the pinned commit, a forced `tsc -b`
+   rebuild with it applied passes). Applying it locally would mean either
+   forking `deepseek-ai/deepseek-harness` to hold the patched commit (a real
+   repo to maintain, a submodule re-pin, and every future pin bump needs the
+   patch rebased forward) or hand-patching the pinned submodule's working
+   tree outside of git history (fragile — nothing forces a fresh clone to
+   reapply it, and a dirty submodule risks an accidental bad commit).
+2. **Replace the plugin.** `cordis.patch.yml` already has `{id, disabled:
+   true}` alongside `{insert: [...]}` — ordinary composition operations,
+   not a new mechanism. Disable the row `@deepseek-ai/dsh-web-app`'s own
+   bundle inserts for `dsh-client-ui-workspace`, insert
+   `dsh-plugins-client-ui-workspace-enhanced` in its place, and let the
+   replacement register the exact same slots the original did, plus the one
+   new row.
+
+Option 2 is what this repo does, on direct instruction: "everything is a
+plugin" applies to the seam-providing side too, not just the feature side —
+unplug the original, plug in an enhanced one, entirely through the same
+`dsh plugin add` composition mechanism every other package here already
+uses. No fork of `deepseek-ai/deepseek-harness`, no submodule pin tied to
+a patch branch, no vendored file touched even transiently. The replacement
+package reuses everything it isn't changing: `dsh-client-ui-workspace`
+declares `"./src/*": "./src/*"` in its own `exports` map (a convention this
+whole codebase uses), so `WorkspacePicker`, `UiWorkspaceService`,
+`createWorkspaceViewStore`, `tree.ts`'s group-deriving logic, and the
+`workspace` locale dictionaries are all imported as real values from that
+path — not copied. Only `rows/WorkspaceBrowser.tsx` (the one file that
+actually changes) is forked, with import paths repointed the same way
+`FilesNode.tsx` was in Task 18.
+
+`upstream-patches/0001-workspace-files-node-optional-service.patch` stays
+in the repo as a smaller, cleaner alternative some day, per "prepare it,
+don't submit it" — genuinely proposing the small addition to
+`dsh-client-ui-workspace` remains worthwhile even though this repo doesn't
+depend on it landing.
+
+#### Confirmed working: `dsh-plugins-client-ui-workspace-enhanced`
+
+Verified this repo's disable+insert composition against a real, if
+temporary, `$DSH_HOME`, with `@deepseek-ai/dsh-web-app`'s own bundle
+installed first (its `cordis.patch.yml` is what inserts the `ui-workspace`
+row this bundle disables — order matters, see "Bundle install order" in
+Open items) and `apps/web`'s Vite frontend actually built (`vite build` —
+see "The `apps/web` frontend needs its own build" in Open items):
+
+- `dsh --profile <name> --dump-config` shows the `ui-workspace` row with
+  `disabled: true`, `dsh-plugins-client-ui-workspace-enhanced` inserted, and
+  no "entry not found" warning (confirms the disable resolves against a row
+  a *different, earlier* bundle inserted, not just rows this bundle itself
+  owns).
+- A real `dsh --profile <name>` boot (no `--dump-config`) starts a working
+  `dsh web` server — genuinely listens, prints a real URL, serves a valid
+  200 response with the expected HTML bootstrap shell (`curl`-verified: real
+  session cookie exchange, real page content, no server-side error).
+- The served page's combo-script `<link rel=preload>` manifest —
+  fetched and inspected directly — lists `dsh-plugins-client-ui-
+  conversation-files/client.js`, `dsh-plugins-client-ui-workspace-
+  files/client.js`, and `dsh-plugins-client-ui-workspace-enhanced/client.js`
+  alongside every pristine package, and **`@deepseek-ai/dsh-client-ui-
+  workspace/client.js` is absent** — direct, wire-level confirmation the
+  disable took effect and the replacement is what the browser would actually
+  fetch.
+- The combo script itself (all Client bundles concatenated, ~4.8 MB
+  unminified with sourcemaps) is served successfully and fast; all three of
+  this repo's bundles pass `node --check` (syntax-valid).
+
+What this does **not** confirm: that the page actually renders in a
+browser. The Chrome extension used for this session's browser automation
+could not complete a normal page load against this dev server — `document.
+readyState` reported `"complete"` on a 219-byte, script-free document, well
+short of the ~25 KB real page `curl` fetched with the same fresh, unused
+auth token — while `curl` succeeded immediately every time. This looks like
+an incompatibility between the extension's request handling and this
+server's cookie/redirect-based auth flow (a `303` + `Set-Cookie` exchange),
+not a problem with this repo's code — the server-side pipeline this
+whole check exercises is identical whichever client asks for it — but it
+means genuine visual/DOM rendering is still unverified. See "Genuine
+browser-rendering verification" in Open items.
 
 #### File tab: a pristine slot, but a fork-only trigger
 
@@ -250,22 +357,37 @@ either bundle here.
 
 ## Open items
 
-- No genuine browser-side verification of `dsh-plugins-client-ui-
-  conversation-files`/`-workspace-files` yet — this environment has no live
-  web app runtime. Everything checked so far is typecheck, build, and a
-  Node-side boot not crashing; whether the File tab/Files tree actually
-  render correctly in a running `web-app` UI is unverified.
+- **Genuine browser-rendering verification.** See "Confirmed working:
+  `dsh-plugins-client-ui-workspace-enhanced`" above — composition and the
+  served combo-script manifest are wire-level verified; actual DOM
+  rendering in a browser is not, blocked by what looks like a Chrome
+  extension/dev-server auth incompatibility in this environment, not a
+  known code issue. Re-attempt with a different browser-automation path
+  (or a real user in a real browser) before calling the UI itself confirmed.
+- **Bundle install order.** `dsh-plugins-bundle-workspace-git`'s
+  `disabled: true` row for `ui-workspace` only resolves if
+  `@deepseek-ai/dsh-web-app`'s own bundle (or whatever bundle mounts
+  `dsh-client-ui-workspace`) is already in `dsh.profile.bundles` *before*
+  this one — `cordis.patch.yml` operations apply in bundle-list order, and
+  a row from a not-yet-applied later bundle doesn't exist yet to disable.
+  Verified directly: installing in the wrong order prints `patch: entry
+  "ui-workspace" not found` (non-fatal, just a no-op) instead of erroring
+  loud. Install `@deepseek-ai/dsh-web-app` first.
+- **The `apps/web` frontend needs its own build.** `dsh web` serves
+  `apps/web/dist/`, produced by `apps/web`'s own `vite build` — a
+  completely separate step from this repo's `tsc -b`/`tsdown` builds for
+  `packages/_vendor/deepseek-harness`'s library packages, and easy to miss
+  since nothing else in this repo's own build commands touches it. Without
+  it, `dsh web` serves a `404` for every page (confirmed) rather than
+  failing at boot. Run it from `packages/_vendor/deepseek-harness/apps/web`:
+  `NODE_OPTIONS="--max-old-space-size=4096" ./node_modules/.bin/vite build`
+  (invoke the binary directly, not via `pnpm run build` — same submodule
+  git-worktree `postinstall` quirk documented below for the library build).
 - The `conversationFileOpener` cross-session bridge (see "File tab: a
   pristine slot, but a fork-only trigger") has no drafted diff yet, unlike
   `workspaceFilesNode`'s — it needs to touch `ui-conversation`'s skeleton
   component (`ConversationSession.tsx`), not just add a Context service, so
   it deserves its own careful read of that component before drafting.
-- The upstream `ui-workspace` diff itself is drafted and verified:
-  `upstream-patches/0001-workspace-files-node-optional-service.patch` —
-  applies cleanly against the pinned submodule commit, and a forced clean
-  `tsc -b` rebuild of `packages/client/ui-workspace` with it applied passed
-  with no diagnostics. Not yet proposed as a real PR against
-  `deepseek-ai/deepseek-harness`.
 - Confirm whether `dsh-plugins-api-workspace-git-controller` and
   `-file-controller` should merge into one controller package — they were
   split above by concern (git vs. generic file CRUD) but share no code.

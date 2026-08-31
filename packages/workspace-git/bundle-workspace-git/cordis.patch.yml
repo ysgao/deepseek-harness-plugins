@@ -1,8 +1,9 @@
 # Composes the File manager + git feature into a web-app-derived profile:
 # the two Host Typert controllers (workspace-files/workspace-git RPC
-# namespaces) plus the two Client packages, over the profile's existing
+# namespaces) plus three Client packages, over the profile's existing
 # base/web-app composition — no edit to packages/bundle/base or
-# packages/bundle/web-app in the vendored harness.
+# packages/bundle/web-app in the vendored harness (one row below disables
+# an existing one; nothing here rewrites vendored source).
 #
 # workspace-registry-seam mounts @deepseek-ai/dsh-workspace itself:
 # confirmed against a pristine deepseek-ai/deepseek-harness checkout that
@@ -20,14 +21,28 @@
 #
 # conversation-files mounts into dsh-client-ui-conversation's pristine
 # conversation.view slot — a real, working File tab, no upstream diff
-# needed. workspace-files-node only provides the optional
-# workspaceFilesNode Context service (see its own README's "Mount point"
-# section); it has no consumer until upstream-patches/0001-workspace-
-# files-node-optional-service.patch lands in dsh-client-ui-workspace, so it
-# composes cleanly but renders nothing yet. Client-face rows are inert
-# during a Host boot (the Host Loader does not apply() a client-only
-# package) — this repo has not verified genuine browser-side loading of
-# either Client row against a running web app; see ARCHITECTURE.md.
+# needed.
+#
+# workspace-files-node provides the optional workspaceFilesNode Context
+# service; workspace-enhanced is what actually consumes it and renders the
+# Files sibling row. workspace-enhanced does NOT patch dsh-client-ui-
+# workspace — it's a full replacement for that package's own
+# sidebar.workspaces/conversation.hero.workspace registrations ("unplug the
+# original plugin row, plug in an enhanced one" — see ARCHITECTURE.md and
+# dsh-plugins-client-ui-workspace-enhanced's own README), which is why the
+# `disabled: true` row below turns the original off first: both packages
+# registering the same slot at once conflicts. `id: ui-workspace` matches
+# the row name the vendored packages/bundle/web-app/cordis.patch.yml uses;
+# confirm that id still matches if the submodule pin ever moves and this
+# row starts failing to find anything to disable.
+#
+# upstream-patches/0001-workspace-files-node-optional-service.patch is kept
+# as a drafted, verified proposal for a smaller alternative some day (a
+# small addition to dsh-client-ui-workspace itself instead of replacing it
+# wholesale) — not applied here, not yet proposed as a real PR.
+
+- id: ui-workspace
+  disabled: true
 
 - insert:
     - id: workspace-registry-seam
@@ -44,3 +59,6 @@
 
     - id: workspace-files-node
       name: 'dsh-plugins-client-ui-workspace-files'
+
+    - id: workspace-enhanced
+      name: 'dsh-plugins-client-ui-workspace-enhanced'

@@ -16,6 +16,7 @@
     "dsh-plugins-api-workspace-file-controller": "workspace:^",
     "dsh-plugins-client-ui-file-editing": "workspace:^",
     "dsh-plugins-client-ui-workspace-files": "workspace:^",
+    "dsh-plugins-client-ui-workspace-enhanced": "workspace:^",
     "dsh-plugins-client-ui-conversation-files": "workspace:^"
   },
   "devDependencies": {

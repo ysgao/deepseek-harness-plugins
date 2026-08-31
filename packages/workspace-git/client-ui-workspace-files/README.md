@@ -60,43 +60,31 @@ out-of-tree package.
   modal — by design, not a stub: this is `FilesNode`'s own documented
   degradation path for exactly this case.
 
-## Mount point (upstream-ready diff)
+## Mount point
 
-This package builds, typechecks, and provides its service today, but has no
-mount point in a real `dsh-client-ui-workspace` build until a small diff to
-`packages/client/ui-workspace/src/client/{contract/slots.ts,index.ts,
-rows/WorkspaceBrowser.tsx}` lands upstream. That diff is drafted and
-verified — `../../../upstream-patches/0001-workspace-files-node-optional-
-service.patch` (`git apply --check` clean against the pinned submodule
-commit; a forced clean `tsc -b` rebuild of `ui-workspace` with it applied
-passed with no diagnostics) — but not yet proposed as a real PR against
-`deepseek-ai/deepseek-harness`. Summary of what it does:
+`../client-ui-workspace-enhanced` resolves `workspaceFilesNode` and renders
+its `Component` — a full out-of-tree replacement for `dsh-client-ui-
+workspace`'s own `sidebar.workspaces` registration (disabled and swapped
+via `cordis.patch.yml`, not patched), not an upstream diff to that package.
+See `../../../ARCHITECTURE.md`'s "Why replace the plugin instead of
+patching it" for the rationale and `upstream-patches/0001-workspace-files-
+node-optional-service.patch` for the smaller alternative kept as a
+drafted-but-unsubmitted proposal.
 
-- `contract/slots.ts` declares `WorkspaceFilesNodeProps`, the
-  `workspaceFilesNode?: {...}` optional Context merge, and a new plain
-  (non-hook) `filesNode` field on `WorkspaceBrowserInjected`.
-- `index.ts`'s `apply(ctx)` adds one line to the object it already builds:
-  `filesNode: ctx.get('workspaceFilesNode')` (`undefined` when this package
-  isn't composed in).
-- `WorkspaceBrowser.tsx` threads `filesNode` down through `SessionTreeProps`
-  and renders `<filesNode.Component workspaceId={...} rootPath={group.cwd}
-  currentSessionId={current} />` right after each real Workspace group's
-  header row and before its Session rows — the exact row `FilesNode`
-  occupied in the fork: sibling to Session rows, the selected Workspace's
-  own directory as the tree's implicit root — matching the layout the user
-  asked to keep, not the alternative right-side-pane option.
-
-Same delivery mechanism as the Settings UI panel (see
-`../../anthropic-subscription/client-ui-settings-anthropic-subscription`):
-a small static upstream PR, not a dynamically-loaded `dsh plugin add` bundle
-— which is why this package's `tsdown.config.ts` builds a plain library, not
-a browser closure-factory bundle.
+This package's own `tsdown.config.ts` builds a real browser closure-factory
+bundle (`lib/client.js`, `window.__ModuleLoader__.load({id, factory})`) via
+`../../../tsdown.client-plugin-preset.ts` — a genuine `dsh plugin add`
+target, confirmed present in a live `dsh web` combo-script manifest. See
+`../../../ARCHITECTURE.md`'s "Confirmed working" section for exactly what
+was checked (composition and the served manifest; not yet genuine browser
+DOM rendering).
 
 ## Known Limitations and Deferred Work
 
-- No mount point yet (see above) — this is the primary remaining gap.
-- `openFileInSession` always returns `false` until the File tab package is
-  ported, so every file open falls back to the in-app preview modal even
+- `openFileInSession` always returns `false` until the File tab package's
+  `conversationFileOpener` cross-session bridge is drafted (see
+  `../../../ARCHITECTURE.md`'s "File tab: a pristine slot, but a fork-only
+  trigger"), so every file open falls back to the in-app preview modal even
   when a session is selected.
 - No unit tests yet, consistent with the rest of this repo's packages at
-  this stage (verified today by typecheck + build only).
+  this stage (verified today by typecheck + build + a real boot).

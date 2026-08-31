@@ -80,30 +80,54 @@ DSH_HOME=/some/scratch/dir dsh --profile anthropic llm-pi-ai/anthropic
 ```
 
 ```sh
+DSH_HOME=/some/scratch/dir dsh plugin --profile web-app add "@deepseek-ai/dsh-web-app"   # first — see below
 DSH_HOME=/some/scratch/dir dsh plugin --profile web-app add \
   "link:$(pwd)/packages/workspace-git/bundle-workspace-git"
 DSH_HOME=/some/scratch/dir dsh --profile web-app
 ```
 
-`web-app` produces no stdout output and stays running (it's a long-lived
-server/UI profile, not a one-shot task) — that's expected, not a hang;
-`Ctrl+C` to stop it. `acp`/`anthropic` above are one-shot and exit on their
-own.
+Two things the `workspace-git` bundle needs that aren't obvious:
+
+- **Install order matters.** This bundle's `cordis.patch.yml` disables
+  `dsh-client-ui-workspace`'s own row and replaces it — but that row only
+  exists once `@deepseek-ai/dsh-web-app`'s own bundle has already inserted
+  it, and `cordis.patch.yml` operations apply in `dsh.profile.bundles`
+  order. Install `dsh-web-app` first, or the disable prints a harmless
+  no-op warning instead of taking effect.
+- **`apps/web`'s Vite frontend needs its own build** before `dsh --profile
+  web-app` (i.e. `dsh web`) has anything to serve — a separate step from
+  the "Getting started" builds above, easy to miss:
+  ```sh
+  cd packages/_vendor/deepseek-harness/apps/web
+  NODE_OPTIONS="--max-old-space-size=4096" ./node_modules/.bin/vite build
+  cd ../../../../..
+  ```
+  Skipping it doesn't fail at boot — every page just serves a `404`, which
+  reads as "it's running, just blank" rather than the missing build step it
+  actually is.
+
+`web-app` produces minimal stdout output (just the served URL) and stays
+running (it's a long-lived server/UI profile, not a one-shot task) — that's
+expected, not a hang; `Ctrl+C` to stop it. `acp`/`anthropic` above are
+one-shot and exit on their own.
 
 Point `DSH_HOME` at a scratch directory the first time (or omit it entirely
 to use your real `~/.dsh` if you want the plugin available in your everyday
 profile) — `dsh plugin add` initializes the profile there if it doesn't
 exist yet.
 
-**What "running" actually verifies today:** Host-side plugins (the
-Typert controllers, the CLI login app, the authorization bundle) are fully
-real — `dsh --profile <name>` boots and runs them for real, no caveats.
-Client-side pieces (`dsh-plugins-client-ui-workspace-files`,
-`dsh-plugins-client-ui-conversation-files`) install and compose cleanly and
-a Host-side boot with them installed doesn't crash, but this repo has never
-been checked against a *live browser* — whether the File tab/Files tree
-actually render correctly in a running `web-app` UI is unverified. See
-`ARCHITECTURE.md`'s Open items.
+**What "running" actually verifies today:** Host-side plugins (the Typert
+controllers, the CLI login app, the authorization bundle) are fully real —
+`dsh --profile <name>` boots and runs them for real, no caveats. The
+`workspace-git` Client packages install, compose, and build real browser
+bundles that a live `dsh web` server correctly serves — verified at the
+wire level (the served combo-script manifest lists exactly the expected
+packages, with `dsh-client-ui-workspace`'s own bundle correctly absent
+after the replacement). What's still unverified is genuine browser-side DOM
+rendering — this session's own browser-automation tooling couldn't
+complete a normal page load against the local dev auth flow, for reasons
+that look tool-specific rather than code-specific. See `ARCHITECTURE.md`'s
+"Confirmed working" and Open items for the full account.
 
 ## Development workflow
 
@@ -169,9 +193,13 @@ typecheck + real `dsh plugin add` + real boot):
 - `packages/workspace-git/`: `dsh-plugins-api-workspace-git-controller`,
   `dsh-plugins-api-workspace-file-controller`,
   `dsh-plugins-client-ui-file-editing`, `dsh-plugins-client-ui-workspace-
-  files`, `dsh-plugins-client-ui-conversation-files`, and
-  `dsh-plugins-bundle-workspace-git`. Two pieces still need real upstream
-  PRs before they take full effect: the sidebar Files tree's mount point
-  (drafted and verified as `upstream-patches/0001-workspace-files-node-
-  optional-service.patch`, not yet proposed) and the `conversationFileOpener`
-  cross-session bridge (not yet drafted) — see `ARCHITECTURE.md`.
+  files`, `dsh-plugins-client-ui-workspace-enhanced`,
+  `dsh-plugins-client-ui-conversation-files`, and
+  `dsh-plugins-bundle-workspace-git`. The sidebar Files tree's mount point
+  doesn't need an upstream PR at all — `dsh-plugins-client-ui-workspace-
+  enhanced` replaces `dsh-client-ui-workspace`'s own registration wholesale
+  via ordinary `cordis.patch.yml` disable+insert (see `ARCHITECTURE.md`'s
+  "Why replace the plugin instead of patching it"; a smaller patch-based
+  alternative is kept drafted but unsubmitted). Only the
+  `conversationFileOpener` cross-session bridge still needs a real upstream
+  diff, and that one isn't drafted yet — see `ARCHITECTURE.md`.

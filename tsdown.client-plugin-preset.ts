@@ -115,6 +115,18 @@ function tscSourceMapPlugin() {
 export interface ClientPluginBundleOptions {
   /** This package's own `dsh.client.external` array, verbatim from its package.json (absent when it declares none). */
   clientExternal?: readonly string[]
+  /**
+   * Extra `@deepseek-ai/*` import patterns the purity gate treats as safe to
+   * inline, beyond the shared `INLINE_SAFE` set — for a package that
+   * deliberately forks another package's own internals wholesale (see
+   * `dsh-plugins-client-ui-workspace-enhanced`'s own `./src/client/*`
+   * imports from `@deepseek-ai/dsh-client-ui-workspace/src/client/*`: since
+   * that package's own browser plugin row is disabled wherever this one is
+   * installed, there is no live sibling instance to duplicate identity
+   * against, so inlining is genuinely safe here, unlike the general case
+   * the gate otherwise protects against).
+   */
+  extraInlineSafe?: RegExp
 }
 
 /**
@@ -161,6 +173,7 @@ export function clientPluginBundle(id: string, entry: string, options: ClientPlu
         if (isRequested(source)) return null
         if (VENDORED_LIBRARY.test(source)) return null
         if (INLINE_SAFE.test(source) || GENERATED_REMOTE.test(source)) return null
+        if (options.extraInlineSafe?.test(source) === true) return null
         throw new Error(
           `client plugin bundle purity: "${source}" is not in the default client externals or ${id}'s declared `
           + 'dsh.client.external, an inline-safe wire layer, or a generated /remote contribution — cross-plugin value '

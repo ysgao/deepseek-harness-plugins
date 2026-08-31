@@ -18,6 +18,7 @@ const CLIENT_PACKAGES = [
   'packages/workspace-git/client-ui-file-editing',
   'packages/workspace-git/client-ui-workspace-files',
   'packages/workspace-git/client-ui-conversation-files',
+  'packages/workspace-git/client-ui-workspace-enhanced',
 ]
 
 /**
@@ -28,20 +29,14 @@ const CLIENT_PACKAGES = [
  * workspace mode does not tolerate an all-empty batch the way a single
  * per-package `entry: ''` does. Both faces bundle their tsc-emitted
  * lib/types output the same plain way; only the host pass also runs Typert
- * generation. Client packages with no Cordis registration of their own
- * (pure component libraries, inlined wherever they're imported rather than
- * independently loaded) don't need the vendored clientBundle()'s
- * closure-factory/CSS-modules-inline machinery — that helper's
- * workspaceManifest() lookup is hardcoded to
- * packages/_vendor/deepseek-harness's own root besides, so it cannot see
- * this repo's packages at all. dsh-plugins-client-ui-workspace-files turned
- * out not to need that machinery either, despite registering a real Context
- * service (`workspaceFilesNode`): it is delivered as a static import from
- * dsh-client-ui-workspace's own upstream-ready diff (ARCHITECTURE.md Task
- * 19), the same delivery mechanism the Settings UI panel already documents,
- * not as a dynamically-loaded out-of-tree bundle — so a package only needs
- * the closure-factory format when it is genuinely meant to install through
- * `dsh plugin add` at runtime rather than through a small upstream PR.
+ * generation. `dsh-plugins-client-ui-file-editing` is the one exception with
+ * no per-package tsdown.config.ts of its own needing the closure-factory
+ * preset: a pure component library with no Cordis registration, inlined
+ * wherever it's imported rather than independently loaded. Every other
+ * Client package here has its own tsdown.config.ts building a real
+ * `window.__ModuleLoader__.load(...)` browser bundle via
+ * ../tsdown.client-plugin-preset.ts (see that file's own doc comment for why
+ * it isn't the vendored clientBundle()/clientConfig() preset directly).
  * Narrowed to packages that are actually implemented; widen as each stub in
  * ARCHITECTURE.md gets ported, rather than including unbuilt stubs tsdown
  * would fail resolving.
