@@ -1,0 +1,274 @@
+/* Files tree rows: same 32px height and hover/selected tokens as a session
+   row (Rows.module.css), indented per nesting depth by the session-tree
+   indent step (16px slot + 6px gap = 22px). */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  padding-right: 8px;
+  cursor: pointer;
+  user-select: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The directory row most recently clicked — the Add-file/Add-folder
+   create-target — stays visibly marked after the click (unlike hover,
+   which is transient), distinct from `:hover` so the target reads even
+   while the pointer sits elsewhere. */
+.rowSelected {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding-right: 8px;
+  box-sizing: border-box;
+}
+
+.headerToggle {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+  padding-right: 0;
+}
+
+.slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.chevron {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.arrow {
+  transition: transform 150ms var(--ds-ease-in-out);
+}
+
+.arrowOpen {
+  transform: rotate(90deg);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.notice {
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.gitSummary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  max-width: 75%;
+}
+
+/* Always visible (unlike .gitSummary's action icons, gated on git-repo
+   status): Add-file/Add-folder work in any workspace. Sits before the git
+   branch/status group in the header row. */
+.addEntryButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+
+.gitBranch {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.gitDirtyDot {
+  display: inline-flex;
+  flex: none;
+}
+
+.gitChangedCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--dsw-alias-state-warn-label);
+  background: var(--dsw-alias-state-warn-tertiary);
+}
+
+/* Groups the branch name with its own adjacent changed-file count badge as
+   a single tight unit, separate from .gitSummary's own 5px gap (which still
+   applies between this whole group and its neighbors — Commit/Discard).
+   No gap of its own: the badge's own padding and color already carry the
+   visual separation, so an extra flex gap on top would only widen it
+   further. min-width: 0 (rather than a fixed-size flex: none) so the
+   branch name can still shrink and ellipsis-truncate inside .gitSummary's
+   max-width. Pull/Push use .gitCountButton instead — a single button
+   rather than a wrapped group — since their count sits next to a clickable
+   icon rather than plain text. */
+.gitTightGroup {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Colored (not the default tertiary label color) so the count reads as a
+   highlighted call to action next to its muted-gray icon, distinct from
+   .gitChangedCount's warn-toned pill — a commit ready to sync is routine,
+   not a warning. */
+.gitAheadBehindCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 12px;
+  height: 14px;
+  padding: 0 1px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.gitRefreshButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 6px;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.gitRefreshButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.gitRefreshButton:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Pull/Push modifier: the icon and its own ahead/behind count render as one
+   button's children (not an icon button beside a separate count span), so
+   the whole hit target — icon and number together — triggers the action,
+   and the total footprint is only as wide as the icon and number actually
+   need instead of a fixed 20px button plus a separate badge alongside it.
+   No gap between icon and count: the count's own padding and color already
+   read as distinct from the icon beside it. Overrides .gitRefreshButton's
+   fixed 20px width/zero padding; the 20px min-width keeps the icon-only (no
+   count yet) case identical to every other icon button here. */
+.gitCountButton {
+  width: auto;
+  min-width: 20px;
+  padding: 0 3px;
+}
+
+.gitDiscardButton:hover:not(:disabled) {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.gitCommitInput {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.gitCommitField {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.gitCommitField:focus {
+  outline: none;
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.discardConfirmButton:not(:disabled) {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.gitStatusBadge {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.gitStatusM {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.gitStatusA,
+.gitStatusU {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.gitStatusD,
+.gitStatusX {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.gitStatusR,
+.gitStatusC {
+  color: var(--dsw-alias-state-business-primary);
+}

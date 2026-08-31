@@ -16,6 +16,7 @@ const HOST_PACKAGES = [
 
 const CLIENT_PACKAGES = [
   'packages/workspace-git/client-ui-file-editing',
+  'packages/workspace-git/client-ui-workspace-files',
 ]
 
 /**
@@ -32,12 +33,15 @@ const CLIENT_PACKAGES = [
  * closure-factory/CSS-modules-inline machinery — that helper's
  * workspaceManifest() lookup is hardcoded to
  * packages/_vendor/deepseek-harness's own root besides, so it cannot see
- * this repo's packages at all. A package that DOES need a real dynamically-
- * loaded browser bundle (registers into a slot, ships CSS Modules read at
- * runtime) gets its own tsdown.config.ts importing that helper directly, the
- * same way packages/_vendor/deepseek-harness's own packages/client/*
- * do — see dsh-plugins-client-ui-workspace-files once it exists. Narrowed to
- * packages that are actually implemented; widen as each stub in
+ * this repo's packages at all. dsh-plugins-client-ui-workspace-files turned
+ * out not to need that machinery either, despite registering a real Context
+ * service (`workspaceFilesNode`): it is delivered as a static import from
+ * dsh-client-ui-workspace's own upstream-ready diff (ARCHITECTURE.md Task
+ * 19), the same delivery mechanism the Settings UI panel already documents,
+ * not as a dynamically-loaded out-of-tree bundle — so a package only needs
+ * the closure-factory format when it is genuinely meant to install through
+ * `dsh plugin add` at runtime rather than through a small upstream PR.
+ * Narrowed to packages that are actually implemented; widen as each stub in
  * ARCHITECTURE.md gets ported, rather than including unbuilt stubs tsdown
  * would fail resolving.
  */

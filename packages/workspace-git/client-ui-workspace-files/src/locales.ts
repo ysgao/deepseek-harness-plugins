@@ -1,0 +1,109 @@
+/**
+ * `workspace-files` namespace dictionaries: the Files tree header, git
+ * status/action group, and the in-app file preview — ported verbatim from
+ * yga/deepseek-harness's own edits to `dsh-client-ui-workspace`'s `workspace`
+ * namespace (this package's whole reason for existing: those edits moved
+ * here instead of the vendored package). Kept as its own namespace, `files.`
+ * prefix included, rather than merged into `dsh-client-locale`'s `workspace`
+ * dictionary, so the key strings this package's components already call
+ * `t()` with need no rewrite.
+ */
+
+/** Simplified Chinese dictionary (the key-set source of truth). */
+export const zh = {
+  'files.label': '文件',
+  'files.empty': '此文件夹为空',
+  'files.loadError': '无法加载文件夹',
+  'files.retry': '重试',
+  'files.truncated': '仅显示部分内容',
+  'files.add.file': '新建文件',
+  'files.add.folder': '新建文件夹',
+  'files.add.filePlaceholder': '文件名',
+  'files.add.folderPlaceholder': '文件夹名',
+  'files.add.submit': '创建',
+  'files.viewer.loading': '正在加载文件…',
+  'files.viewer.loadError': '无法读取文件',
+  'files.viewer.tooLarge': '文件过大，无法在应用内预览（{maxMB} MB 上限）',
+  'files.viewer.openExternally': '用系统默认应用打开',
+  'files.viewer.close': '关闭',
+  'files.viewer.copy': '复制',
+  'files.viewer.copied': '已复制',
+  'files.viewer.footnotes': '脚注',
+  'files.viewer.read.window': '显示 {shown} / {total} 行',
+  'files.viewer.read.collapseAria': '收起内容',
+  'files.viewer.read.expandAria': '展开其余 {count} 行',
+  'files.viewer.read.expand': '… 其余 {count} 行',
+  'files.git.branch': '分支：{branch}',
+  'files.git.changedCount': '{n} 个文件已更改',
+  'files.git.folderDirty': '内部含有更改的文件',
+  'files.git.refresh': '刷新 git 状态（会从远端拉取，但不做变基）',
+  'files.git.commit': '提交全部',
+  'files.git.discard': '放弃全部',
+  'files.git.pull': '拉取（变基）：{n} 个提交落后',
+  'files.git.push': '推送：{n} 个提交领先',
+  'files.git.commitPlaceholder': '提交信息',
+  'files.git.commitSubmit': '提交更改',
+  'files.git.cancel': '取消',
+  'files.git.discardConfirmTitle': '放弃全部更改？',
+  'files.git.discardConfirmDesc': '会把每个受版本控制的文件恢复为最近一次提交的内容。未跟踪的新文件不受影响。如果此前的拉取（变基）导致仓库处于变基冲突状态，这会中止变基并恢复分支。此操作无法撤销。',
+  'files.git.discardConfirm': '放弃更改',
+  'files.git.discardPending': '正在放弃更改…',
+  'files.git.status.M': '已修改',
+  'files.git.status.A': '已添加',
+  'files.git.status.D': '已删除',
+  'files.git.status.R': '已重命名',
+  'files.git.status.C': '已复制',
+  'files.git.status.U': '未跟踪',
+  'files.git.status.X': '冲突',
+} satisfies Record<string, string>
+
+/** The `workspace-files` namespace key union. */
+export type FilesKey = keyof typeof zh
+
+/** English dictionary, checked complete against the zh key set. */
+export const en = {
+  'files.label': 'Files',
+  'files.empty': 'This folder is empty',
+  'files.loadError': 'Couldn’t load this folder',
+  'files.retry': 'Retry',
+  'files.truncated': 'Showing part of this folder',
+  'files.add.file': 'New file',
+  'files.add.folder': 'New folder',
+  'files.add.filePlaceholder': 'File name',
+  'files.add.folderPlaceholder': 'Folder name',
+  'files.add.submit': 'Create',
+  'files.viewer.loading': 'Loading file…',
+  'files.viewer.loadError': 'Couldn’t read this file',
+  'files.viewer.tooLarge': 'File too large to preview in-app ({maxMB} MB limit)',
+  'files.viewer.openExternally': 'Open with default app',
+  'files.viewer.close': 'Close',
+  'files.viewer.copy': 'Copy',
+  'files.viewer.copied': 'Copied',
+  'files.viewer.footnotes': 'Footnotes',
+  'files.viewer.read.window': 'Showing {shown} of {total} lines',
+  'files.viewer.read.collapseAria': 'Collapse content',
+  'files.viewer.read.expandAria': 'Expand {count} more lines',
+  'files.viewer.read.expand': '… {count} more lines',
+  'files.git.branch': 'Branch: {branch}',
+  'files.git.changedCount': '{n} changed files',
+  'files.git.folderDirty': 'Contains changed files',
+  'files.git.refresh': 'Refresh git status (fetches from the remote, without rebasing)',
+  'files.git.commit': 'Commit all',
+  'files.git.discard': 'Discard all',
+  'files.git.pull': 'Pull (rebase): {n} commits behind',
+  'files.git.push': 'Push: {n} commits ahead',
+  'files.git.commitPlaceholder': 'Commit message',
+  'files.git.commitSubmit': 'Commit changes',
+  'files.git.cancel': 'Cancel',
+  'files.git.discardConfirmTitle': 'Discard all changes?',
+  'files.git.discardConfirmDesc': 'Reverts every tracked file to its last commit. New (untracked) files are left alone. If an earlier Pull left the repository mid-rebase, this aborts the rebase and restores the branch. This can’t be undone.',
+  'files.git.discardConfirm': 'Discard changes',
+  'files.git.discardPending': 'Discarding changes…',
+  'files.git.status.M': 'Modified',
+  'files.git.status.A': 'Added',
+  'files.git.status.D': 'Deleted',
+  'files.git.status.R': 'Renamed',
+  'files.git.status.C': 'Copied',
+  'files.git.status.U': 'Untracked',
+  'files.git.status.X': 'Conflict',
+} satisfies Record<FilesKey, string>
