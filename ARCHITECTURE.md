@@ -112,10 +112,10 @@ profile they land in.
 | `dsh-plugins-api-workspace-file-controller` | New Typert Host controller | `packages/api/workspace-controller/src/{files,file-commands}.ts` (list/read/write/create/delete/diff) + their host specs |
 | `dsh-plugins-client-ui-file-editing` | Standalone components (no shared-package dependency) | `packages/client/ui-primitives/src/{FileEditor,FilePreview,SideBySideDiff}.tsx` + `.module.css` + `codemirror/theme.ts` + `useSplitRatio.ts` + tests — moved out of the shared `ui-primitives` package, which every other UI plugin depends on |
 | `dsh-plugins-client-ui-workspace-files` | **Confirmed working (typecheck + build)** — optional `workspaceFilesNode` Context service (same pattern as `conversationFileOpener`, which is itself fork-only, not pristine prior art). Its mount point is a small drafted-and-verified diff, `upstream-patches/0001-workspace-files-node-optional-service.patch`, not yet proposed upstream (see "Files tree: why an optional service, not a slot") | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
-| `dsh-plugins-client-ui-conversation-files` | `ui-conversation`'s existing file-opener/slot mechanism | `packages/client/ui-conversation-files/**` (already a clean, separate package upstream in the fork — ported close to as-is, repointed at `dsh-plugins-client-ui-file-editing` instead of `ui-primitives`) |
+| `dsh-plugins-client-ui-conversation-files` | **Confirmed working (typecheck + build)** — registers into the *pristine* `conversation.view` list slot (`dsh-client-ui-conversation`), no upstream diff needed for the tab itself. `conversationFileOpener` (the cross-session open trigger) is separately fork-only and still needs its own upstream diff — see "File tab: a pristine slot, but a fork-only trigger" | `packages/client/ui-conversation-files/**` (already a clean, separate package in the fork — ported near-verbatim, repointed at `dsh-plugins-client-ui-file-editing`/this repo's own controllers instead of `ui-primitives`/the fork-extended `dsh-api-workspace-controller` client) |
 | `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle, out-of-tree install target for `web-app`/`base` profiles | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml` |
 
-Not started yet (Phase 0 stub only) — everything above is unbuilt source.
+`dsh-plugins-bundle-workspace-git` is still a Phase 0 stub — wire it next (Open items).
 
 ### `packages/anthropic-subscription/` — Anthropic subscription authorization
 
@@ -198,6 +198,34 @@ rows/WorkspaceBrowser.tsx}` — resolve the service, thread it through
 `Component` where `FilesNode` sat in the fork — not a new slot-registration
 contract.
 
+#### File tab: a pristine slot, but a fork-only trigger
+
+`packages/client/ui-conversation-files` (the fork's own File-tab package)
+turned out to be a genuinely clean citizen for its *slot*:
+`dsh-client-ui-conversation`'s `conversation.view` is a real, pristine
+`kind: 'list'` slot already populated by `ui-chat` (`id: 'chat'`) and
+`ui-trajectory` (`id: 'trajectory'`) — the "Chat, File, and Trajectory"
+tabs the user described. `dsh-plugins-client-ui-conversation-files`
+registers a `'file'` entry into it exactly the same way, no upstream diff
+required.
+
+What the tab *displays*, though, is a different story: opening a file in a
+session's File tab from OUTSIDE that session's own render tree — the
+sidebar's Files tree is the motivating case — needs a cross-session bridge,
+because `ConvViewOwnerProps.openView` is scoped to whichever session is
+currently mounted, and the sidebar has no prop path into it. The fork built
+exactly this bridge (`conversationFileOpener`, backed by a `fileOpenRegistry`
+class), but unlike `workspaceFilesNode`'s optional-service fix, it isn't a
+clean drop-in: `dsh-client-ui-conversation`'s own `apply.ts` gained the
+registry and a `pendingFileOpen` hook, and its skeleton component
+`ConversationSession.tsx` gained the code that drains that hook into
+`conversationStore`'s `openView` action. Skeleton-component edits are a
+materially bigger ask than a Context-service addition. This repo's
+`dsh-plugins-client-ui-workspace-files` already degrades correctly without
+it (`openFileInSession` returns `false`, `FilesNode` falls back to its own
+in-app preview modal — see that package's README), so this bridge is
+tracked as its own follow-up, not a blocker for either package landing.
+
 ## Explicitly out of scope
 
 `packages/shell/tool-bash`'s workdir-escape-preflight fix (also present in
@@ -207,9 +235,14 @@ either bundle here.
 
 ## Open items
 
-- `dsh-plugins-client-ui-conversation-files` and `dsh-plugins-bundle-
-  workspace-git` are still Phase 0 stubs — port next, following the pattern
-  established by `dsh-plugins-client-ui-workspace-files` above.
+- `dsh-plugins-bundle-workspace-git` is still a Phase 0 stub — wire its
+  `cordis.patch.yml` next, following the pattern established by
+  `dsh-plugins-bundle-anthropic-subscription`.
+- The `conversationFileOpener` cross-session bridge (see "File tab: a
+  pristine slot, but a fork-only trigger") has no drafted diff yet, unlike
+  `workspaceFilesNode`'s — it needs to touch `ui-conversation`'s skeleton
+  component (`ConversationSession.tsx`), not just add a Context service, so
+  it deserves its own careful read of that component before drafting.
 - The upstream `ui-workspace` diff itself is drafted and verified:
   `upstream-patches/0001-workspace-files-node-optional-service.patch` —
   applies cleanly against the pinned submodule commit, and a forced clean

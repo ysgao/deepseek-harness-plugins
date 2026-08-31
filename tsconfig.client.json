@@ -7,6 +7,7 @@
   "include": [],
   "references": [
     { "path": "packages/workspace-git/client-ui-file-editing" },
-    { "path": "packages/workspace-git/client-ui-workspace-files" }
+    { "path": "packages/workspace-git/client-ui-workspace-files" },
+    { "path": "packages/workspace-git/client-ui-conversation-files" }
   ]
 }

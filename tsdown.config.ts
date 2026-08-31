@@ -17,6 +17,7 @@ const HOST_PACKAGES = [
 const CLIENT_PACKAGES = [
   'packages/workspace-git/client-ui-file-editing',
   'packages/workspace-git/client-ui-workspace-files',
+  'packages/workspace-git/client-ui-conversation-files',
 ]
 
 /**

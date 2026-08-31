@@ -1,0 +1,28 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-slots" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-primitives" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-renderer" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/locale" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-conversation" },
+    { "path": "../../_vendor/deepseek-harness/packages/api/gateway/tsconfig.client.json" },
+    { "path": "../../_vendor/deepseek-harness/packages/api/session-controller/tsconfig.client.json" },
+    { "path": "../../_vendor/deepseek-harness/packages/api/workspace-controller/tsconfig.client.json" },
+    { "path": "../../_vendor/deepseek-harness/packages/workspace/workspace" },
+    { "path": "../../_vendor/deepseek-harness/packages/core/session" },
+    { "path": "../../_vendor/deepseek-harness/packages/typert/protocol" },
+    { "path": "../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" },
+    { "path": "../client-ui-file-editing" },
+    { "path": "../api-workspace-file-controller" },
+    { "path": "../api-workspace-git-controller" }
+  ]
+}

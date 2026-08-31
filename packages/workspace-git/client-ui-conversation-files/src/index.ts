@@ -1,8 +1,18 @@
 /**
- * The File conversation tab: preview, edit, and side-by-side git diff.
- * Not yet implemented — see README.md and ../../../ARCHITECTURE.md.
- *
- * Ports `packages/client/ui-conversation-files/**` from
- * yga/deepseek-harness, repointed at dsh-plugins-client-ui-file-editing.
+ * The File conversation-view tab: in-app preview, edit, and side-by-side
+ * git diff for a session's opened workspace paths. Registers into the
+ * pristine `conversation.view` slot alongside Chat and Trajectory — see
+ * `./apply.ts` for why this package needs no upstream diff, unlike its
+ * sibling `dsh-plugins-client-ui-workspace-files`.
+ * @module dsh-plugins-client-ui-conversation-files
  */
-export {}
+export { apply, inject } from './apply.ts'
+export { FileView } from './FileView.tsx'
+export type { FileViewInjected, FileViewProps } from './FileView.tsx'
+export type { ConversationFilesKey } from './locales.ts'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    'conversation-files': import('./locales.ts').ConversationFilesKey
+  }
+}
