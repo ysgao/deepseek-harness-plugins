@@ -57,19 +57,27 @@ out-of-tree package.
 
 This package builds, typechecks, and provides its service today, but has no
 mount point in a real `dsh-client-ui-workspace` build until a small diff to
-`packages/client/ui-workspace/src/client/{index.ts,rows/WorkspaceBrowser.tsx}`
-lands upstream:
+`packages/client/ui-workspace/src/client/{contract/slots.ts,index.ts,
+rows/WorkspaceBrowser.tsx}` lands upstream. That diff is drafted and
+verified — `../../../upstream-patches/0001-workspace-files-node-optional-
+service.patch` (`git apply --check` clean against the pinned submodule
+commit; a forced clean `tsc -b` rebuild of `ui-workspace` with it applied
+passed with no diagnostics) — but not yet proposed as a real PR against
+`deepseek-ai/deepseek-harness`. Summary of what it does:
 
-- `index.ts`'s `apply(ctx)` resolves `const filesNode = ctx.get('workspaceFilesNode')`
-  once (`undefined` when this package isn't composed in) and threads it down
-  through `WorkspaceBrowserInjected`/`SessionTreeProps` — a new prop, since
-  neither carries anything Files-related in pristine `ui-workspace` today.
-- `WorkspaceBrowser.tsx`'s row loop renders
-  `filesNode?.Component({ workspaceId: group.workspaceId, rootPath: group.cwd, currentSessionId: current })`
-  in the exact row `FilesNode` occupied in the fork: the first row under a
-  real Workspace group's header, sibling to its Session rows, the selected
-  Workspace's own directory as the tree's implicit root — matching the
-  layout the user asked to keep, not the alternative right-side-pane option.
+- `contract/slots.ts` declares `WorkspaceFilesNodeProps`, the
+  `workspaceFilesNode?: {...}` optional Context merge, and a new plain
+  (non-hook) `filesNode` field on `WorkspaceBrowserInjected`.
+- `index.ts`'s `apply(ctx)` adds one line to the object it already builds:
+  `filesNode: ctx.get('workspaceFilesNode')` (`undefined` when this package
+  isn't composed in).
+- `WorkspaceBrowser.tsx` threads `filesNode` down through `SessionTreeProps`
+  and renders `<filesNode.Component workspaceId={...} rootPath={group.cwd}
+  currentSessionId={current} />` right after each real Workspace group's
+  header row and before its Session rows — the exact row `FilesNode`
+  occupied in the fork: sibling to Session rows, the selected Workspace's
+  own directory as the tree's implicit root — matching the layout the user
+  asked to keep, not the alternative right-side-pane option.
 
 Same delivery mechanism as the Settings UI panel (see
 `../../anthropic-subscription/client-ui-settings-anthropic-subscription`):

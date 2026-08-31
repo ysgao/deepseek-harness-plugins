@@ -111,7 +111,7 @@ profile they land in.
 | `dsh-plugins-api-workspace-git-controller` | New Typert Host controller (auto-discovered by `dsh-typert-loader`; no edit to `api/workspace-controller`) | `packages/api/workspace-controller/src/workspace-git.ts` (status, commit-all, fetch, pull --rebase, push, discard-all) + `tests/workspace-git.host.spec.ts` |
 | `dsh-plugins-api-workspace-file-controller` | New Typert Host controller | `packages/api/workspace-controller/src/{files,file-commands}.ts` (list/read/write/create/delete/diff) + their host specs |
 | `dsh-plugins-client-ui-file-editing` | Standalone components (no shared-package dependency) | `packages/client/ui-primitives/src/{FileEditor,FilePreview,SideBySideDiff}.tsx` + `.module.css` + `codemirror/theme.ts` + `useSplitRatio.ts` + tests — moved out of the shared `ui-primitives` package, which every other UI plugin depends on |
-| `dsh-plugins-client-ui-workspace-files` | **Confirmed working (typecheck + build)** — optional `workspaceFilesNode` Context service (same pattern as `conversationFileOpener`, which is itself fork-only, not pristine prior art); no mount point in a real build until the upstream-ready `ui-workspace` diff below lands (see "Files tree: why an optional service, not a slot") | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
+| `dsh-plugins-client-ui-workspace-files` | **Confirmed working (typecheck + build)** — optional `workspaceFilesNode` Context service (same pattern as `conversationFileOpener`, which is itself fork-only, not pristine prior art). Its mount point is a small drafted-and-verified diff, `upstream-patches/0001-workspace-files-node-optional-service.patch`, not yet proposed upstream (see "Files tree: why an optional service, not a slot") | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
 | `dsh-plugins-client-ui-conversation-files` | `ui-conversation`'s existing file-opener/slot mechanism | `packages/client/ui-conversation-files/**` (already a clean, separate package upstream in the fork — ported close to as-is, repointed at `dsh-plugins-client-ui-file-editing` instead of `ui-primitives`) |
 | `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle, out-of-tree install target for `web-app`/`base` profiles | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml` |
 
@@ -210,10 +210,12 @@ either bundle here.
 - `dsh-plugins-client-ui-conversation-files` and `dsh-plugins-bundle-
   workspace-git` are still Phase 0 stubs — port next, following the pattern
   established by `dsh-plugins-client-ui-workspace-files` above.
-- The upstream `ui-workspace` diff itself (resolve `ctx.get('workspaceFilesNode')`,
-  render its `Component` in `WorkspaceBrowser`'s row loop) is written up in
-  "Files tree: why an optional service, not a slot" above but not yet
-  drafted as an actual diff against the vendored submodule.
+- The upstream `ui-workspace` diff itself is drafted and verified:
+  `upstream-patches/0001-workspace-files-node-optional-service.patch` —
+  applies cleanly against the pinned submodule commit, and a forced clean
+  `tsc -b` rebuild of `packages/client/ui-workspace` with it applied passed
+  with no diagnostics. Not yet proposed as a real PR against
+  `deepseek-ai/deepseek-harness`.
 - Confirm whether `dsh-plugins-api-workspace-git-controller` and
   `-file-controller` should merge into one controller package — they were
   split above by concern (git vs. generic file CRUD) but share no code.

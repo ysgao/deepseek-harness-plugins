@@ -8,10 +8,15 @@
  * use `ctx.get(name)`"). `dsh-client-ui-conversation`'s `conversationFileOpener`
  * is the same shape of seam, though it is itself a `yga/deepseek-harness`
  * fork addition, not pristine prior art. The upstream-ready diff this
- * plugin pairs with (see ../../../ARCHITECTURE.md Task 19) resolves this
- * service once and renders `Component` in the same row `FilesNode` occupied
- * in the fork — sibling to the Session rows, the selected Workspace's own
- * directory as its implicit root, no extra click.
+ * plugin pairs with is drafted and verified at
+ * ../../../upstream-patches/0001-workspace-files-node-optional-service.patch
+ * (not yet proposed as a real PR): it resolves this service once and
+ * renders `Component` in the same row `FilesNode` occupied in the fork —
+ * sibling to the Session rows, the selected Workspace's own directory as
+ * its implicit root, no extra click. This interface duplicates that
+ * patch's own `WorkspaceFilesNodeProps`/`workspaceFilesNode` declarations
+ * in `contract/slots.ts`; once the patch lands, this package can import
+ * those instead of declaring its own copy.
  * @module dsh-plugins-client-ui-workspace-files/service
  */
 import type { ComponentType } from 'react'
