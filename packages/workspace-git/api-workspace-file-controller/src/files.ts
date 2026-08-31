@@ -1,0 +1,370 @@
+/**
+ * Host-side workspace file browsing: one-level directory-and-file listing,
+ * bounded single-file reads, and version-guarded atomic writes, rooted under
+ * a workspace's own directory, for the Web GUI's in-app Files tree and File
+ * tab editor. Root containment (`path` must be the workspace's own path or a
+ * descendant of it) is the caller's job — this module lists, reads, and
+ * writes whatever absolute path it is given.
+ * @module dsh-plugins-api-workspace-file-controller/files
+ */
+
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, opendir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { Branded } from '@deepseek-ai/dsh-brand'
+
+/** Opaque staleness-guard token for a text file's content: a SHA-256 hex digest over its raw bytes. */
+export type WorkspaceFileVersion = Branded<'WorkspaceFileVersion'>
+
+/** One row of a `listEntries` level: a subdirectory or a regular file. */
+export interface WorkspaceEntry {
+  /** Base name within the listed directory. */
+  readonly name: string
+  /** Absolute host path — the client never joins path segments itself. */
+  readonly path: string
+  /** Whether the row is a directory (including a symlink resolving to one) or a regular file. */
+  readonly type: 'directory' | 'file'
+  /** Hidden by the host platform's convention (dot-prefixed on POSIX); the client owns whether to show it. */
+  readonly hidden: boolean
+  /** Byte size of a file row; absent for a directory row. */
+  readonly size?: number
+}
+
+/** `listEntries` response value: one directory level, directories and files together. */
+export interface WorkspaceEntryListing {
+  /** Absolute path of the listed directory. */
+  readonly path: string
+  /** Direct children (directories and regular files), name-sorted with directories first. */
+  readonly entries: readonly WorkspaceEntry[]
+  /** True when the backend cut `entries` at its complete-result bound (the name-sorted tail is absent). */
+  readonly truncated: boolean
+}
+
+/** `readFile` response value: a size-bounded file read, decoded by content kind. */
+export type WorkspaceFileContent =
+  /**
+   * UTF-8 text, decoded to a string; the wire's native JSON string form.
+   * `version` is the content's staleness-guard token, threaded back through
+   * a subsequent `writeFile` as `expectedVersion`.
+   */
+  | { readonly kind: 'text'; readonly content: string; readonly version: WorkspaceFileVersion }
+  /** Binary content the client cannot decode as text; base64-encoded on the wire. */
+  | { readonly kind: 'binary'; readonly mediaType: string; readonly data: string }
+
+/** Typed failure so the RPC layer can map business codes without string matching. */
+export class WorkspaceFileError extends Error {
+  /**
+   * @param code - closed business code of the failure.
+   * @param path - the absolute path the failure is about.
+   * @param message - operator-facing description.
+   * @param maxBytes - the enforced read/write bound, present only for `file-too-large`.
+   */
+  constructor(
+    readonly code: 'directory-unreadable' | 'file-too-large' | 'file-changed' | 'already-exists' | 'parent-missing',
+    readonly path: string,
+    message: string,
+    readonly maxBytes?: number,
+  ) {
+    super(message)
+    this.name = 'WorkspaceFileError'
+  }
+}
+
+/** Complete-result bound of one `listEntries` level (entries beyond this many are cut, name-sorted tail). */
+export const DEFAULT_MAX_ENTRIES = 1000
+
+/** Byte bound of one `readFile` call; a larger file fails with `file-too-large` before any content leaves the host. */
+export const DEFAULT_MAX_READ_BYTES = 20 * 1024 * 1024
+
+/**
+ * True when `path` is the workspace root itself or a filesystem descendant of
+ * it. `node:path.relative` already answers containment by path segments, not
+ * string prefix, so a sibling directory sharing a name prefix (`/ws` vs
+ * `/ws-2`) is correctly rejected (its relative form is `../ws-2`).
+ * @param root - the workspace's own canonical absolute path.
+ * @param path - the candidate absolute path.
+ * @returns whether `path` is inside `root` (root itself counts).
+ */
+export function isWithinWorkspace(root: string, path: string): boolean {
+  const relativePath = relative(root, path)
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
+}
+
+function messageOf(error: unknown): string {
+  /* v8 ignore next -- every catch site rejects with a real node:fs Error; the String() fallback exists only for the `unknown` narrowing. */
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** Best-effort media type from a file extension; unknown extensions fall back to a generic binary type. */
+const MEDIA_TYPES_BY_EXTENSION: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+}
+
+/**
+ * Media type for a binary read result, by extension.
+ * @param path - absolute file path (only its extension is read).
+ * @returns a registered media type, or the generic octet-stream fallback.
+ */
+export function mediaTypeFor(path: string): string {
+  return MEDIA_TYPES_BY_EXTENSION[extname(path).toLowerCase()] ?? 'application/octet-stream'
+}
+
+function hashContent(bytes: Uint8Array): WorkspaceFileVersion {
+  return createHash('sha256').update(bytes).digest('hex') as WorkspaceFileVersion
+}
+
+/**
+ * List one directory level: subdirectories and regular files together,
+ * directories first, then name-sorted within each group. Symlinks to a
+ * directory are followed and reported as `type: 'directory'`; symlinks to a
+ * file are reported as `type: 'file'`; broken/cyclic symlinks and non-regular
+ * entries (sockets, devices, FIFOs) are skipped. Each bucket (directories,
+ * files) is independently bounded by `maxEntries`, admitting candidates in
+ * `readdir` arrival order, so a level with more than `maxEntries` directories
+ * or files reports a `truncated` cut whose kept rows are sorted but not
+ * guaranteed to be the name-sorted head.
+ * @param path - absolute directory to list.
+ * @param maxEntries - complete-result bound per bucket; a cut level reports `truncated: true`.
+ * @param signal - caller lifetime; abort stops the scan and rejects with the abort reason.
+ * @returns the level's entries and truncation flag.
+ * @throws {WorkspaceFileError} `directory-unreadable` when the target cannot be listed.
+ */
+export async function listWorkspaceEntries(
+  path: string,
+  maxEntries: number = DEFAULT_MAX_ENTRIES,
+  signal?: AbortSignal,
+): Promise<WorkspaceEntryListing> {
+  signal?.throwIfAborted()
+  const directories: WorkspaceEntry[] = []
+  const files: WorkspaceEntry[] = []
+  let truncated = false
+  let dir: Awaited<ReturnType<typeof opendir>>
+  try {
+    dir = await opendir(path)
+  } catch (error: unknown) {
+    throw new WorkspaceFileError('directory-unreadable', path, `cannot list ${path}: ${messageOf(error)}`)
+  }
+  signal?.throwIfAborted()
+  try {
+    for await (const dirent of dir) {
+      signal?.throwIfAborted()
+      const childPath = join(path, dirent.name)
+      let isDirectory = dirent.isDirectory()
+      const isFile = dirent.isFile()
+      if (!isDirectory && !isFile && dirent.isSymbolicLink()) {
+        try {
+          const target = await stat(childPath)
+          isDirectory = target.isDirectory()
+          if (!isDirectory && !target.isFile()) continue
+        } catch {
+          continue // broken/cyclic symlink: not enterable, not readable — skip.
+        }
+      } else if (!isDirectory && !isFile) {
+        continue // socket, device, FIFO: neither browsable nor previewable.
+      }
+      const bucket = isDirectory ? directories : files
+      if (bucket.length === maxEntries) {
+        truncated = true
+        continue
+      }
+      let size: number | undefined
+      if (!isDirectory) {
+        try {
+          size = (await stat(childPath)).size
+        } catch {
+          // A file that disappeared between readdir and stat: report it
+          // without a size rather than dropping the row (it existed a moment ago).
+        }
+      }
+      const entry: WorkspaceEntry = {
+        name: dirent.name,
+        path: childPath,
+        type: isDirectory ? 'directory' : 'file',
+        hidden: dirent.name.startsWith('.'),
+        ...(size === undefined ? {} : { size }),
+      }
+      bucket.push(entry)
+    }
+  } catch (error: unknown) {
+    signal?.throwIfAborted()
+    throw new WorkspaceFileError('directory-unreadable', path, `cannot list ${path}: ${messageOf(error)}`)
+  }
+  directories.sort((a, b) => a.name.localeCompare(b.name))
+  files.sort((a, b) => a.name.localeCompare(b.name))
+  return { path, entries: [...directories, ...files], truncated }
+}
+
+/**
+ * Read one regular file for in-app preview: valid UTF-8 decodes as text;
+ * anything else (binary content, or text with a decoding error) returns as
+ * base64 with a best-effort media type.
+ * @param path - absolute file path.
+ * @param maxBytes - byte bound enforced BEFORE the read completes (a stat probe first).
+ * @param signal - caller lifetime; abort stops the read and rejects with the abort reason.
+ * @returns the decoded content.
+ * @throws {WorkspaceFileError} `directory-unreadable` when the file cannot be
+ * read, `file-too-large` when its size exceeds `maxBytes`.
+ */
+export async function readWorkspaceFile(
+  path: string,
+  maxBytes: number = DEFAULT_MAX_READ_BYTES,
+  signal?: AbortSignal,
+): Promise<WorkspaceFileContent> {
+  signal?.throwIfAborted()
+  let size: number
+  try {
+    size = (await stat(path)).size
+  } catch (error: unknown) {
+    throw new WorkspaceFileError('directory-unreadable', path, `cannot read ${path}: ${messageOf(error)}`)
+  }
+  signal?.throwIfAborted()
+  if (size > maxBytes) {
+    throw new WorkspaceFileError(
+      'file-too-large', path, `file "${path}" (${size} bytes) exceeds the ${maxBytes}-byte preview bound`, maxBytes,
+    )
+  }
+  let bytes: Buffer
+  try {
+    bytes = await readFile(path, { signal })
+  } catch (error: unknown) {
+    signal?.throwIfAborted()
+    throw new WorkspaceFileError('directory-unreadable', path, `cannot read ${path}: ${messageOf(error)}`)
+  }
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  try {
+    return { kind: 'text', content: decoder.decode(bytes), version: hashContent(bytes) }
+  } catch {
+    return { kind: 'binary', mediaType: mediaTypeFor(path), data: bytes.toString('base64') }
+  }
+}
+
+/**
+ * Resolve a wire path to its absolute canonical form for containment
+ * checking; does not require the path to exist.
+ * @param path - the wire-supplied path.
+ * @returns the absolute, resolved path.
+ */
+export function resolveWorkspacePath(path: string): string {
+  return resolve(path)
+}
+
+/**
+ * Atomically overwrite one regular file's content, guarded by
+ * `expectedVersion` against a concurrent change: the current on-disk
+ * content is read and hashed immediately before the write, and a mismatch
+ * fails loud with `file-changed` rather than silently clobbering it. The
+ * write itself is atomic (a same-directory temp file, then `rename`), so a
+ * crash or a competing write never leaves a partially written file at `path`.
+ * @param path - absolute file path (must already exist — this never creates a new file).
+ * @param content - the full new UTF-8 text content.
+ * @param expectedVersion - the version the caller last observed, from a prior `readFile`/`writeFile`.
+ * @param maxBytes - byte bound enforced on `content` before any write is attempted.
+ * @param signal - caller lifetime; abort rejects with the abort reason before publication.
+ * @returns the version the write produced (the new content's own hash).
+ * @throws {WorkspaceFileError} `directory-unreadable` when the file cannot
+ * be read or written, `file-too-large` when `content` exceeds `maxBytes`,
+ * `file-changed` when the current on-disk content's hash does not match
+ * `expectedVersion`.
+ */
+export async function writeWorkspaceFile(
+  path: string,
+  content: string,
+  expectedVersion: WorkspaceFileVersion,
+  maxBytes: number = DEFAULT_MAX_READ_BYTES,
+  signal?: AbortSignal,
+): Promise<WorkspaceFileVersion> {
+  signal?.throwIfAborted()
+  const nextBytes = Buffer.from(content, 'utf-8')
+  if (nextBytes.byteLength > maxBytes) {
+    throw new WorkspaceFileError(
+      'file-too-large', path, `write to "${path}" (${nextBytes.byteLength} bytes) exceeds the ${maxBytes}-byte bound`, maxBytes,
+    )
+  }
+  let currentBytes: Buffer
+  try {
+    currentBytes = await readFile(path, { signal })
+  } catch (error: unknown) {
+    signal?.throwIfAborted()
+    throw new WorkspaceFileError('directory-unreadable', path, `cannot read ${path}: ${messageOf(error)}`)
+  }
+  signal?.throwIfAborted()
+  if (hashContent(currentBytes) !== expectedVersion) {
+    throw new WorkspaceFileError('file-changed', path, `"${path}" changed on disk since it was last read`)
+  }
+  // A same-directory temp file (never crosses filesystems, so `rename` is
+  // atomic) published over the target: a crash or a competing write between
+  // the temp write and the rename never leaves a partial file at `path`.
+  const tempPath = join(dirname(path), `.${randomUUID()}.tmp`)
+  try {
+    await writeFile(tempPath, nextBytes, { signal })
+    signal?.throwIfAborted()
+    await rename(tempPath, path)
+  } catch (error: unknown) {
+    await unlink(tempPath).catch(() => {
+      // The temp file may never have been created (the writeFile itself
+      // failed) or may already be gone (a prior cleanup raced it) — either
+      // way there is nothing left to remove, and the original error above
+      // is the one that matters to the caller.
+    })
+    signal?.throwIfAborted()
+    throw new WorkspaceFileError('directory-unreadable', path, `cannot write ${path}: ${messageOf(error)}`)
+  }
+  return hashContent(nextBytes)
+}
+
+/**
+ * Create one new, empty regular file at `path`; never overwrites or reads
+ * existing content. A Files tree's "Add file" action.
+ * @param path - absolute path of the file to create (must not already exist).
+ * @param signal - caller lifetime; abort rejects with the abort reason before creation.
+ * @returns the empty file's content version (the empty-string hash).
+ * @throws {WorkspaceFileError} `already-exists` when `path` already names a
+ * file or directory, `parent-missing` when the enclosing directory does not
+ * exist, `directory-unreadable` for any other creation failure.
+ */
+export async function createWorkspaceFile(path: string, signal?: AbortSignal): Promise<WorkspaceFileVersion> {
+  signal?.throwIfAborted()
+  try {
+    // 'wx': create-exclusive — fails with EEXIST rather than truncating an
+    // existing file, so this can never silently clobber content.
+    await writeFile(path, '', { flag: 'wx', signal })
+  } catch (error: unknown) {
+    signal?.throwIfAborted()
+    throw createFailure(error, path)
+  }
+  return hashContent(Buffer.alloc(0))
+}
+
+/**
+ * Create one new, empty directory at `path`. A Files tree's "Add folder" action.
+ * @param path - absolute path of the directory to create (must not already exist).
+ * @param signal - caller lifetime; abort rejects with the abort reason before creation.
+ * @throws {WorkspaceFileError} `already-exists` when `path` already names a
+ * file or directory, `parent-missing` when the enclosing directory does not
+ * exist, `directory-unreadable` for any other creation failure.
+ */
+export async function createWorkspaceDirectory(path: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
+  try {
+    // recursive: false — the enclosing directory must already exist; this
+    // creates exactly one new path segment, never a chain of parents.
+    await mkdir(path, { recursive: false })
+  } catch (error: unknown) {
+    signal?.throwIfAborted()
+    throw createFailure(error, path)
+  }
+}
+
+/** Classify a create-primitive's rejection by its node:fs error code. */
+function createFailure(error: unknown, path: string): WorkspaceFileError {
+  const code = error instanceof Error && 'code' in error ? error.code : undefined
+  if (code === 'EEXIST') return new WorkspaceFileError('already-exists', path, `"${path}" already exists`)
+  if (code === 'ENOENT') return new WorkspaceFileError('parent-missing', path, `the parent directory of "${path}" does not exist`)
+  return new WorkspaceFileError('directory-unreadable', path, `cannot create ${path}: ${messageOf(error)}`)
+}

@@ -1,0 +1,17 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
+    { "path": "../../_vendor/deepseek-harness/packages/typert/protocol" },
+    { "path": "../../_vendor/deepseek-harness/packages/util/native-command" },
+    { "path": "../../_vendor/deepseek-harness/packages/workspace/workspace" },
+    { "path": "../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" }
+  ]
+}

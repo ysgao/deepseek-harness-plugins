@@ -1,28 +1,58 @@
 import { defineConfig } from 'tsdown'
 import { typertPlugin } from './packages/_vendor/deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js'
 
+function isBuildFaceClient(value) {
+  if (value === undefined || value === 'host') return false
+  if (value === 'client') return true
+  throw new Error(`tsdown: --env.DSH_BUILD_FACE must be host or client, received ${String(value)}`)
+}
+
+const HOST_PACKAGES = [
+  'packages/anthropic-subscription/api-authorization-controller',
+  'packages/anthropic-subscription/cli-login-app',
+  'packages/workspace-git/api-workspace-git-controller',
+  'packages/workspace-git/api-workspace-file-controller',
+]
+
+const CLIENT_PACKAGES = [
+  'packages/workspace-git/client-ui-file-editing',
+]
+
 /**
- * Host-only bundle: this repo's plugin bundles have no browser/client half
- * (yet), so unlike deepseek-harness's own root config there is no
- * DSH_BUILD_FACE switch — every package here bundles its tsc-emitted
- * lib/types output and runs Typert generation in one workspace-mode pass,
- * mirroring vendor/deepseek-harness/tsdown.config.ts.
+ * Mirrors packages/_vendor/deepseek-harness/tsdown.config.ts's own two-pass
+ * host/client split. Unlike that root config, this one scopes `workspace`
+ * itself per face rather than relying on every package's shared `entry`
+ * resolving to an empty/skip value during the other pass — tsdown's
+ * workspace mode does not tolerate an all-empty batch the way a single
+ * per-package `entry: ''` does. Both faces bundle their tsc-emitted
+ * lib/types output the same plain way; only the host pass also runs Typert
+ * generation. Client packages with no Cordis registration of their own
+ * (pure component libraries, inlined wherever they're imported rather than
+ * independently loaded) don't need the vendored clientBundle()'s
+ * closure-factory/CSS-modules-inline machinery — that helper's
+ * workspaceManifest() lookup is hardcoded to
+ * packages/_vendor/deepseek-harness's own root besides, so it cannot see
+ * this repo's packages at all. A package that DOES need a real dynamically-
+ * loaded browser bundle (registers into a slot, ships CSS Modules read at
+ * runtime) gets its own tsdown.config.ts importing that helper directly, the
+ * same way packages/_vendor/deepseek-harness's own packages/client/*
+ * do — see dsh-plugins-client-ui-workspace-files once it exists. Narrowed to
+ * packages that are actually implemented; widen as each stub in
+ * ARCHITECTURE.md gets ported, rather than including unbuilt stubs tsdown
+ * would fail resolving.
  */
-// Narrowed to packages that are actually implemented (have compiled
-// lib/types output); widen this list as each stub in ARCHITECTURE.md gets
-// ported, rather than including unbuilt stubs tsdown would fail resolving.
-export default defineConfig({
-  workspace: [
-    'packages/anthropic-subscription/api-authorization-controller',
-    'packages/anthropic-subscription/cli-login-app',
-  ],
-  entry: ['lib/types/{index,invariant}.js'],
-  outDir: 'lib',
-  format: ['esm'],
-  platform: 'node',
-  target: 'es2024',
-  fixedExtension: false,
-  dts: false,
-  clean: false,
-  plugins: [typertPlugin({ mode: 'workspace', faces: ['host'] })],
+export default defineConfig(({ env }) => {
+  const client = isBuildFaceClient(env?.DSH_BUILD_FACE)
+  return {
+    workspace: client ? CLIENT_PACKAGES : HOST_PACKAGES,
+    entry: ['lib/types/{index,invariant}.js'],
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    fixedExtension: false,
+    dts: false,
+    clean: false,
+    plugins: client ? [] : [typertPlugin({ mode: 'workspace', faces: ['host'] })],
+  }
 })

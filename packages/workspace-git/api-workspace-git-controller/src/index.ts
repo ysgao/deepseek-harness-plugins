@@ -1,10 +1,15 @@
 /**
- * Host Typert controller for workspace git operations (status, commit-all,
- * fetch, pull --rebase, push, discard-all). Not yet implemented — see
- * README.md and ../../../ARCHITECTURE.md.
+ * Host Typert controller for workspace git status/commit/discard/fetch
+ * /pull-rebase/push, mounted as an independent top-level plugin. See
+ * ../../../ARCHITECTURE.md.
  *
- * Ports `packages/api/workspace-controller/src/workspace-git.ts` from
- * yga/deepseek-harness into its own auto-discovered Typert controller
- * instead of a modification to @deepseek-ai/dsh-api-workspace-controller.
+ * @module dsh-plugins-api-workspace-git-controller
  */
-export {}
+export { requireWorkspacePath, WorkspaceGitController } from './controller.ts'
+export { default } from './controller.ts'
+export {
+  commitAllChanges, discardAllChanges, fetchRemote, GitCommandError, GitNotARepositoryError, pullRebase, push,
+  workspaceFileAtHead, workspaceGitStatus,
+} from './git.ts'
+export type { WorkspaceGitStatus } from './git.ts'
+export type * from './types.ts'
