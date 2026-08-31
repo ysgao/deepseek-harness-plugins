@@ -1,0 +1,22 @@
+{
+  "name": "dsh-plugins-client-ui-file-editing",
+  "description": "FileEditor, FilePreview, and SideBySideDiff React components for the File manager, owned outside the shared dsh-client-ui-primitives package",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:^"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@types/react": "~18.3.1"
+  }
+}

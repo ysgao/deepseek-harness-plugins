@@ -1,0 +1,24 @@
+{
+  "name": "dsh-plugins-client-ui-settings-anthropic-subscription",
+  "description": "Anthropic subscription sign-in panel in Settings > Models, registered into dsh-client-ui-settings-models's provider-card/footer slots",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/dsh-client-ui-settings-models": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
+    "@deepseek-ai/dsh-client-locale": "workspace:^",
+    "dsh-plugins-api-authorization-controller": "workspace:^"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@types/react": "~18.3.1"
+  }
+}

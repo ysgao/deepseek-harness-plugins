@@ -1,0 +1,20 @@
+{
+  "name": "dsh-plugins-llm-anthropic-subscription",
+  "description": "Registers an Anthropic subscription (Claude Pro/Max OAuth) credential flow with ctx.authorization, backed by @earendil-works/pi-ai's login mechanics",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-authorization": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-llm-pi-ai": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

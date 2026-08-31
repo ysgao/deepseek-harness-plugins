@@ -1,0 +1,20 @@
+{
+  "name": "dsh-plugins-api-workspace-git-controller",
+  "description": "Host Typert controller for workspace git status/commit/fetch/pull-rebase/push/discard, auto-discovered by dsh-typert-loader without editing dsh-api-workspace-controller",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "@deepseek-ai/dsh-typert-registry": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-api-workspace-controller": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

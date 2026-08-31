@@ -1,0 +1,37 @@
+packages:
+  # The upstream harness, vendored as a git submodule pinned to a known
+  # commit (see vendor/deepseek-harness's own pin) so `workspace:^`
+  # dependencies on @deepseek-ai/dsh-* and @deepseek-ai/cordis resolve
+  # against real upstream sources — @deepseek-ai/dsh-* is not published to
+  # npm, only @deepseek-ai/cordis is.
+  - vendor/deepseek-harness/vendor/*
+  - vendor/deepseek-harness/packages/*/*
+  - vendor/deepseek-harness/native/landlock-run
+  - vendor/deepseek-harness/native/landlock-run/packages/*
+  - vendor/deepseek-harness/apps/*
+
+  # This repo's own plugin bundles, grouped by feature.
+  - packages/workspace-git/*
+  - packages/anthropic-subscription/*
+
+# Mirrors deepseek-ai/deepseek-harness's own allowBuilds policy (pnpm 10+
+# denies any dependency's install/build script until explicitly reviewed
+# here). esbuild and node-pty/koffi are genuine native-build needs pulled in
+# transitively from the vendored harness; @google/genai and protobufjs ship
+# no-op lifecycle scripts we don't need.
+allowBuilds:
+  esbuild: true
+  node-pty: true
+  koffi: true
+  '@google/genai': false
+  protobufjs: false
+
+linkWorkspacePackages: true
+
+overrides:
+  '@deepseek-ai/cosmokit': 'link:vendor/deepseek-harness/vendor/cosmokit'
+  '@deepseek-ai/schemastery': 'link:vendor/deepseek-harness/vendor/schemastery'
+
+peerDependencyRules:
+  allowedVersions:
+    typescript: '>=5 <7'

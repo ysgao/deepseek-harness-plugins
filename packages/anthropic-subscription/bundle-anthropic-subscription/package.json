@@ -1,0 +1,24 @@
+{
+  "name": "dsh-plugins-bundle-anthropic-subscription",
+  "description": "Installable dsh --profile patch layer that composes the Anthropic subscription authorization plugins into headless/web-app profiles",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "dsh-plugins-llm-anthropic-subscription": "workspace:^",
+    "dsh-plugins-api-authorization-controller": "workspace:^",
+    "dsh-plugins-client-ui-settings-anthropic-subscription": "workspace:^",
+    "dsh-plugins-headless-anthropic-login": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

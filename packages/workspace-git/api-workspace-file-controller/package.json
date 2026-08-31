@@ -1,0 +1,21 @@
+{
+  "name": "dsh-plugins-api-workspace-file-controller",
+  "description": "Host Typert controller for workspace file list/read/write/create/delete/diff, auto-discovered by dsh-typert-loader without editing dsh-api-workspace-controller",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "@deepseek-ai/dsh-typert-registry": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-fs": "workspace:^",
+    "@deepseek-ai/dsh-api-workspace-controller": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

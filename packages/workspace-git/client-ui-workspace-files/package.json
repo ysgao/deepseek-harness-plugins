@@ -1,0 +1,26 @@
+{
+  "name": "dsh-plugins-client-ui-workspace-files",
+  "description": "File tree in the workspace sidebar, with git status/commit/fetch/pull/push actions, registered into dsh-client-ui-workspace's slots",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
+    "@deepseek-ai/dsh-client-locale": "workspace:^",
+    "dsh-plugins-client-ui-file-editing": "workspace:^",
+    "dsh-plugins-api-workspace-git-controller": "workspace:^",
+    "dsh-plugins-api-workspace-file-controller": "workspace:^"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@types/react": "~18.3.1"
+  }
+}
