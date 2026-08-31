@@ -1,6 +1,10 @@
 # dsh-plugins-api-authorization-controller
 
-**Status: Phase 0 scaffold — not yet implemented.**
+**Status: confirmed working.** Builds clean (`tsc -b` + `tsdown`, emitting
+`lib/typert.host.js`/`lib/typert.remote-client.js` with all five `@Remote`
+methods correctly modeled), installs via `dsh plugin --profile <name> add
+dsh-plugins-bundle-anthropic-subscription`, and the target profile boots
+with the `authorization` Typert namespace registered and zero errors.
 
 A new Host Typert controller that exposes `ctx.authorization` (list
 registered flows, describe one, begin/cancel an attempt, stream notices

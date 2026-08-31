@@ -1,6 +1,6 @@
 {
-  "name": "dsh-plugins-api-authorization-controller",
-  "description": "Host Typert controller exposing ctx.authorization (list/describe/begin/cancel) as an RPC surface, auto-discovered by dsh-typert-loader without editing dsh-api-settings-controller",
+  "name": "dsh-plugins-cli-login-app",
+  "description": "Standalone dsh --profile <name> <credential-key> CLI: authorizes one ctx.authorization flow over a terminal interaction and exits — a dedicated profile plugin so its argument parsing never races dsh-headless's own task positional",
   "version": "0.0.0",
   "type": "module",
   "main": "lib/index.js",
@@ -14,18 +14,6 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./types": {
-      "types": "./lib/types/types.d.ts",
-      "default": "./lib/types/types.js"
-    },
-    "./typert": {
-      "types": "./lib/typert.host.d.ts",
-      "default": "./lib/typert.host.js"
-    },
-    "./remote": {
-      "types": "./lib/typert.remote-client.d.ts",
-      "default": "./lib/typert.remote-client.js"
-    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
@@ -33,29 +21,32 @@
     "lib/index.js",
     "lib/invariant.js",
     "lib/types/**/*.js",
-    "lib/types/**/*.d.ts",
-    "lib/typert.host.js",
-    "lib/typert.host.d.ts",
-    "lib/typert.remote-client.js",
-    "lib/typert.remote-client.d.ts"
+    "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    }
+  },
   "dependencies": {
-    "zod": "^4.4.3"
+    "commander": "^15.0.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-authorization": "workspace:^",
+    "@deepseek-ai/dsh-cmdline": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-typert-protocol": "workspace:^"
+    "@deepseek-ai/dsh-llm-pi-ai": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-authorization": "workspace:^",
+    "@deepseek-ai/dsh-cmdline": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "@deepseek-ai/dsh-llm-pi-ai": "workspace:^",
     "typescript": "^6.0.3"
   }
 }

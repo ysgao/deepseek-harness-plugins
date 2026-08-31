@@ -1,14 +1,18 @@
 packages:
   # The upstream harness, vendored as a git submodule pinned to a known
-  # commit (see vendor/deepseek-harness's own pin) so `workspace:^`
+  # commit (see packages/_vendor/deepseek-harness's own pin) so `workspace:^`
   # dependencies on @deepseek-ai/dsh-* and @deepseek-ai/cordis resolve
   # against real upstream sources — @deepseek-ai/dsh-* is not published to
-  # npm, only @deepseek-ai/cordis is.
-  - vendor/deepseek-harness/vendor/*
-  - vendor/deepseek-harness/packages/*/*
-  - vendor/deepseek-harness/native/landlock-run
-  - vendor/deepseek-harness/native/landlock-run/packages/*
-  - vendor/deepseek-harness/apps/*
+  # npm, only @deepseek-ai/cordis is. Nested under packages/ rather than a
+  # sibling vendor/ directory: dsh-typert-generator's workspace-mode analysis
+  # only registers a package whose real path resolves under
+  # <root>/packages/, a deepseek-harness-internal-layout assumption baked
+  # into dsh-typert-protocol recognition (see ARCHITECTURE.md).
+  - packages/_vendor/deepseek-harness/vendor/*
+  - packages/_vendor/deepseek-harness/packages/*/*
+  - packages/_vendor/deepseek-harness/native/landlock-run
+  - packages/_vendor/deepseek-harness/native/landlock-run/packages/*
+  - packages/_vendor/deepseek-harness/apps/*
 
   # This repo's own plugin bundles, grouped by feature.
   - packages/workspace-git/*
@@ -29,8 +33,8 @@ allowBuilds:
 linkWorkspacePackages: true
 
 overrides:
-  '@deepseek-ai/cosmokit': 'link:vendor/deepseek-harness/vendor/cosmokit'
-  '@deepseek-ai/schemastery': 'link:vendor/deepseek-harness/vendor/schemastery'
+  '@deepseek-ai/cosmokit': 'link:packages/_vendor/deepseek-harness/vendor/cosmokit'
+  '@deepseek-ai/schemastery': 'link:packages/_vendor/deepseek-harness/vendor/schemastery'
 
 peerDependencyRules:
   allowedVersions:

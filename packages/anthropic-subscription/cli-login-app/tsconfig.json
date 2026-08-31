@@ -1,0 +1,17 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
+    { "path": "../../_vendor/deepseek-harness/packages/boot/cmdline" },
+    { "path": "../../_vendor/deepseek-harness/packages/credentials/authorization" },
+    { "path": "../../_vendor/deepseek-harness/packages/credentials/credentials" },
+    { "path": "../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" }
+  ]
+}

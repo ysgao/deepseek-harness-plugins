@@ -20,6 +20,24 @@
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "types": ["node"]
+    "types": ["node"],
+    // Source-plane resolution for @deepseek-ai/dsh-typert-protocol only:
+    // dsh-typert-generator's own analysis needs every consumer of Remote/
+    // TypertRemoteService to resolve the SAME source symbol it resolves
+    // when it analyzes typert/protocol's own registration (a direct
+    // tsconfig.host.json reference), or cross-package heritage/binding
+    // checks compare two distinct Program identities and crash. Resolving
+    // via node_modules' built .d.ts (this repo's normal, correct pattern
+    // for every other vendored package) does not give that identity.
+    // Extend this map only for packages the generator itself needs to
+    // cross-reference this way — not a general source-plane substitute.
+    "paths": {
+      "@deepseek-ai/dsh-typert-protocol": [
+        "./packages/_vendor/deepseek-harness/packages/typert/protocol/src/index.ts"
+      ],
+      "@deepseek-ai/dsh-typert-protocol/types": [
+        "./packages/_vendor/deepseek-harness/packages/typert/protocol/src/types.ts"
+      ]
+    }
   }
 }

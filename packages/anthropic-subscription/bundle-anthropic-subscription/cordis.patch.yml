@@ -1,0 +1,28 @@
+# Adds the generic ctx.authorization RPC controller as an independent
+# top-level plugin — not nested inside @deepseek-ai/dsh-api-settings-controller
+# the way yga/deepseek-harness's fork mounted it, which is what made it
+# impossible to install without editing that package. Requires
+# @deepseek-ai/dsh-typert-loader, part of every dsh-base-derived profile
+# (web, headless, acp, sdk); install this layer into one of those, not
+# sdk-minimal.
+#
+# Also mounts @deepseek-ai/dsh-authorization itself: confirmed against a
+# pristine deepseek-ai/deepseek-harness checkout that no shipped bundle
+# mounts this seam by default (yga/deepseek-harness's own base bundle does
+# — that's a fork-only addition, not upstream). Booting without it leaves
+# this row (and dsh-llm-pi-ai's dormant flow registration) waiting forever
+# on a service nothing provides. If a future dsh-base starts shipping this
+# row itself, drop this insert — a duplicate mount of the same service
+# conflicts.
+#
+# dsh-llm-pi-ai (already part of dsh-base) registers a dormant
+# ctx.authorization flow per installed pi-ai catalog provider — Anthropic
+# included — the moment ctx.authorization exists in the composition; this
+# layer only adds the RPC surface a client uses to list/drive those flows.
+
+- insert:
+    - id: authorization-seam
+      name: '@deepseek-ai/dsh-authorization'
+
+    - id: authorization-controller
+      name: 'dsh-plugins-api-authorization-controller'
