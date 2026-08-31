@@ -33,20 +33,25 @@ out-of-tree package.
   components' `t()` calls needed no rewrite — only the namespace they're
   bound against changed.
 - `./src/service.ts` declares the optional `workspaceFilesNode` Context
-  service (`ctx.get('workspaceFilesNode')`), mirroring
-  `dsh-client-ui-conversation`'s own `conversationFileOpener` optional
-  service already present in this codebase. `./src/index.ts`'s `apply(ctx)`
-  provides it; `./src/WorkspaceFilesNode.tsx` builds its `Component`, closing
+  service (`ctx.get('workspaceFilesNode')`), following this codebase's own
+  standing convention for optional cross-package services
+  (`packages/AGENTS.md`: "Optional services use `ctx.get(name)`").
+  `dsh-client-ui-conversation`'s `conversationFileOpener` is the same shape
+  of seam, but it — provider and consumer both — is itself a fork addition,
+  not pristine prior art; see below. `./src/index.ts`'s `apply(ctx)` provides
+  the service; `./src/WorkspaceFilesNode.tsx` builds its `Component`, closing
   every Remote call and the bound `t` over `ctx`.
-- `openPath` reuses the pristine `session.openWorkspacePath` Remote method
-  `dsh-client-ui-workspace`'s own plugin already calls for the identical
-  capability — not something this package needs to add.
-- `openFileInSession` reads the same optional `conversationFileOpener`
-  service `dsh-client-ui-workspace`'s own plugin already reads. Until the
-  File tab package (a separate future port) is composed in, it always
-  returns `false`, and `FilesNode` falls back to the in-app preview modal —
-  by design, not a stub: this is `FilesNode`'s own documented degradation
-  path for exactly this case.
+- `openPath` calls `session.openWorkspacePath` directly — a pristine Host
+  Remote method (`packages/api/session-controller`), but one no pristine
+  `dsh-client-ui-workspace` code calls today. This package is that method's
+  first Client-side caller here, not a reuse of existing wiring.
+- `openFileInSession` reads the optional `conversationFileOpener` service.
+  Neither `dsh-client-ui-conversation` (the provider) nor
+  `dsh-client-ui-workspace` (the consumer) offers it pristine — both are
+  fork additions this repo has not yet ported (Task 20). Until then it
+  always returns `false`, and `FilesNode` falls back to the in-app preview
+  modal — by design, not a stub: this is `FilesNode`'s own documented
+  degradation path for exactly this case.
 
 ## Mount point (upstream-ready diff)
 
@@ -57,8 +62,8 @@ lands upstream:
 
 - `index.ts`'s `apply(ctx)` resolves `const filesNode = ctx.get('workspaceFilesNode')`
   once (`undefined` when this package isn't composed in) and threads it down
-  through `WorkspaceBrowserInjected`/`SessionTreeProps`, mirroring
-  `conversationFileOpener`'s own resolution three lines away in the same file.
+  through `WorkspaceBrowserInjected`/`SessionTreeProps` — a new prop, since
+  neither carries anything Files-related in pristine `ui-workspace` today.
 - `WorkspaceBrowser.tsx`'s row loop renders
   `filesNode?.Component({ workspaceId: group.workspaceId, rootPath: group.cwd, currentSessionId: current })`
   in the exact row `FilesNode` occupied in the fork: the first row under a

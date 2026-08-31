@@ -3,12 +3,16 @@
  * `ctx.remote['workspace-files']`/`ctx.remote['workspace-git']` Remote calls
  * and the bound `workspace-files` locale translate function over `FilesNode`'s
  * existing callback-prop interface, so `FilesNode` itself stays an
- * unmodified, near-verbatim port. `openPath` reuses the same pristine
- * `session.openWorkspacePath` Remote method `dsh-client-ui-workspace`'s own
- * plugin already calls; `openFileInSession` reads the same optional
- * `conversationFileOpener` service that plugin already reads, so this
- * package upgrades automatically once the File tab package (Task 20) is
- * composed in, and degrades to the in-app preview modal until then.
+ * unmodified, near-verbatim port. `openPath` calls `session.openWorkspacePath`
+ * directly — a pristine Host Remote method (`packages/api/session-
+ * controller`), but one no pristine `dsh-client-ui-workspace` code calls
+ * today; this package is its first Client-side caller, not a reuse of
+ * existing wiring. `openFileInSession` reads the optional
+ * `conversationFileOpener` service; `dsh-client-ui-conversation` doesn't
+ * provide it pristine either (both sides are fork additions this repo has
+ * not yet ported — Task 20), so this always returns `false` for now and
+ * `FilesNode` falls back to its in-app preview modal, upgrading
+ * automatically once that package is composed in.
  * @module dsh-plugins-client-ui-workspace-files/WorkspaceFilesNode
  */
 import type { Context } from '@deepseek-ai/cordis'

@@ -111,7 +111,7 @@ profile they land in.
 | `dsh-plugins-api-workspace-git-controller` | New Typert Host controller (auto-discovered by `dsh-typert-loader`; no edit to `api/workspace-controller`) | `packages/api/workspace-controller/src/workspace-git.ts` (status, commit-all, fetch, pull --rebase, push, discard-all) + `tests/workspace-git.host.spec.ts` |
 | `dsh-plugins-api-workspace-file-controller` | New Typert Host controller | `packages/api/workspace-controller/src/{files,file-commands}.ts` (list/read/write/create/delete/diff) + their host specs |
 | `dsh-plugins-client-ui-file-editing` | Standalone components (no shared-package dependency) | `packages/client/ui-primitives/src/{FileEditor,FilePreview,SideBySideDiff}.tsx` + `.module.css` + `codemirror/theme.ts` + `useSplitRatio.ts` + tests — moved out of the shared `ui-primitives` package, which every other UI plugin depends on |
-| `dsh-plugins-client-ui-workspace-files` | **Confirmed working (typecheck + build)** — optional `workspaceFilesNode` Context service, mirroring `conversationFileOpener`; no mount point in a real build until the upstream-ready `ui-workspace` diff below lands (see "Files tree: why an optional service, not a slot") | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
+| `dsh-plugins-client-ui-workspace-files` | **Confirmed working (typecheck + build)** — optional `workspaceFilesNode` Context service (same pattern as `conversationFileOpener`, which is itself fork-only, not pristine prior art); no mount point in a real build until the upstream-ready `ui-workspace` diff below lands (see "Files tree: why an optional service, not a slot") | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
 | `dsh-plugins-client-ui-conversation-files` | `ui-conversation`'s existing file-opener/slot mechanism | `packages/client/ui-conversation-files/**` (already a clean, separate package upstream in the fork — ported close to as-is, repointed at `dsh-plugins-client-ui-file-editing` instead of `ui-primitives`) |
 | `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle, out-of-tree install target for `web-app`/`base` profiles | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml` |
 
@@ -182,16 +182,21 @@ own design direction: keep the current layout, the Files tree as a sibling
 row under each real Workspace group, the selected Workspace's own directory
 as its implicit root, no extra click; a right-side pane was offered only as
 a fallback, not the target design. A brand-new `SlotMap` child key would
-work but is more machinery than the problem needs — `dsh-client-ui-
-conversation` already solves the identical shape of problem
-(`dsh-client-ui-workspace` needs one optional UI decoration from a package
-that may or may not be composed in) with a plain optional Context service,
-`conversationFileOpener`. `dsh-plugins-client-ui-workspace-files` follows
-that exact precedent: `workspaceFilesNode: WorkspaceFilesNodeService | undefined`,
+work but is more machinery than the problem needs: `dsh-client-ui-workspace`
+just needs one optional UI decoration from a package that may or may not be
+composed in, and `packages/AGENTS.md` already names the pattern for that —
+"Optional services use `ctx.get(name)`." (`dsh-client-ui-conversation`'s
+`conversationFileOpener` is the same shape of seam and shows the fork itself
+independently reached the same conclusion, but it — provider and consumer
+both — is a fork addition, not pristine code to build against.)
+`dsh-plugins-client-ui-workspace-files` follows the documented convention
+directly: `workspaceFilesNode: WorkspaceFilesNodeService | undefined`,
 resolved once via `ctx.get('workspaceFilesNode')`. The upstream-ready diff
 is then two small, mechanical touches to `ui-workspace/src/client/{index.ts,
-rows/WorkspaceBrowser.tsx}` — resolve the service and render its `Component`
-where `FilesNode` sat in the fork — not a new slot-registration contract.
+rows/WorkspaceBrowser.tsx}` — resolve the service, thread it through
+`WorkspaceBrowserInjected`/`SessionTreeProps` as a new prop, and render its
+`Component` where `FilesNode` sat in the fork — not a new slot-registration
+contract.
 
 ## Explicitly out of scope
 

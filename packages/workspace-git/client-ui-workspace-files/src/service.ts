@@ -1,14 +1,17 @@
 /**
  * The optional `workspaceFilesNode` Context service: lets `dsh-client-ui-
  * workspace`'s `WorkspaceBrowser` render a Files sibling row for a real
- * Workspace group without depending on this out-of-tree package, mirroring
- * `dsh-client-ui-conversation`'s own `conversationFileOpener` optional
- * service (`ctx.get('conversationFileOpener')`, `undefined` when the
- * providing plugin isn't composed in). The upstream-ready diff this plugin
- * pairs with (see ../../../ARCHITECTURE.md Task 19) resolves this service
- * once and renders `Component` in the same row `FilesNode` occupied in
- * yga/deepseek-harness — sibling to the Session rows, the selected
- * Workspace's own directory as its implicit root, no extra click.
+ * Workspace group without depending on this out-of-tree package —
+ * `ctx.get('workspaceFilesNode')`, `undefined` when the providing plugin
+ * isn't composed in, following this codebase's own standing convention for
+ * optional cross-package services (`packages/AGENTS.md`: "Optional services
+ * use `ctx.get(name)`"). `dsh-client-ui-conversation`'s `conversationFileOpener`
+ * is the same shape of seam, though it is itself a `yga/deepseek-harness`
+ * fork addition, not pristine prior art. The upstream-ready diff this
+ * plugin pairs with (see ../../../ARCHITECTURE.md Task 19) resolves this
+ * service once and renders `Component` in the same row `FilesNode` occupied
+ * in the fork — sibling to the Session rows, the selected Workspace's own
+ * directory as its implicit root, no extra click.
  * @module dsh-plugins-client-ui-workspace-files/service
  */
 import type { ComponentType } from 'react'
