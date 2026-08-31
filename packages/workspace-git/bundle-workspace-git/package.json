@@ -2,7 +2,6 @@
   "name": "dsh-plugins-bundle-workspace-git",
   "description": "Installable dsh --profile patch layer that composes the workspace-git File manager plugins into a base/web-app profile",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

@@ -8,6 +8,13 @@ repo carries, this one already followed the plugin pattern most closely).
 
 ## Design
 
+- The package's default `.` export (`src/index.ts`) is a Host-safe no-op;
+  the real `apply`/`inject` live under `./client` (`src/client/index.ts`,
+  declared via this package's own `dsh.client` field) — same fix as
+  `dsh-plugins-client-ui-workspace-files`, same reason: the Host Loader
+  imports every `cordis.patch.yml` row's `.` export, and this package's real
+  code transitively imports `dsh-client-ui-primitives`' CSS Modules. See
+  `../bundle-workspace-git/README.md`.
 - Registers a `'file'` entry into `dsh-client-ui-conversation`'s
   `conversation.view` slot — a genuine *pristine* `kind: 'list'` slot,
   already populated by `dsh-client-ui-chat` (`'chat'`) and

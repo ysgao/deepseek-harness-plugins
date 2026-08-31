@@ -83,6 +83,23 @@ global install, in one case) — a v3 copy with no `_zod` property, which
 backed by a zod v4 schema" and no hint about *why*. Declaring `"zod":
 "^4.4.3"` (matching `dsh-typert-protocol`'s own pin) fixes it outright.
 
+One more gotcha, this time Client-side: **a Client-face package's default
+(`.`) export must be Host-safe — no transitive CSS Modules import.** The
+Host Loader imports every `cordis.patch.yml` row's `.` export during
+composition, even for a row whose package only declares a `dsh.client`
+face; a plain Node ESM import throws `ERR_UNKNOWN_FILE_EXTENSION` on a
+`.css` import (only a browser bundle's CSS-modules-inline transform
+resolves those). `dsh-plugins-client-ui-workspace-files` and
+`dsh-plugins-client-ui-conversation-files` both originally put their real
+`apply`/`inject` on `.`, and a real boot against
+`dsh-plugins-bundle-workspace-git` crashed immediately importing
+`dsh-client-ui-primitives`' `StateDot.module.css` transitively. Both now
+split into a Host-safe no-op at `.` and the real code under `./client`
+(declared via `dsh.client` in `package.json`, resolved only by the
+browser-side loader, `packages/client/web`) — the same two-entry-point
+shape pristine `dsh-client-ui-workspace` and `yga/deepseek-harness`'s own
+`ui-conversation-files` package already use, whose purpose is now clear.
+
 Confirmed working fully end to end (`dsh plugin --profile <name> add`
 against a real, if temporary, `$DSH_HOME`, then a real boot):
 `dsh-plugins-api-authorization-controller` builds `lib/typert.host.js` +
@@ -113,9 +130,7 @@ profile they land in.
 | `dsh-plugins-client-ui-file-editing` | Standalone components (no shared-package dependency) | `packages/client/ui-primitives/src/{FileEditor,FilePreview,SideBySideDiff}.tsx` + `.module.css` + `codemirror/theme.ts` + `useSplitRatio.ts` + tests — moved out of the shared `ui-primitives` package, which every other UI plugin depends on |
 | `dsh-plugins-client-ui-workspace-files` | **Confirmed working (typecheck + build)** — optional `workspaceFilesNode` Context service (same pattern as `conversationFileOpener`, which is itself fork-only, not pristine prior art). Its mount point is a small drafted-and-verified diff, `upstream-patches/0001-workspace-files-node-optional-service.patch`, not yet proposed upstream (see "Files tree: why an optional service, not a slot") | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
 | `dsh-plugins-client-ui-conversation-files` | **Confirmed working (typecheck + build)** — registers into the *pristine* `conversation.view` list slot (`dsh-client-ui-conversation`), no upstream diff needed for the tab itself. `conversationFileOpener` (the cross-session open trigger) is separately fork-only and still needs its own upstream diff — see "File tab: a pristine slot, but a fork-only trigger" | `packages/client/ui-conversation-files/**` (already a clean, separate package in the fork — ported near-verbatim, repointed at `dsh-plugins-client-ui-file-editing`/this repo's own controllers instead of `ui-primitives`/the fork-extended `dsh-api-workspace-controller` client) |
-| `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle, out-of-tree install target for `web-app`/`base` profiles | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml` |
-
-`dsh-plugins-bundle-workspace-git` is still a Phase 0 stub — wire it next (Open items).
+| `dsh-plugins-bundle-workspace-git` | **Confirmed working** — installs via `dsh plugin --profile web-app add`; `dsh --profile acp` (with the bundle installed) boots to a clean `exit 0`, and a real `dsh --profile web-app` run stays alive and crash-free well past the point the pre-fix version threw (see the Client-face `.` export gotcha above). Genuine browser-side rendering (does the File tab/Files tree actually appear in a running web UI) is not verified — no live browser runtime available in this environment | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml`; mounts `@deepseek-ai/dsh-workspace` itself (only `web-app` mounts it by default, mirroring `authorization-seam` below) |
 
 ### `packages/anthropic-subscription/` — Anthropic subscription authorization
 
@@ -235,9 +250,11 @@ either bundle here.
 
 ## Open items
 
-- `dsh-plugins-bundle-workspace-git` is still a Phase 0 stub — wire its
-  `cordis.patch.yml` next, following the pattern established by
-  `dsh-plugins-bundle-anthropic-subscription`.
+- No genuine browser-side verification of `dsh-plugins-client-ui-
+  conversation-files`/`-workspace-files` yet — this environment has no live
+  web app runtime. Everything checked so far is typecheck, build, and a
+  Node-side boot not crashing; whether the File tab/Files tree actually
+  render correctly in a running `web-app` UI is unverified.
 - The `conversationFileOpener` cross-session bridge (see "File tab: a
   pristine slot, but a fork-only trigger") has no drafted diff yet, unlike
   `workspaceFilesNode`'s — it needs to touch `ui-conversation`'s skeleton

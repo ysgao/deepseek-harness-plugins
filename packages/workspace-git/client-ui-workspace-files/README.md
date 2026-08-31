@@ -9,6 +9,13 @@ out-of-tree package.
 
 ## Design
 
+- The package's default `.` export (`src/index.ts`) is a Host-safe no-op;
+  the real `apply`/`inject` live under `./client` (`src/client/index.ts`,
+  declared via this package's own `dsh.client` field). Required, not just
+  tidy: a real boot proved the Host Loader imports every `cordis.patch.yml`
+  row's `.` export during composition, and this package's real code
+  transitively imports `dsh-client-ui-primitives`' CSS Modules, which a
+  plain Node ESM import can't resolve — see `../bundle-workspace-git/README.md`.
 - Wire calls go through this repo's own `dsh-plugins-api-workspace-file-
   controller` and `dsh-plugins-api-workspace-git-controller` Typert
   namespaces (`ctx.remote['workspace-files']`, `ctx.remote['workspace-git']`),

@@ -1,0 +1,46 @@
+# Composes the File manager + git feature into a web-app-derived profile:
+# the two Host Typert controllers (workspace-files/workspace-git RPC
+# namespaces) plus the two Client packages, over the profile's existing
+# base/web-app composition — no edit to packages/bundle/base or
+# packages/bundle/web-app in the vendored harness.
+#
+# workspace-registry-seam mounts @deepseek-ai/dsh-workspace itself:
+# confirmed against a pristine deepseek-ai/deepseek-harness checkout that
+# only the web-app bundle mounts it by default (headless/acp/sdk profiles
+# have no Workspace concept at all — there's no sidebar to browse). Both
+# controllers below declare `static inject = ['workspaceRegistry']`, so
+# without this row they'd hang forever on a service nothing provides in any
+# profile that doesn't already carry web-app's own workspace row. Mounting
+# it here too makes this bundle self-sufficient regardless of what profile
+# it lands in, mirroring dsh-plugins-bundle-anthropic-subscription's own
+# authorization-seam row. If a target profile already mounts
+# @deepseek-ai/dsh-workspace (web-app does), a duplicate mount of the same
+# service conflicts — install this bundle into a profile that doesn't
+# already carry one, or drop this row for that target.
+#
+# conversation-files mounts into dsh-client-ui-conversation's pristine
+# conversation.view slot — a real, working File tab, no upstream diff
+# needed. workspace-files-node only provides the optional
+# workspaceFilesNode Context service (see its own README's "Mount point"
+# section); it has no consumer until upstream-patches/0001-workspace-
+# files-node-optional-service.patch lands in dsh-client-ui-workspace, so it
+# composes cleanly but renders nothing yet. Client-face rows are inert
+# during a Host boot (the Host Loader does not apply() a client-only
+# package) — this repo has not verified genuine browser-side loading of
+# either Client row against a running web app; see ARCHITECTURE.md.
+
+- insert:
+    - id: workspace-registry-seam
+      name: '@deepseek-ai/dsh-workspace'
+
+    - id: workspace-file-controller
+      name: 'dsh-plugins-api-workspace-file-controller'
+
+    - id: workspace-git-controller
+      name: 'dsh-plugins-api-workspace-git-controller'
+
+    - id: conversation-files
+      name: 'dsh-plugins-client-ui-conversation-files'
+
+    - id: workspace-files-node
+      name: 'dsh-plugins-client-ui-workspace-files'
