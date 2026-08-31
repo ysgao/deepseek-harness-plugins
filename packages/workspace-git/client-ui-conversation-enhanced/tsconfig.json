@@ -1,0 +1,41 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-conversation" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-slots" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-primitives" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/store" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-layout" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-renderer" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-session" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-settings" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/locale" },
+    { "path": "../../_vendor/deepseek-harness/packages/api/remotes/tsconfig.client.json" },
+    { "path": "../../_vendor/deepseek-harness/packages/api/session-controller/tsconfig.client.json" },
+    { "path": "../../_vendor/deepseek-harness/packages/api/workspace-controller/tsconfig.client.json" },
+    { "path": "../../_vendor/deepseek-harness/packages/attachment/attachment" },
+    { "path": "../../_vendor/deepseek-harness/packages/util/brand" },
+    { "path": "../../_vendor/deepseek-harness/packages/core/session" },
+    { "path": "../../_vendor/deepseek-harness/packages/interaction/commands" },
+    { "path": "../../_vendor/deepseek-harness/packages/llm/llm" },
+    { "path": "../../_vendor/deepseek-harness/packages/llm/llm-retry" },
+    { "path": "../../_vendor/deepseek-harness/packages/workspace/workspace" },
+    { "path": "../../_vendor/deepseek-harness/packages/llm/token-meter" },
+    { "path": "../../_vendor/deepseek-harness/packages/plan/plan-mode" },
+    { "path": "../../_vendor/deepseek-harness/packages/goal/goal" },
+    { "path": "../../_vendor/deepseek-harness/packages/todo/tool-todo" },
+    { "path": "../../_vendor/deepseek-harness/packages/settings/settings" },
+    { "path": "../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" },
+    { "path": "../../_vendor/deepseek-harness/packages/interaction/permission-presets" },
+    { "path": "../../_vendor/deepseek-harness/packages/util/crypto" },
+    { "path": "../../_vendor/deepseek-harness/packages/util/workspace-path" }
+  ]
+}

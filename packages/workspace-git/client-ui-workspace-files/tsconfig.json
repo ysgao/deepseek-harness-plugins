@@ -12,7 +12,7 @@
     { "path": "../../_vendor/deepseek-harness/packages/client/ui-primitives" },
     { "path": "../../_vendor/deepseek-harness/packages/client/ui-slots" },
     { "path": "../../_vendor/deepseek-harness/packages/client/locale" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-conversation" },
+    { "path": "../client-ui-conversation-enhanced" },
     { "path": "../../_vendor/deepseek-harness/packages/api/gateway/tsconfig.client.json" },
     { "path": "../../_vendor/deepseek-harness/packages/api/session-controller/tsconfig.client.json" },
     { "path": "../../_vendor/deepseek-harness/packages/workspace/workspace" },

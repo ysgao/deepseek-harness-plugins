@@ -6,9 +6,11 @@
  * isn't composed in, following this codebase's own standing convention for
  * optional cross-package services (`packages/AGENTS.md`: "Optional services
  * use `ctx.get(name)`"). `dsh-client-ui-conversation`'s `conversationFileOpener`
- * is the same shape of seam, though it is itself a `yga/deepseek-harness`
- * fork addition, not pristine prior art. The upstream-ready diff this
- * plugin pairs with is drafted and verified at
+ * is the same shape of seam; it's now provided by
+ * `dsh-plugins-client-ui-conversation-enhanced`, an out-of-tree replacement
+ * for that package's own row (see `../../../ARCHITECTURE.md`'s "File tab: a
+ * pristine slot, but a fork-only trigger"), not pristine prior art. The
+ * upstream-ready diff this plugin itself pairs with is drafted and verified at
  * ../../../upstream-patches/0001-workspace-files-node-optional-service.patch
  * (not yet proposed as a real PR): it resolves this service once and
  * renders `Component` in the same row `FilesNode` occupied in the fork —

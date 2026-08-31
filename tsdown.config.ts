@@ -19,6 +19,7 @@ const CLIENT_PACKAGES = [
   'packages/workspace-git/client-ui-workspace-files',
   'packages/workspace-git/client-ui-conversation-files',
   'packages/workspace-git/client-ui-workspace-enhanced',
+  'packages/workspace-git/client-ui-conversation-enhanced',
 ]
 
 /**

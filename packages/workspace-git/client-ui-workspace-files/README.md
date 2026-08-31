@@ -52,13 +52,12 @@ out-of-tree package.
   Remote method (`packages/api/session-controller`), but one no pristine
   `dsh-client-ui-workspace` code calls today. This package is that method's
   first Client-side caller here, not a reuse of existing wiring.
-- `openFileInSession` reads the optional `conversationFileOpener` service.
-  Neither `dsh-client-ui-conversation` (the provider) nor
-  `dsh-client-ui-workspace` (the consumer) offers it pristine — both are
-  fork additions this repo has not yet ported (Task 20). Until then it
-  always returns `false`, and `FilesNode` falls back to the in-app preview
-  modal — by design, not a stub: this is `FilesNode`'s own documented
-  degradation path for exactly this case.
+- `openFileInSession` reads the optional `conversationFileOpener` service,
+  provided by `../client-ui-conversation-enhanced` (an out-of-tree
+  replacement for `dsh-client-ui-conversation`'s own row, not pristine
+  prior art). It returns `false` — `FilesNode` then falls back to the
+  in-app preview modal, by design, not a stub — only when that package
+  isn't composed in, or when no session is current.
 
 ## Mount point
 
@@ -81,10 +80,5 @@ DOM rendering).
 
 ## Known Limitations and Deferred Work
 
-- `openFileInSession` always returns `false` until the File tab package's
-  `conversationFileOpener` cross-session bridge is drafted (see
-  `../../../ARCHITECTURE.md`'s "File tab: a pristine slot, but a fork-only
-  trigger"), so every file open falls back to the in-app preview modal even
-  when a session is selected.
 - No unit tests yet, consistent with the rest of this repo's packages at
   this stage (verified today by typecheck + build + a real boot).

@@ -21,7 +21,22 @@
 #
 # conversation-files mounts into dsh-client-ui-conversation's pristine
 # conversation.view slot — a real, working File tab, no upstream diff
-# needed.
+# needed for the tab itself.
+#
+# conversation-enhanced is what makes that tab reachable from OUTSIDE the
+# current session's own render tree (the sidebar Files tree, any session):
+# the conversationFileOpener cross-session bridge. Like workspace-enhanced
+# below, it does NOT patch dsh-client-ui-conversation — it's a full
+# replacement for that package's own conversation-shell registration ("unplug
+# the original plugin row, plug in an enhanced one" — see ARCHITECTURE.md's
+# "File tab: a pristine slot, but a fork-only trigger" and
+# dsh-plugins-client-ui-conversation-enhanced's own README), which is why
+# the `disabled: true` row below turns the original off first: both packages
+# registering the same conversation slots at once conflicts. `id:
+# ui-conversation` matches the row name the vendored
+# packages/bundle/web-app/cordis.patch.yml uses; confirm that id still
+# matches if the submodule pin ever moves and this row starts failing to
+# find anything to disable.
 #
 # workspace-files-node provides the optional workspaceFilesNode Context
 # service; workspace-enhanced is what actually consumes it and renders the
@@ -44,6 +59,9 @@
 - id: ui-workspace
   disabled: true
 
+- id: ui-conversation
+  disabled: true
+
 - insert:
     - id: workspace-registry-seam
       name: '@deepseek-ai/dsh-workspace'
@@ -53,6 +71,9 @@
 
     - id: workspace-git-controller
       name: 'dsh-plugins-api-workspace-git-controller'
+
+    - id: conversation-enhanced
+      name: 'dsh-plugins-client-ui-conversation-enhanced'
 
     - id: conversation-files
       name: 'dsh-plugins-client-ui-conversation-files'

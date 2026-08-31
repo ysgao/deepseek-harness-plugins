@@ -153,8 +153,9 @@ profile they land in.
 | `dsh-plugins-client-ui-file-editing` | Standalone components (no shared-package dependency) | `packages/client/ui-primitives/src/{FileEditor,FilePreview,SideBySideDiff}.tsx` + `.module.css` + `codemirror/theme.ts` + `useSplitRatio.ts` + tests — moved out of the shared `ui-primitives` package, which every other UI plugin depends on |
 | `dsh-plugins-client-ui-workspace-files` | **Confirmed working** — the sidebar Files tree and the optional `workspaceFilesNode` Context service it provides; typecheck + build + a real closure-factory bundle, confirmed present in a live `dsh web` combo-script manifest (see "Confirmed working" below) | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
 | `dsh-plugins-client-ui-workspace-enhanced` | **Confirmed working** — replaces `dsh-client-ui-workspace`'s own `sidebar.workspaces`/`conversation.hero.workspace` registrations wholesale (not a patch to that package); the only behavior change is rendering `workspaceFilesNode`'s `Component` as a Files sibling row. See "Why replace the plugin instead of patching it" | New package; forks only `rows/WorkspaceBrowser.tsx` from `packages/client/ui-workspace/src/client/`, near-verbatim plus the Files row; everything else (`WorkspacePicker`, `navigation.ts`, `stores.ts`, `tree.ts`, `locales.ts`, `Rows.tsx`) is imported unchanged from the original package's own `./src/*` export, not duplicated |
-| `dsh-plugins-client-ui-conversation-files` | **Confirmed working** — registers into the *pristine* `conversation.view` list slot (`dsh-client-ui-conversation`), no upstream diff needed for the tab itself. `conversationFileOpener` (the cross-session open trigger) is separately fork-only and still needs its own upstream diff — see "File tab: a pristine slot, but a fork-only trigger" | `packages/client/ui-conversation-files/**` (already a clean, separate package in the fork — ported near-verbatim, repointed at `dsh-plugins-client-ui-file-editing`/this repo's own controllers instead of `ui-primitives`/the fork-extended `dsh-api-workspace-controller` client) |
-| `dsh-plugins-bundle-workspace-git` | **Confirmed working** — installs via `dsh plugin --profile <name> add`; a real `dsh web` server boots and serves a working page whose combo-script manifest lists exactly the expected rows (all Client packages here present, `@deepseek-ai/dsh-client-ui-workspace/client.js` absent — the disable took effect). See "Confirmed working" below for exactly what that checked and didn't | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml`; mounts `@deepseek-ai/dsh-workspace` itself (only `web-app` mounts it by default, mirroring `authorization-seam` below); disables and replaces the `ui-workspace` row (only present once `@deepseek-ai/dsh-web-app`'s own bundle has already inserted it — install order matters, see below) |
+| `dsh-plugins-client-ui-conversation-files` | **Confirmed working** — registers into the *pristine* `conversation.view` list slot (`dsh-client-ui-conversation`), no upstream diff needed for the tab itself. Populated through `conversationFileOpener`, provided by `dsh-plugins-client-ui-conversation-enhanced` below | `packages/client/ui-conversation-files/**` (already a clean, separate package in the fork — ported near-verbatim, repointed at `dsh-plugins-client-ui-file-editing`/this repo's own controllers instead of `ui-primitives`/the fork-extended `dsh-api-workspace-controller` client) |
+| `dsh-plugins-client-ui-conversation-enhanced` | **Confirmed working** — replaces `dsh-client-ui-conversation`'s own conversation-shell registration wholesale (not a patch to that package); the only behavior change is providing the `conversationFileOpener` cross-session bridge. See "File tab: a pristine slot, but a fork-only trigger" | New package; forks only `skeleton/ConversationSession.tsx`'s `ConversationSession` export from `packages/client/ui-conversation/src/client/`, near-verbatim plus a `pendingFileOpen` drain effect; everything else (`ConversationRoot`, `ConversationSessionHeader`, `InputBar`, the input hub, queue/settings docks, stores, locales) is imported unchanged from the original package's own `./src/*` export, not duplicated |
+| `dsh-plugins-bundle-workspace-git` | **Confirmed working** — installs via `dsh plugin --profile <name> add`; a real `dsh web` server boots and serves a working page whose combo-script manifest lists exactly the expected rows (all Client packages here present, both `@deepseek-ai/dsh-client-ui-workspace/client.js` and `@deepseek-ai/dsh-client-ui-conversation/client.js` absent — both disables took effect). See "Confirmed working" below for exactly what that checked and didn't | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml`; mounts `@deepseek-ai/dsh-workspace` itself (only `web-app` mounts it by default, mirroring `authorization-seam` below); disables and replaces both the `ui-workspace` and `ui-conversation` rows (only present once `@deepseek-ai/dsh-web-app`'s own bundle has already inserted them — install order matters, see below) |
 
 ### `packages/anthropic-subscription/` — Anthropic subscription authorization
 
@@ -226,8 +227,9 @@ just needs one optional UI decoration from a package that may or may not be
 composed in, and `packages/AGENTS.md` already names the pattern for that —
 "Optional services use `ctx.get(name)`." (`dsh-client-ui-conversation`'s
 `conversationFileOpener` is the same shape of seam and shows the fork itself
-independently reached the same conclusion, but it — provider and consumer
-both — is a fork addition, not pristine code to build against.)
+independently reached the same conclusion; this repo now provides it via
+`dsh-plugins-client-ui-conversation-enhanced` — see "File tab: a pristine
+slot, but a fork-only trigger" below.)
 `dsh-plugins-client-ui-workspace-files` follows the documented convention
 directly: `workspaceFilesNode: WorkspaceFilesNodeService | undefined`,
 resolved once via `ctx.get('workspaceFilesNode')`.
@@ -276,6 +278,15 @@ in the repo as a smaller, cleaner alternative some day, per "prepare it,
 don't submit it" — genuinely proposing the small addition to
 `dsh-client-ui-workspace` remains worthwhile even though this repo doesn't
 depend on it landing.
+
+`dsh-plugins-client-ui-conversation-enhanced` applies the identical
+pattern to `dsh-client-ui-conversation`'s own conversation-shell
+registration, for the `conversationFileOpener` bridge — see "File tab: a
+pristine slot, but a fork-only trigger" below. No separate upstream-patch
+alternative was drafted for that one: unlike `workspaceFilesNode`, the fork's
+own diff there touches a skeleton component's render body
+(`ConversationSession.tsx`), not just an added Context service, so a small
+source patch wouldn't be meaningfully smaller than the replacement package.
 
 #### Confirmed working: `dsh-plugins-client-ui-workspace-enhanced`
 
@@ -331,22 +342,57 @@ tabs the user described. `dsh-plugins-client-ui-conversation-files`
 registers a `'file'` entry into it exactly the same way, no upstream diff
 required.
 
-What the tab *displays*, though, is a different story: opening a file in a
+What the tab *displays*, though, was a different story: opening a file in a
 session's File tab from OUTSIDE that session's own render tree — the
 sidebar's Files tree is the motivating case — needs a cross-session bridge,
 because `ConvViewOwnerProps.openView` is scoped to whichever session is
-currently mounted, and the sidebar has no prop path into it. The fork built
-exactly this bridge (`conversationFileOpener`, backed by a `fileOpenRegistry`
-class), but unlike `workspaceFilesNode`'s optional-service fix, it isn't a
-clean drop-in: `dsh-client-ui-conversation`'s own `apply.ts` gained the
-registry and a `pendingFileOpen` hook, and its skeleton component
+currently mounted, and the sidebar has no prop path into it. No pristine API
+reaches a live per-session store instance from outside its own render tree
+either: `ui-renderer`'s `SlotRegistry.resolveStore` (the code that creates
+and holds per-session `StoreInstance`s) is private, and `StoreHandle.create()`
+is documented "framework machinery and tests only" — calling it directly
+from outside would create a disconnected instance, not the live one the
+mounted component actually reads from.
+
+The fork built exactly this bridge (`conversationFileOpener`, backed by a
+`fileOpenRegistry` class): `dsh-client-ui-conversation`'s own `apply.ts`
+gained the registry and a `pendingFileOpen` hook, and its skeleton component
 `ConversationSession.tsx` gained the code that drains that hook into
-`conversationStore`'s `openView` action. Skeleton-component edits are a
-materially bigger ask than a Context-service addition. This repo's
-`dsh-plugins-client-ui-workspace-files` already degrades correctly without
-it (`openFileInSession` returns `false`, `FilesNode` falls back to its own
-in-app preview modal — see that package's README), so this bridge is
-tracked as its own follow-up, not a blocker for either package landing.
+`conversationStore`'s `openView` action. This repo now provides the same
+bridge via `dsh-plugins-client-ui-conversation-enhanced`, following "Why
+replace the plugin instead of patching it" above rather than touching the
+vendored skeleton component: it disables `dsh-client-ui-conversation`'s own
+row and inserts a replacement that forks only `ConversationSession`
+(the one component whose render body needs the drain effect) while reusing
+`ConversationRoot`, `ConversationSessionHeader`, `InputBar`, and every other
+piece of the conversation shell unchanged from that package's own `./src/*`
+export. `dsh-plugins-client-ui-workspace-files`'s `openFileInSession` still
+degrades correctly when this package isn't composed in (`FilesNode` falls
+back to its own in-app preview modal — see that package's README), so the
+two packages remain independently useful.
+
+#### Confirmed working: `dsh-plugins-client-ui-conversation-enhanced`
+
+Same verification methodology as `dsh-plugins-client-ui-workspace-enhanced`
+above, re-run against both disable+insert pairs together: `--dump-config`
+shows `ui-conversation` (and `ui-workspace`) disabled with no "entry not
+found" warning; a real `dsh --profile web-app` boot serves a working page
+(`303` redirect, real `Set-Cookie` exchange, `200` on the authenticated
+`GET /`); the served combo-script manifest lists `dsh-plugins-client-ui-
+conversation-enhanced/client.js` and **omits**
+`@deepseek-ai/dsh-client-ui-conversation/client.js`; the combo script itself
+fetches `HTTP 200` (4.87 MB unminified with sourcemaps) with this package's
+module id present and all 47 expected `window.__ModuleLoader__.load({...})`
+calls intact. Same caveat as the `ui-workspace` replacement: genuine
+browser-side DOM rendering is still unverified (see "Genuine
+browser-rendering verification" in Open items) — this only confirms
+composition and what the browser would actually be served.
+
+Verifying against `web-app` also hit the bundle's own pre-existing
+`workspace-registry-seam` conflict (documented in
+`bundle-workspace-git/README.md`, unrelated to this package) — worked
+around with a scratch throwaway bundle for the verification profile only,
+per that README's own recipe, not by editing the real bundle.
 
 ## Explicitly out of scope
 
@@ -365,14 +411,14 @@ either bundle here.
   known code issue. Re-attempt with a different browser-automation path
   (or a real user in a real browser) before calling the UI itself confirmed.
 - **Bundle install order.** `dsh-plugins-bundle-workspace-git`'s
-  `disabled: true` row for `ui-workspace` only resolves if
-  `@deepseek-ai/dsh-web-app`'s own bundle (or whatever bundle mounts
-  `dsh-client-ui-workspace`) is already in `dsh.profile.bundles` *before*
-  this one — `cordis.patch.yml` operations apply in bundle-list order, and
-  a row from a not-yet-applied later bundle doesn't exist yet to disable.
-  Verified directly: installing in the wrong order prints `patch: entry
-  "ui-workspace" not found` (non-fatal, just a no-op) instead of erroring
-  loud. Install `@deepseek-ai/dsh-web-app` first.
+  `disabled: true` rows for `ui-workspace` and `ui-conversation` only
+  resolve if `@deepseek-ai/dsh-web-app`'s own bundle (or whatever bundle
+  mounts `dsh-client-ui-workspace`/`dsh-client-ui-conversation`) is already
+  in `dsh.profile.bundles` *before* this one — `cordis.patch.yml` operations
+  apply in bundle-list order, and a row from a not-yet-applied later bundle
+  doesn't exist yet to disable. Verified directly: installing in the wrong
+  order prints `patch: entry "ui-workspace" not found` (non-fatal, just a
+  no-op) instead of erroring loud. Install `@deepseek-ai/dsh-web-app` first.
 - **The `apps/web` frontend needs its own build.** `dsh web` serves
   `apps/web/dist/`, produced by `apps/web`'s own `vite build` — a
   completely separate step from this repo's `tsc -b`/`tsdown` builds for
@@ -383,11 +429,6 @@ either bundle here.
   `NODE_OPTIONS="--max-old-space-size=4096" ./node_modules/.bin/vite build`
   (invoke the binary directly, not via `pnpm run build` — same submodule
   git-worktree `postinstall` quirk documented below for the library build).
-- The `conversationFileOpener` cross-session bridge (see "File tab: a
-  pristine slot, but a fork-only trigger") has no drafted diff yet, unlike
-  `workspaceFilesNode`'s — it needs to touch `ui-conversation`'s skeleton
-  component (`ConversationSession.tsx`), not just add a Context service, so
-  it deserves its own careful read of that component before drafting.
 - Confirm whether `dsh-plugins-api-workspace-git-controller` and
   `-file-controller` should merge into one controller package — they were
   split above by concern (git vs. generic file CRUD) but share no code.

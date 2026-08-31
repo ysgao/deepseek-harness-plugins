@@ -8,17 +8,18 @@
  * controller`), but one no pristine `dsh-client-ui-workspace` code calls
  * today; this package is its first Client-side caller, not a reuse of
  * existing wiring. `openFileInSession` reads the optional
- * `conversationFileOpener` service; `dsh-client-ui-conversation` doesn't
- * provide it pristine either (both sides are fork additions this repo has
- * not yet ported — Task 20), so this always returns `false` for now and
- * `FilesNode` falls back to its in-app preview modal, upgrading
- * automatically once that package is composed in.
+ * `conversationFileOpener` service, provided by
+ * `dsh-plugins-client-ui-conversation-enhanced` (an out-of-tree replacement
+ * for `dsh-client-ui-conversation`'s own row, not pristine prior art — see
+ * `../../../ARCHITECTURE.md`'s "File tab: a pristine slot, but a fork-only
+ * trigger"); it returns `false` (falling back to the in-app preview modal)
+ * only when that package isn't composed in, or when no session is current.
  * @module dsh-plugins-client-ui-workspace-files/WorkspaceFilesNode
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 // Type-only: pulls the conversationFileOpener optional-service Context merge.
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from 'dsh-plugins-client-ui-conversation-enhanced/client'
 import { FilesNode } from './FilesNode.tsx'
 import type { WorkspaceFilesNodeProps, WorkspaceFilesNodeService } from './service.ts'
 import { WORKSPACE_FILES_NS } from './locale-ns.ts'

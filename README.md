@@ -89,11 +89,12 @@ DSH_HOME=/some/scratch/dir dsh --profile web-app
 Two things the `workspace-git` bundle needs that aren't obvious:
 
 - **Install order matters.** This bundle's `cordis.patch.yml` disables
-  `dsh-client-ui-workspace`'s own row and replaces it — but that row only
-  exists once `@deepseek-ai/dsh-web-app`'s own bundle has already inserted
-  it, and `cordis.patch.yml` operations apply in `dsh.profile.bundles`
-  order. Install `dsh-web-app` first, or the disable prints a harmless
-  no-op warning instead of taking effect.
+  `dsh-client-ui-workspace`'s and `dsh-client-ui-conversation`'s own rows
+  and replaces them — but those rows only exist once
+  `@deepseek-ai/dsh-web-app`'s own bundle has already inserted them, and
+  `cordis.patch.yml` operations apply in `dsh.profile.bundles` order.
+  Install `dsh-web-app` first, or the disables print harmless no-op
+  warnings instead of taking effect.
 - **`apps/web`'s Vite frontend needs its own build** before `dsh --profile
   web-app` (i.e. `dsh web`) has anything to serve — a separate step from
   the "Getting started" builds above, easy to miss:
@@ -122,8 +123,9 @@ controllers, the CLI login app, the authorization bundle) are fully real —
 `workspace-git` Client packages install, compose, and build real browser
 bundles that a live `dsh web` server correctly serves — verified at the
 wire level (the served combo-script manifest lists exactly the expected
-packages, with `dsh-client-ui-workspace`'s own bundle correctly absent
-after the replacement). What's still unverified is genuine browser-side DOM
+packages, with `dsh-client-ui-workspace`'s and `dsh-client-ui-conversation`'s
+own bundles correctly absent after each replacement). What's still
+unverified is genuine browser-side DOM
 rendering — this session's own browser-automation tooling couldn't
 complete a normal page load against the local dev auth flow, for reasons
 that look tool-specific rather than code-specific. See `ARCHITECTURE.md`'s
@@ -194,12 +196,14 @@ typecheck + real `dsh plugin add` + real boot):
   `dsh-plugins-api-workspace-file-controller`,
   `dsh-plugins-client-ui-file-editing`, `dsh-plugins-client-ui-workspace-
   files`, `dsh-plugins-client-ui-workspace-enhanced`,
-  `dsh-plugins-client-ui-conversation-files`, and
-  `dsh-plugins-bundle-workspace-git`. The sidebar Files tree's mount point
-  doesn't need an upstream PR at all — `dsh-plugins-client-ui-workspace-
-  enhanced` replaces `dsh-client-ui-workspace`'s own registration wholesale
-  via ordinary `cordis.patch.yml` disable+insert (see `ARCHITECTURE.md`'s
-  "Why replace the plugin instead of patching it"; a smaller patch-based
-  alternative is kept drafted but unsubmitted). Only the
-  `conversationFileOpener` cross-session bridge still needs a real upstream
-  diff, and that one isn't drafted yet — see `ARCHITECTURE.md`.
+  `dsh-plugins-client-ui-conversation-files`,
+  `dsh-plugins-client-ui-conversation-enhanced`, and
+  `dsh-plugins-bundle-workspace-git`. Neither the sidebar Files tree's mount
+  point nor the `conversationFileOpener` cross-session bridge (letting the
+  sidebar dock a file into the current session's File tab) needs an
+  upstream PR — `dsh-plugins-client-ui-workspace-enhanced` and
+  `dsh-plugins-client-ui-conversation-enhanced` each replace their
+  respective pristine package's own registration wholesale via ordinary
+  `cordis.patch.yml` disable+insert (see `ARCHITECTURE.md`'s "Why replace
+  the plugin instead of patching it"; a smaller patch-based alternative for
+  the Files-tree mount point is kept drafted but unsubmitted).

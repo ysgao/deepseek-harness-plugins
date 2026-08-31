@@ -2,7 +2,8 @@
 
 **Status: Confirmed working** — installs cleanly; a real `dsh web` server
 boots and serves a working page whose combo-script manifest confirms every
-row composed correctly, including the `ui-workspace` disable/replace. See
+row composed correctly, including both the `ui-workspace` and
+`ui-conversation` disable/replace pairs. See
 [`ARCHITECTURE.md`](../../../ARCHITECTURE.md)'s "Confirmed working" section
 for exactly what "confirmed" covers and doesn't (genuine browser DOM
 rendering is not yet verified).
@@ -20,7 +21,7 @@ dsh plugin --profile web-app add @deepseek-ai/dsh-web-app   # first
 dsh plugin --profile web-app add dsh-plugins-bundle-workspace-git   # second
 ```
 
-`cordis.patch.yml` disables one existing row and inserts six over the
+`cordis.patch.yml` disables two existing rows and inserts seven over the
 target profile's existing composition — no edit to `packages/bundle/base`
 or `packages/bundle/web-app` in the vendored harness:
 
@@ -29,6 +30,9 @@ or `packages/bundle/web-app` in the vendored harness:
   off wherever this bundle installs, so `workspace-enhanced` (below) can
   take over the same slots without a duplicate-registration conflict. See
   ARCHITECTURE.md's "Why replace the plugin instead of patching it."
+- `ui-conversation` (`disabled: true`) — `dsh-client-ui-conversation`'s own
+  conversation-shell registration, turned off the same way so
+  `conversation-enhanced` (below) can take over without conflicting.
 - `workspace-registry-seam` (`@deepseek-ai/dsh-workspace`) — only `web-app`
   mounts this by default; this bundle mounts it itself so it's
   self-sufficient regardless of target profile (mirrors
@@ -38,8 +42,12 @@ or `packages/bundle/web-app` in the vendored harness:
   it's the one adding the row; drop it if the target already carries one.
 - `workspace-file-controller` / `workspace-git-controller` — the two Host
   Typert RPC namespaces.
+- `conversation-enhanced` — the `conversationFileOpener` cross-session
+  bridge; the actual conversation-shell replacement. Lets the sidebar Files
+  tree (below) dock a file into the current session's File tab instead of
+  always falling back to its own in-app preview modal.
 - `conversation-files` — the File tab, into the pristine `conversation.view`
-  slot (no upstream diff needed).
+  slot (no upstream diff needed for the tab itself).
 - `workspace-files-node` — the sidebar Files tree and its optional
   `workspaceFilesNode` Context service.
 - `workspace-enhanced` — consumes that service and renders the Files row;
@@ -75,4 +83,23 @@ just showing nothing" rather than the missing-build-step it actually is:
 ```sh
 cd packages/_vendor/deepseek-harness/apps/web
 NODE_OPTIONS="--max-old-space-size=4096" ./node_modules/.bin/vite build
+```
+
+**Verifying a real boot against `web-app` hits the `workspace-registry-seam`
+conflict noted above** — `web-app` already mounts `@deepseek-ai/dsh-workspace`,
+so this bundle's own row duplicate-mounts it and the boot throws `service
+"workspaceRegistry" has been registered`. Don't edit this bundle's real
+`cordis.patch.yml` to work around it (that's what it looks like for any
+other target profile); instead add one more scratch bundle, after this one,
+that just disables the row for the verification profile only:
+
+```sh
+mkdir -p /tmp/dsh-verify/drop-seam
+cat > /tmp/dsh-verify/drop-seam/package.json <<'EOF'
+{ "name": "scratch-drop-workspace-registry-seam", "version": "0.0.0", "type": "module",
+  "main": "index.js", "dsh": { "bundle": { "patch": "cordis.patch.yml" } } }
+EOF
+printf -- '- id: workspace-registry-seam\n  disabled: true\n' > /tmp/dsh-verify/drop-seam/cordis.patch.yml
+echo "export default {}" > /tmp/dsh-verify/drop-seam/index.js
+dsh plugin --profile web-app add "link:/tmp/dsh-verify/drop-seam"
 ```
