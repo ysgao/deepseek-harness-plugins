@@ -25,8 +25,8 @@
     "lib/index.js",
     "lib/invariant.js",
     "lib/client.js",
-    "lib/types/**/*.d.ts",
-    "lib/*.module.css"
+    "lib/client.js.map",
+    "lib/types/**/*.d.ts"
   ],
   "dsh": {
     "client": {

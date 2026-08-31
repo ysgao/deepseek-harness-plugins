@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugins-client-ui-workspace-files",
-  "description": "File tree sidebar row (FilesNode), in-app file preview (FileViewer), and git status/commit/fetch/pull/push/discard/add actions, provided as the optional workspaceFilesNode Context service dsh-client-ui-workspace's upstream-ready diff resolves",
+  "description": "File tree sidebar row (FilesNode), in-app file preview (FileViewer), and git status/commit/fetch/pull/push/discard/add actions, provided as the optional workspaceFilesNode Context service dsh-plugins-client-ui-workspace-enhanced resolves",
   "version": "0.0.0",
   "type": "module",
   "main": "lib/index.js",
@@ -25,9 +25,8 @@
     "lib/index.js",
     "lib/invariant.js",
     "lib/client.js",
-    "lib/types/**/*.d.ts",
-    "lib/*.css",
-    "lib/*.module.css"
+    "lib/client.js.map",
+    "lib/types/**/*.d.ts"
   ],
   "dsh": {
     "client": {
