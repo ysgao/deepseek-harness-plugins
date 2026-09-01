@@ -11,21 +11,13 @@
 import { useEffect } from 'react'
 import type { ConversationStore } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/slots.ts'
 import { conversationPhase } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/snapshot.ts'
-import type { ViewTab } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/views.ts'
+import { resolveActiveView } from '@deepseek-ai/dsh-client-ui-conversation/src/client/view-selection.ts'
 // Local copy, not a cross-package import: the CSS-modules-inline transform
 // resolves only relative paths (see ../client-ui-workspace-enhanced's own
 // README for the same finding with WorkspaceBrowser.module.css).
 import css from './ConversationRoot.module.css'
 import type { InjectFace, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { EnhancedConversationSessionInjected } from './apply.ts'
-
-const DEFAULT_VIEW_ID = 'chat'
-
-/** Resolve a persisted selection, then registered Chat, without choosing another View. */
-function resolveActiveView(tabs: readonly ViewTab[], selectedId: string | null): ViewTab | undefined {
-  const selected = selectedId === null ? undefined : tabs.find(view => view.id === selectedId)
-  return selected ?? tabs.find(view => view.id === DEFAULT_VIEW_ID)
-}
 
 /**
  * Full props: the pristine Session body contract (`ConversationSessionSlotProps`),
@@ -51,7 +43,7 @@ export type EnhancedConversationSessionProps =
  */
 export function ConversationSession({
   useSession, useConversation, useConversationViews, useInput, inputActions, useStore, actions,
-  renderSlot, bindDraftMirror, usePendingFileOpen, completePendingFileOpen,
+  renderSlot, bindDraftMirror, openView, usePendingFileOpen, completePendingFileOpen,
 }: EnhancedConversationSessionProps) {
   const tabs = useConversationViews(value => value)
   const selectedId = useStore(s => s.view)
@@ -76,16 +68,16 @@ export function ConversationSession({
   // (see that package's FileView.tsx `OpenFileFocus`/`parseOpenFileFocus`).
   useEffect(() => {
     if (pendingFileOpen === undefined) return
-    actions.openView('file', JSON.stringify({ path: pendingFileOpen.path, workspaceId: pendingFileOpen.workspaceId }))
+    openView('file', JSON.stringify({ path: pendingFileOpen.path, workspaceId: pendingFileOpen.workspaceId }))
     completePendingFileOpen()
-  }, [pendingFileOpen, actions, completePendingFileOpen])
+  }, [pendingFileOpen, openView, completePendingFileOpen])
 
   if (session.blank && conversationPhase(session, conversation) === 'blank') return null
   return (
     <div className={css.viewArea}>
       {active !== undefined && renderSlot('conversation.view', {
         viewRequest,
-        openView: actions.openView,
+        openView,
         completeViewRequest: actions.completeViewRequest,
       }, { only: active.id })}
     </div>
