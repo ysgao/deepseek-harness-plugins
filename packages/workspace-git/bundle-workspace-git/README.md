@@ -72,18 +72,11 @@ loader only) — the exact two-entry-point shape `yga/deepseek-harness`'s own
 added to this bundle needs the same split if it (transitively) imports a
 CSS Module.
 
-**`apps/web`'s Vite frontend needs its own build before `dsh web` serves
-anything.** `dsh --profile <name>` (no explicit mode) runs `dsh web`, which
-serves `packages/_vendor/deepseek-harness/apps/web/dist/` — a completely
-separate build step from this repo's own `tsc -b`/`tsdown` commands, easy
-to forget since nothing else touches it. Without it, every page request
-404s (confirmed) instead of failing at boot, which reads as "it's working,
-just showing nothing" rather than the missing-build-step it actually is:
-
-```sh
-cd packages/_vendor/deepseek-harness/apps/web
-NODE_OPTIONS="--max-old-space-size=4096" ./node_modules/.bin/vite build
-```
+**`apps/web`'s Vite frontend is built during `pnpm run build`.** `dsh --profile
+<name>` (no explicit mode) runs `dsh web`, which serves
+`packages/_vendor/deepseek-harness/apps/web/dist/`. This is built automatically
+when building the vendored submodule via `pnpm run build` (or `pnpm run
+build:vendor` from the workspace root).
 
 **Verifying a real boot against `web-app` hits the `workspace-registry-seam`
 conflict noted above** — `web-app` already mounts `@deepseek-ai/dsh-workspace`,

@@ -24,44 +24,55 @@ cd deepseek-harness-plugins
 pnpm install
 ```
 
-`packages/_vendor/deepseek-harness` is a git submodule pinned to a known
-commit; `pnpm-workspace.yaml` folds it into this workspace so `workspace:^`
-dependencies on `@deepseek-ai/dsh-*` resolve against real upstream sources
-(those packages are not published to npm). It's nested under `packages/`
-rather than a sibling `vendor/` directory for a load-bearing reason — see
-"Dependency source" in `ARCHITECTURE.md`.
+`packages/_vendor/deepseek-harness` is a clone of the original
+`deepseek-ai/deepseek-harness` repository without any modifications, pinned as
+a git submodule. `pnpm-workspace.yaml` folds it into this workspace so
+`workspace:^` dependencies on `@deepseek-ai/dsh-*` resolve against real upstream
+sources (those packages are not published to npm). It is nested under
+`packages/` rather than a sibling `vendor/` directory for a load-bearing reason
+— see "Dependency source" in `ARCHITECTURE.md`.
 
-Build the submodule once (both faces — some packages only emit during the
-client pass). Its own `pnpm run` scripts fail here on a git-worktree-specific
-`postinstall` quirk (see "Dependency source" in `ARCHITECTURE.md`), so
-invoke the underlying commands directly:
+Build the vendored submodule following the original specification:
 
 ```sh
 cd packages/_vendor/deepseek-harness
-node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc -b tsconfig.host.json
-./node_modules/.bin/tsdown --env.DSH_BUILD_FACE host
-node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc -b tsconfig.client.json
-./node_modules/.bin/tsdown --env.DSH_BUILD_FACE client
+pnpm install
+pnpm run build
 cd ../../..
 ```
 
-Then build this repo's own packages (also both faces — `pnpm run` works
-fine here, this repo has no such quirk):
+*(Alternatively, run `pnpm run build:vendor` directly from the workspace root).*
+
+`pnpm run build` executes the complete upstream build pipeline, compiling the
+host library packages, client library packages, and the `apps/web` Vite
+frontend bundle (`build:web`).
+
+Then build this repository's own plugin packages:
 
 ```sh
 pnpm run build:lib:host
 pnpm run build:lib:client
 ```
 
-## Running a plugin
+## Running deepseek-harness and plugins
+
+### Running the upstream web interface
+
+To run the vendored deepseek-harness web interface directly per the original
+specification:
+
+```sh
+cd packages/_vendor/deepseek-harness
+pnpm dsh web
+```
+
+### Running custom profiles with plugins
 
 **Don't rely on a bare `dsh` from your `PATH`.** If you've ever developed
 against `yga/deepseek-harness` (or any other checkout) on this machine, a
 globally-linked `dsh` may silently resolve to *that* build instead of this
 repo's — `which dsh` can point anywhere. Shadow it for the session with a
-function pointing at this repo's own built CLI (a plain
-`DSH="node .../bin.js"` variable does **not** work as a command prefix in
-zsh — unquoted parameter expansion isn't word-split the way it is in bash):
+function pointing at this repo's built CLI:
 
 ```sh
 dsh() { node "$(pwd)/packages/_vendor/deepseek-harness/apps/cli/lib/bin.js" "$@"; }
@@ -86,7 +97,7 @@ DSH_HOME=/some/scratch/dir dsh plugin --profile web-app add \
 DSH_HOME=/some/scratch/dir dsh --profile web-app
 ```
 
-Two things the `workspace-git` bundle needs that aren't obvious:
+Note on the `workspace-git` bundle:
 
 - **Install order matters.** This bundle's `cordis.patch.yml` disables
   `dsh-client-ui-workspace`'s and `dsh-client-ui-conversation`'s own rows
@@ -95,17 +106,9 @@ Two things the `workspace-git` bundle needs that aren't obvious:
   `cordis.patch.yml` operations apply in `dsh.profile.bundles` order.
   Install `dsh-web-app` first, or the disables print harmless no-op
   warnings instead of taking effect.
-- **`apps/web`'s Vite frontend needs its own build** before `dsh --profile
-  web-app` (i.e. `dsh web`) has anything to serve — a separate step from
-  the "Getting started" builds above, easy to miss:
-  ```sh
-  cd packages/_vendor/deepseek-harness/apps/web
-  NODE_OPTIONS="--max-old-space-size=4096" ./node_modules/.bin/vite build
-  cd ../../../../..
-  ```
-  Skipping it doesn't fail at boot — every page just serves a `404`, which
-  reads as "it's running, just blank" rather than the missing build step it
-  actually is.
+- The standard `pnpm run build` step above already builds the `apps/web` Vite
+  frontend so `dsh --profile web-app` (i.e. `dsh web`) has its web assets ready
+  to serve.
 
 `web-app` produces minimal stdout output (just the served URL) and stays
 running (it's a long-lived server/UI profile, not a one-shot task) — that's

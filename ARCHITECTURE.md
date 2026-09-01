@@ -294,8 +294,7 @@ Verified this repo's disable+insert composition against a real, if
 temporary, `$DSH_HOME`, with `@deepseek-ai/dsh-web-app`'s own bundle
 installed first (its `cordis.patch.yml` is what inserts the `ui-workspace`
 row this bundle disables — order matters, see "Bundle install order" in
-Open items) and `apps/web`'s Vite frontend actually built (`vite build` —
-see "The `apps/web` frontend needs its own build" in Open items):
+Open items) and `apps/web`'s Vite frontend built as part of `pnpm run build`:
 
 - `dsh --profile <name> --dump-config` shows the `ui-workspace` row with
   `disabled: true`, `dsh-plugins-client-ui-workspace-enhanced` inserted, and
@@ -419,16 +418,17 @@ either bundle here.
   doesn't exist yet to disable. Verified directly: installing in the wrong
   order prints `patch: entry "ui-workspace" not found` (non-fatal, just a
   no-op) instead of erroring loud. Install `@deepseek-ai/dsh-web-app` first.
-- **The `apps/web` frontend needs its own build.** `dsh web` serves
-  `apps/web/dist/`, produced by `apps/web`'s own `vite build` — a
-  completely separate step from this repo's `tsc -b`/`tsdown` builds for
-  `packages/_vendor/deepseek-harness`'s library packages, and easy to miss
-  since nothing else in this repo's own build commands touches it. Without
-  it, `dsh web` serves a `404` for every page (confirmed) rather than
-  failing at boot. Run it from `packages/_vendor/deepseek-harness/apps/web`:
-  `NODE_OPTIONS="--max-old-space-size=4096" ./node_modules/.bin/vite build`
-  (invoke the binary directly, not via `pnpm run build` — same submodule
-  git-worktree `postinstall` quirk documented below for the library build).
+- **The `apps/web` frontend and library packages are built via standard `pnpm run build`.**
+  `dsh web` serves `apps/web/dist/`, which is built automatically along with all
+  host and client packages whenever running the standard build command inside
+  `packages/_vendor/deepseek-harness`:
+  ```sh
+  cd packages/_vendor/deepseek-harness
+  pnpm install
+  pnpm run build
+  pnpm dsh web
+  ```
+  *(or `pnpm run build:vendor` from the monorepo root)*.
 - Confirm whether `dsh-plugins-api-workspace-git-controller` and
   `-file-controller` should merge into one controller package — they were
   split above by concern (git vs. generic file CRUD) but share no code.
@@ -436,19 +436,8 @@ either bundle here.
   small (1-14 line) wiring diffs in the fork; verify whether Typert's
   auto-discovery genuinely needs zero such edits, or whether a comparably
   small, additive registration is unavoidable and worth proposing upstream.
-- A faithful reference build of the vendored submodule needs **both**
-  `npm run build:lib:host` and `npm run build:lib:client` — some packages
-  (`dsh-typert-registry`, `dsh-api-gateway`, and other dual-face packages
-  using the `clientBundle()` tsdown helper) only emit `lib/index.js` during
-  the *client* pass, even though nothing about their own consumption here
-  is client-specific. Both passes are now run; this repo's own packages are
-  host-only and build correctly either way. Running `packages/_vendor/deepseek-harness`'s
-  own build scripts directly (`pnpm run build:lib:host`) rather than via
-  `pnpm run <script>` triggers a `postinstall` failure specific to the
-  submodule's git-worktree config (`install-lefthook.mjs` cannot enable
-  `extensions.worktreeConfig` while `core.worktree` is set in the common
-  config) — irrelevant to this repo (it's a dev-hooks convenience script),
-  so both passes are invoked as `node --max-old-space-size=4096
-  ./node_modules/typescript/bin/tsc -b tsconfig.{host,client}.json` +
-  `./node_modules/.bin/tsdown --env.DSH_BUILD_FACE {host,client}` directly,
-  bypassing `pnpm run`.
+- A faithful reference build of the vendored submodule compiles both host and
+  client passes as well as the web UI frontend. Upstream's `pnpm run build`
+  runs `build:lib` (`build:lib:host` and `build:lib:client`) and `build:web`
+  according to the original specification, making all libraries and web assets
+  ready for execution.
