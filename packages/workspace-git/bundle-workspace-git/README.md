@@ -21,7 +21,7 @@ dsh plugin --profile web-app add @deepseek-ai/dsh-web-app   # first
 dsh plugin --profile web-app add dsh-plugins-bundle-workspace-git   # second
 ```
 
-`cordis.patch.yml` disables two existing rows and inserts seven over the
+`cordis.patch.yml` disables two existing rows and inserts six over the
 target profile's existing composition — no edit to `packages/bundle/base`
 or `packages/bundle/web-app` in the vendored harness:
 
@@ -33,15 +33,16 @@ or `packages/bundle/web-app` in the vendored harness:
 - `ui-conversation` (`disabled: true`) — `dsh-client-ui-conversation`'s own
   conversation-shell registration, turned off the same way so
   `conversation-enhanced` (below) can take over without conflicting.
-- `workspace-registry-seam` (`@deepseek-ai/dsh-workspace`) — only `web-app`
-  mounts this by default; this bundle mounts it itself so it's
-  self-sufficient regardless of target profile (mirrors
-  `dsh-plugins-bundle-anthropic-subscription`'s `authorization-seam`).
-  **Installing into a profile that already mounts it (`web-app` does)
-  duplicate-mounts the same service and conflicts** — this bundle assumes
-  it's the one adding the row; drop it if the target already carries one.
 - `workspace-file-controller` / `workspace-git-controller` — the two Host
-  Typert RPC namespaces.
+  Typert RPC namespaces. Both declare `static inject = ['workspaceRegistry']`,
+  resolved by the target profile's own `web-app` bundle (its `workspace` row)
+  — this bundle does **not** mount `@deepseek-ai/dsh-workspace` itself.
+  `dsh-plugins-bundle-anthropic-subscription`'s `authorization-seam` row is
+  not a precedent here: no shipped bundle mounts `@deepseek-ai/dsh-authorization`
+  anywhere, so that seam fills a real gap, while `web-app` always already
+  mounts `@deepseek-ai/dsh-workspace` — self-mounting it here only ever
+  duplicate-registers it (`service "workspaceRegistry" has been registered`),
+  confirmed by a real boot; see "Two findings worth knowing" below.
 - `conversation-enhanced` — the `conversationFileOpener` cross-session
   bridge; the actual conversation-shell replacement. Lets the sidebar Files
   tree (below) dock a file into the current session's File tab instead of
@@ -78,21 +79,16 @@ CSS Module.
 when building the vendored submodule via `pnpm run build` (or `pnpm run
 build:vendor` from the workspace root).
 
-**Verifying a real boot against `web-app` hits the `workspace-registry-seam`
-conflict noted above** — `web-app` already mounts `@deepseek-ai/dsh-workspace`,
-so this bundle's own row duplicate-mounts it and the boot throws `service
-"workspaceRegistry" has been registered`. Don't edit this bundle's real
-`cordis.patch.yml` to work around it (that's what it looks like for any
-other target profile); instead add one more scratch bundle, after this one,
-that just disables the row for the verification profile only:
-
-```sh
-mkdir -p /tmp/dsh-verify/drop-seam
-cat > /tmp/dsh-verify/drop-seam/package.json <<'EOF'
-{ "name": "scratch-drop-workspace-registry-seam", "version": "0.0.0", "type": "module",
-  "main": "index.js", "dsh": { "bundle": { "patch": "cordis.patch.yml" } } }
-EOF
-printf -- '- id: workspace-registry-seam\n  disabled: true\n' > /tmp/dsh-verify/drop-seam/cordis.patch.yml
-echo "export default {}" > /tmp/dsh-verify/drop-seam/index.js
-dsh plugin --profile web-app add "link:/tmp/dsh-verify/drop-seam"
-```
+**An earlier revision of this bundle self-mounted `@deepseek-ai/dsh-workspace`
+under a `workspace-registry-seam` row**, on the (wrong, for this specific
+service) theory that mirroring `authorization-seam`'s self-sufficiency was
+free. A real boot against `web-app` — which always already mounts it as its
+own `workspace` row — immediately threw `service "workspaceRegistry" has
+been registered`. A `disabled: !!js ctx.get('workspaceRegistry') !== undefined`
+guard was considered and rejected: `EntryGroup.create`
+(`vendor/loader/src/config/group.ts`) activates every entry in a layer
+through `Promise.allSettled` — concurrently, with no ordering guarantee
+against `web-app`'s own `workspace` row — so that guard would only turn a
+guaranteed crash into a racy one. Dropping the row entirely is the only
+deterministic fix, confirmed by a real scratch-profile boot (clean start, no
+`workspaceRegistry` error, page served) after removing it.

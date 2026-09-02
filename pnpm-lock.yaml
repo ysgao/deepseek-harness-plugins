@@ -9785,6 +9785,8 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/workspace-git: {}
+
   packages/workspace-git/api-workspace-file-controller:
     dependencies:
       '@deepseek-ai/schemastery':

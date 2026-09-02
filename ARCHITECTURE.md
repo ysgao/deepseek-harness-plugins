@@ -387,11 +387,12 @@ browser-side DOM rendering is still unverified (see "Genuine
 browser-rendering verification" in Open items) — this only confirms
 composition and what the browser would actually be served.
 
-Verifying against `web-app` also hit the bundle's own pre-existing
-`workspace-registry-seam` conflict (documented in
-`bundle-workspace-git/README.md`, unrelated to this package) — worked
-around with a scratch throwaway bundle for the verification profile only,
-per that README's own recipe, not by editing the real bundle.
+Verifying against `web-app` also hit the bundle's own then-unconditional
+`workspace-registry-seam` row duplicate-mounting `@deepseek-ai/dsh-workspace`
+over `web-app`'s own `workspace` row — documented and since fixed in
+`bundle-workspace-git/README.md` (the row is gone; that controller
+dependency now resolves through `web-app`'s own mount instead), unrelated
+to this package.
 
 ## Explicitly out of scope
 

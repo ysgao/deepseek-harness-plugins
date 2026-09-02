@@ -119,10 +119,8 @@ was and wasn't checked (genuine browser-side DOM rendering is still
 unverified, same caveat as every other Client package here).
 
 **Test-only finding, not part of this package:** verifying against a
-`web-app`-derived profile hits `dsh-plugins-bundle-workspace-git`'s own
-pre-existing, already-documented `workspace-registry-seam` conflict (that
-row assumes the target profile doesn't already mount
-`@deepseek-ai/dsh-workspace`, which `web-app` does) — unrelated to
-`conversationFileOpener`. Verification here dropped that row via a scratch
-throwaway bundle, per `../bundle-workspace-git/README.md`'s own documented
-workaround, rather than editing the real bundle.
+`web-app`-derived profile once hit `dsh-plugins-bundle-workspace-git`'s own
+`workspace-registry-seam` row duplicate-mounting `@deepseek-ai/dsh-workspace`
+over `web-app`'s own mount — unrelated to `conversationFileOpener`, and
+since fixed by dropping that row entirely; see
+`../bundle-workspace-git/README.md`.

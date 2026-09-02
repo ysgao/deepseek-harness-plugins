@@ -5,19 +5,25 @@
 # packages/bundle/web-app in the vendored harness (one row below disables
 # an existing one; nothing here rewrites vendored source).
 #
-# workspace-registry-seam mounts @deepseek-ai/dsh-workspace itself:
-# confirmed against a pristine deepseek-ai/deepseek-harness checkout that
-# only the web-app bundle mounts it by default (headless/acp/sdk profiles
-# have no Workspace concept at all — there's no sidebar to browse). Both
-# controllers below declare `static inject = ['workspaceRegistry']`, so
-# without this row they'd hang forever on a service nothing provides in any
-# profile that doesn't already carry web-app's own workspace row. Mounting
-# it here too makes this bundle self-sufficient regardless of what profile
-# it lands in, mirroring dsh-plugins-bundle-anthropic-subscription's own
-# authorization-seam row. If a target profile already mounts
-# @deepseek-ai/dsh-workspace (web-app does), a duplicate mount of the same
-# service conflicts — install this bundle into a profile that doesn't
-# already carry one, or drop this row for that target.
+# No workspace-registry-seam row here, unlike dsh-plugins-bundle-anthropic-
+# subscription's own authorization-seam: that one is needed because no
+# shipped bundle mounts @deepseek-ai/dsh-authorization by default anywhere.
+# @deepseek-ai/dsh-workspace is different — confirmed against a pristine
+# deepseek-ai/deepseek-harness checkout that the web-app bundle always
+# mounts it (id: workspace; headless/acp/sdk profiles have no Workspace
+# concept at all — there's no sidebar to browse, and this bundle's own
+# Client packages below are themselves Workspace-sidebar UI, meaningless
+# without one). Both Host controllers below declare `static inject =
+# ['workspaceRegistry']`, resolved by web-app's own row — this file's own
+# header and README already require installing into a web-app-derived
+# profile, which makes self-mounting it here a guaranteed duplicate
+# registration (`service "workspaceRegistry" has been registered`), not a
+# self-sufficiency win. Reproduced directly: EntryGroup.create (vendor/
+# loader/src/config/group.ts) activates every entry in a layer through
+# `Promise.allSettled`, concurrently and with no ordering guarantee against
+# web-app's own `workspace` row, so a `disabled: !!js ctx.get(...)`
+# conditional guard would only be a race, not a fix — dropping the row is
+# the only deterministic one.
 #
 # conversation-files mounts into dsh-client-ui-conversation's pristine
 # conversation.view slot — a real, working File tab, no upstream diff
@@ -63,9 +69,6 @@
   disabled: true
 
 - insert:
-    - id: workspace-registry-seam
-      name: '@deepseek-ai/dsh-workspace'
-
     - id: workspace-file-controller
       name: 'dsh-plugins-api-workspace-file-controller'
 

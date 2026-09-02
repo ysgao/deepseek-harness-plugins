@@ -14,7 +14,11 @@ packages:
   - packages/_vendor/deepseek-harness/native/landlock-run/packages/*
   - packages/_vendor/deepseek-harness/apps/*
 
-  # This repo's own plugin bundles, grouped by feature.
+  # This repo's own plugin bundles, grouped by feature. `workspace-git`'s
+  # bare group root (no dependencies of its own) carries only a `build`
+  # script that builds every package in its group in the correct
+  # host-before-client order — see that package.json's own description.
+  - packages/workspace-git
   - packages/workspace-git/*
   - packages/anthropic-subscription/*
 
