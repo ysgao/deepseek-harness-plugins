@@ -19,6 +19,15 @@
 # ctx.authorization flow per installed pi-ai catalog provider — Anthropic
 # included — the moment ctx.authorization exists in the composition; this
 # layer only adds the RPC surface a client uses to list/drive those flows.
+#
+# remotes-anthropic-subscription mounts this bundle's own authorization
+# generated Remote contribution on the Client — the role
+# @deepseek-ai/dsh-api-remotes fills for every other namespace, but can't
+# for this out-of-tree one (see that package's own README). Kept as its own
+# dedicated plugin, not folded into any future Settings UI consumer: a
+# $mount failure there would throw that plugin's whole apply() and take
+# down everything else it renders. This row's own failure stays local to
+# its own fiber instead.
 
 - insert:
     - id: authorization-seam
@@ -26,3 +35,6 @@
 
     - id: authorization-controller
       name: 'dsh-plugins-api-authorization-controller'
+
+    - id: remotes-anthropic-subscription
+      name: 'dsh-plugins-client-remotes-anthropic-subscription'

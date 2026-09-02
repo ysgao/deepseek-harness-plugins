@@ -12,7 +12,8 @@
     }
   },
   "dependencies": {
-    "dsh-plugins-api-authorization-controller": "workspace:^"
+    "dsh-plugins-api-authorization-controller": "workspace:^",
+    "dsh-plugins-client-remotes-anthropic-subscription": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-llm-pi-ai": "workspace:^"

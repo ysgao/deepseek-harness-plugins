@@ -9722,6 +9722,9 @@ importers:
       dsh-plugins-api-authorization-controller:
         specifier: workspace:^
         version: link:../api-authorization-controller
+      dsh-plugins-client-remotes-anthropic-subscription:
+        specifier: workspace:^
+        version: link:../client-remotes-anthropic-subscription
     devDependencies:
       '@deepseek-ai/dsh-llm-pi-ai':
         specifier: workspace:^
@@ -9754,6 +9757,25 @@ importers:
       '@deepseek-ai/dsh-llm-pi-ai':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/llm/llm-pi-ai
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/anthropic-subscription/client-remotes-anthropic-subscription:
+    dependencies:
+      dsh-plugins-api-authorization-controller:
+        specifier: workspace:^
+        version: link:../api-authorization-controller
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-api-gateway':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/api/gateway
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/typert/protocol
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
