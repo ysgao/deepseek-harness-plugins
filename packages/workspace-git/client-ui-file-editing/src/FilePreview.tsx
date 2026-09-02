@@ -54,8 +54,8 @@ export interface FilePreviewProps {
   className?: string | undefined
 }
 
-/** Split text into `ReadBlock` lines, 1-based file line numbers. */
-function toReadBlockLines(text: string): ReadBlockLine[] {
+/** Split text into `ReadBlock` lines, 1-based file line numbers. Shared with `FileEditor`'s own live syntax-highlighted preview pane. */
+export function toReadBlockLines(text: string): ReadBlockLine[] {
   // A trailing newline must not manufacture a phantom empty final line: a
   // file ending in "\n" splits to N lines of real content, not N+1.
   const body = text.endsWith('\n') ? text.slice(0, -1) : text

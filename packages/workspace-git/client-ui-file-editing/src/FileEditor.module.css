@@ -1,7 +1,8 @@
 /* Geometry mirrors ReadBlock/SideBySideDiff's code surface (same
    --dsw-alias-markdown-code-block family) so the editable buffer and the
-   read-only preview read as one family. `kind: 'markdown'` splits into two
-   columns sized by `--ds-file-editor-ratio` (from useSplitRatio, default
+   read-only preview read as one family. Whenever a preview pane applies
+   (Markdown, or `kind: 'text'` with a resolved `lang`) the root splits into
+   two columns sized by `--ds-file-editor-ratio` (from useSplitRatio, default
    0.5), separated by a draggable divider track matching SideBySideDiff's
    own divider. */
 

@@ -14,12 +14,16 @@
  * stay out of scope for the toggle — a text-only diff, same as
  * `FilePreview`'s own PDF-preview posture, is a deferred follow-up, not a gap.
  *
- * Text and Markdown files also offer an Edit mode (`FileEditor`): unsaved
- * edits live in an in-memory per-path draft cache (`draftsRef`), not React
- * state, so switching to another file (or to View/Diff) and back never
- * silently loses a draft — no native `beforeunload`/`confirm` dialog needed.
- * Saving goes through `writeFile`'s version guard; a concurrent on-disk
- * change surfaces as an inline conflict notice rather than overwriting it.
+ * Text and Markdown files also offer an Edit mode (`FileEditor`), passed the
+ * same `langFromPath` grammar hint the View mode's `FilePreview` reads, so a
+ * recognized language (or Markdown) shows the same live syntax-highlighted
+ * preview alongside the plain editing buffer that View mode shows alone.
+ * Unsaved edits live in an in-memory per-path draft cache (`draftsRef`), not
+ * React state, so switching to another file (or to View/Diff) and back
+ * never silently loses a draft — no native `beforeunload`/`confirm` dialog
+ * needed. Saving goes through `writeFile`'s version guard; a concurrent
+ * on-disk change surfaces as an inline conflict notice rather than
+ * overwriting it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { InjectFace, PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -406,7 +410,8 @@ export function FileView({
           path={openedPath}
           text={editorText}
           kind={kind === 'markdown' ? 'markdown' : 'text'}
-          labels={filePreviewLabels.markdown}
+          lang={langFromPath(openedPath)}
+          labels={filePreviewLabels}
           resizeLabels={editorResizeLabels}
           onChange={handleEditChange}
           onSaveRequested={handleSave}

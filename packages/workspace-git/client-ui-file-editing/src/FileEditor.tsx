@@ -1,44 +1,49 @@
 /**
  * In-app text editor for a File tab: a CodeMirror 6 buffer, with a live
- * rendered Markdown preview pane alongside it for `kind: 'markdown'`. Deliberately
- * uncontrolled after mount — `text`/`kind` seed the initial buffer only; a
- * caller wanting a fresh buffer for a different file remounts by keying on
- * the file's path (CodeMirror, not React, then owns the buffer, undo
- * history, and cursor/selection for that file's lifetime). Every change
- * reports upward through `onChange`; save/dirty/error chrome is the
- * caller's concern.
+ * read-only preview pane alongside it whenever one adds reader-facing value
+ * over the plain editing surface — Markdown (`kind: 'markdown'`, rendered
+ * through `MarkdownText`) and any `kind: 'text'` file whose extension
+ * resolves a shiki grammar hint (`lang`, rendered through the app's one
+ * syntax highlighter, `ReadBlock` — the same component `FilePreview`'s own
+ * View mode already uses, so Edit and View highlight identically). A
+ * `kind: 'text'` file with no resolved `lang` (e.g. `.txt`, `.log`) has
+ * nothing highlighting would add, so it keeps the single plain-monospace
+ * pane. Deliberately uncontrolled after mount — `text`/`kind` seed the
+ * initial buffer only; a caller wanting a fresh buffer for a different file
+ * remounts by keying on the file's path (CodeMirror, not React, then owns
+ * the buffer, undo history, and cursor/selection for that file's lifetime).
+ * Every change reports upward through `onChange`; save/dirty/error chrome
+ * is the caller's concern.
  *
- * No per-language syntax highlighting while editing: the app's one syntax
- * highlighter (shiki-based, via `ReadBlock`) already covers the read-only
- * preview for every language it recognizes, so duplicating that coverage
- * with a second, CodeMirror-native grammar per language would double the
- * highlighting surface for no reader-facing gain while editing — a
- * deliberate scope line, not an oversight. The editing surface is
- * undecorated monospace; only Markdown gets structure-aware editing
- * (`@codemirror/lang-markdown`, for list/blockquote continuation) because it
- * is the one kind with a live preview pane to justify the extra package.
+ * The editing surface itself stays undecorated monospace regardless of
+ * `lang` — no per-language CodeMirror grammar — since the preview pane
+ * already covers highlighting; only Markdown additionally gets
+ * structure-aware editing (`@codemirror/lang-markdown`, for list/blockquote
+ * continuation), a genuinely editing-time behavior a read-only preview pane
+ * can't substitute for.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import clsx from 'clsx'
 import { EditorState } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
-import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import { MarkdownText, ReadBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import { editorTheme } from './codemirror/theme.ts'
+import { toReadBlockLines } from './FilePreview.tsx'
+import type { FilePreviewLabels } from './FilePreview.tsx'
 import { useSplitRatio } from './useSplitRatio.ts'
 import css from './FileEditor.module.css'
 
 /** `--ds-file-editor-ratio` holds a unitless number read back by {@link FileEditor.module.css}'s `calc()` column widths. */
 type SplitRootStyle = CSSProperties & { '--ds-file-editor-ratio': number }
 
-/** Debounce between a keystroke and the Markdown preview pane re-rendering it. */
-const MARKDOWN_PREVIEW_DEBOUNCE_MS = 150
+/** Debounce between a keystroke and the preview pane (Markdown or syntax-highlighted text) re-rendering it. */
+const PREVIEW_DEBOUNCE_MS = 150
 
-/** The Markdown preview pane's resize divider: accessible name and drag/double-click hint. */
+/** The preview pane's resize divider: accessible name and drag/double-click hint. */
 export interface FileEditorResizeLabels {
   /** The divider's `aria-label`. */
   ariaLabel: string
@@ -47,15 +52,17 @@ export interface FileEditorResizeLabels {
 }
 
 export interface FileEditorProps {
-  /** Display path; not read by this component today, kept for parity with the other file-surface primitives and future banner use. */
+  /** Display path; read by the `kind: 'text'` preview pane's `ReadBlock` banner label. */
   path: string
   /** Initial buffer content — read once, at mount, then owned by CodeMirror. */
   text: string
-  /** `'markdown'` adds the live preview pane and Markdown-aware editing; `'text'` is a single plain-monospace pane. */
+  /** `'markdown'` adds Markdown-aware editing; both kinds may additionally show a live preview pane — see `lang`. */
   kind: 'text' | 'markdown'
-  /** Localized chrome for the Markdown preview pane; unused for `kind: 'text'`. */
-  labels: MarkdownLabels
-  /** The preview-pane resize divider's accessible name and hint; unused for `kind: 'text'`. */
+  /** shiki grammar hint for a `kind: 'text'` file's preview pane; unused for `kind: 'markdown'`. Absent (unrecognized extension) skips the split view — a single plain-monospace pane, as `kind: 'text'` always was before this hint existed. */
+  lang?: string | undefined
+  /** Localized chrome for whichever preview pane renders (Markdown or syntax-highlighted text). */
+  labels: FilePreviewLabels
+  /** The preview-pane resize divider's accessible name and hint; unused when no preview pane renders. */
   resizeLabels: FileEditorResizeLabels
   /** Called with the full buffer content after every edit. */
   onChange: (text: string) => void
@@ -69,17 +76,22 @@ export interface FileEditorProps {
 }
 
 /**
- * Render the CodeMirror buffer (and, for Markdown, its live preview pane).
+ * Render the CodeMirror buffer, plus its live preview pane when one applies
+ * (Markdown, or a `kind: 'text'` file with a resolved `lang`).
  * @param props - see {@link FileEditorProps}.
  * @returns the editor element.
  */
-export function FileEditor({ text, kind, labels, resizeLabels, onChange, onSaveRequested, className }: FileEditorProps) {
+export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onChange, onSaveRequested, className }: FileEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   const onSaveRequestedRef = useRef(onSaveRequested)
   onSaveRequestedRef.current = onSaveRequested
-  const [previewText, setPreviewText] = useState(kind === 'markdown' ? text : '')
+  // Markdown always gets a live preview; a 'text' file only when its
+  // extension resolved a grammar hint — an unrecognized extension has
+  // nothing highlighting would add over the plain editing pane itself.
+  const hasPreview = kind === 'markdown' || lang !== undefined
+  const [previewText, setPreviewText] = useState(hasPreview ? text : '')
   const { ratio, dividerProps } = useSplitRatio()
 
   useEffect(() => {
@@ -103,9 +115,9 @@ export function FileEditor({ text, kind, labels, resizeLabels, onChange, onSaveR
         if (!update.docChanged) return
         const next = update.state.doc.toString()
         onChangeRef.current(next)
-        if (kind === 'markdown') {
+        if (hasPreview) {
           window.clearTimeout(previewTimer)
-          previewTimer = window.setTimeout(() => { setPreviewText(next) }, MARKDOWN_PREVIEW_DEBOUNCE_MS)
+          previewTimer = window.setTimeout(() => { setPreviewText(next) }, PREVIEW_DEBOUNCE_MS)
         }
       }),
     ]
@@ -114,21 +126,28 @@ export function FileEditor({ text, kind, labels, resizeLabels, onChange, onSaveR
       window.clearTimeout(previewTimer)
       view.destroy()
     }
-    // Mount-once: `text`/`kind` seed the initial buffer only (see the
-    // component doc comment) — CodeMirror owns the document from here.
+    // Mount-once: `text`/`kind`/`lang`/`hasPreview` seed the initial buffer
+    // and preview posture only (see the component doc comment) — CodeMirror
+    // owns the document from here, and a caller wanting a different
+    // `lang`/`kind` remounts by keying on the file's path, same as `text`.
   }, [])
 
-  const splitStyle: SplitRootStyle | undefined = kind === 'markdown'
+  const previewLines = useMemo(
+    () => kind === 'text' ? toReadBlockLines(previewText) : [],
+    [kind, previewText],
+  )
+
+  const splitStyle: SplitRootStyle | undefined = hasPreview
     ? { '--ds-file-editor-ratio': ratio }
     : undefined
 
   return (
     <div
-      className={clsx(kind === 'markdown' ? css.splitRoot : css.root, className)}
+      className={clsx(hasPreview ? css.splitRoot : css.root, className)}
       style={splitStyle}
     >
       <div className={css.editorPane} ref={hostRef} />
-      {kind === 'markdown' && (
+      {hasPreview && (
         <>
           <div
             className={css.divider}
@@ -140,7 +159,17 @@ export function FileEditor({ text, kind, labels, resizeLabels, onChange, onSaveR
             {...dividerProps}
           />
           <div className={css.previewPane}>
-            <MarkdownText text={previewText} labels={labels} />
+            {kind === 'markdown'
+              ? <MarkdownText text={previewText} labels={labels.markdown} />
+              : (
+                <ReadBlock
+                  label={path}
+                  lines={previewLines}
+                  totalLines={previewLines.length}
+                  lang={lang}
+                  labels={labels.read}
+                />
+              )}
           </div>
         </>
       )}
