@@ -338,10 +338,18 @@ reaches a live per-session store instance from outside its own render tree.
 row and inserting a replacement that forks only `ConversationSession` (the
 one component whose render body needs the drain effect), reusing
 `ConversationRoot`, `ConversationSessionHeader`, `InputBar`, and everything
-else unchanged. `dsh-plugins-client-ui-workspace-files`'s
-`openFileInSession` degrades correctly when this package isn't composed
-in — `FilesNode` falls back to its own in-app preview modal — so the two
-packages remain independently useful.
+else unchanged. Because `ConversationSessionHeader` and `ConversationSession`
+are unchanged, a session that has never had a first turn still hits their
+pristine `session.blank && conversationPhase(...) === 'blank'` Hero gate —
+tabs and view body both stay hidden regardless of what `openView` is told,
+so `conversationFileOpener` refuses a blank target session up front (the
+list row's own `blank` summary bit) rather than queuing a request that would
+land with no visible effect. `dsh-plugins-client-ui-workspace-files`'s
+`openFileInSession` degrades correctly whenever this bridge declines a
+request — whether because this package isn't composed in, the target
+session has no binding, or the session is still blank — `FilesNode` falls
+back to its own in-app preview modal in every case, so the two packages
+remain independently useful.
 
 ## Testing procedures
 

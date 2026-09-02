@@ -479,6 +479,19 @@ export function apply(ctx: Context): void {
     openFile: (sessionId, path, workspaceId) => {
       if (sessions.binding(sessionId) === undefined) return false
       if (!slots.entries('conversation.view').some(entry => entry.options.id === 'file')) return false
+      // A session that has never had a first turn renders neither its
+      // header tabs nor its view body — both gate on the pristine
+      // `session.blank && conversationPhase(...) === 'blank'` Hero posture
+      // (`ConversationSessionHeader`/`ConversationSession` in
+      // `dsh-client-ui-conversation`) — so queuing a File-tab request here
+      // would silently land in a hidden view with no visible effect. `blank`
+      // on the list row is the same summary signal `dsh-client-ui-workspace`
+      // itself reads for this (see `WorkspaceBrowser.tsx`'s
+      // `currentBlankSessionId`); it can't see a since-typed, not-yet-sent
+      // draft, but neither can the Hero gate itself. Returning false here
+      // lets the sidebar's own in-app preview modal (`FilesNode`'s own
+      // fallback) show the file instead.
+      if (sessions.list.getSnapshot().byId[sessionId]?.blank === true) return false
       fileOpenRegistry.request(sessionId, path, workspaceId)
       return true
     },

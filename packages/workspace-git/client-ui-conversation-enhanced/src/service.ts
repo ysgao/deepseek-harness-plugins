@@ -23,9 +23,13 @@ export interface ConversationFileOpener {
    * one, so the File tab reads the exact workspace the opener meant even if
    * the session's own binding later changes.
    * @returns whether the request was queued — `false` when `sessionId`
-   * resolves no session binding, or when no `conversation.view` entry
+   * resolves no session binding, when no `conversation.view` entry
    * registers the `file` id (this package installed, but the File tab
-   * package, `dsh-plugins-client-ui-conversation-files`, didn't).
+   * package, `dsh-plugins-client-ui-conversation-files`, didn't), or when
+   * `sessionId` is still blank (no first turn yet): a blank session's tabs
+   * and view body are both hidden behind the pristine Hero screen, so
+   * queuing a request there would have no visible effect. The caller should
+   * fall back to its own presentation in every `false` case.
    */
   openFile(sessionId: SessionId, path: string, workspaceId: WorkspaceId | undefined): boolean
 }

@@ -79,10 +79,14 @@ duplicate identity against.
 ## `conversationFileOpener` design notes
 
 - `openFile(sessionId, path, workspaceId)` returns `false` when `sessionId`
-  resolves no session binding, or when no `conversation.view` entry
-  registers the `file` id (this package installed without
-  `dsh-plugins-client-ui-conversation-files`). Both checks fail loud toward
-  the caller's own documented fallback (`FilesNode`'s in-app preview modal)
+  resolves no session binding, when no `conversation.view` entry registers
+  the `file` id (this package installed without
+  `dsh-plugins-client-ui-conversation-files`), or when `sessionId` is still
+  blank (no first turn yet) — a blank session's `ConversationSessionHeader`
+  and `ConversationSession` both stay behind the pristine Hero gate
+  regardless of what `openView` is told, so a queued request there would
+  vanish with no visible effect. All three checks fail loud toward the
+  caller's own documented fallback (`FilesNode`'s in-app preview modal)
   rather than silently queuing a request nothing will ever drain.
 - The queue is keyed by `sessionId`, not restricted to "the current
   session" — `dsh-plugins-client-ui-workspace-files`'s own `FilesNode` only
