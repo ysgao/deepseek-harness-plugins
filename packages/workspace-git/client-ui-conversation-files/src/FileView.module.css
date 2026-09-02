@@ -80,22 +80,19 @@
 }
 
 /* No independent scroller: `.scrollBody` (the ancestor) scrolls this whole
-   view, including this content and the sticky `.header` above it — View and
-   Diff modes rely on exactly that, growing to their content's natural
-   height with no `overflow` of their own. Edit mode's `FileEditor` is the
-   one exception: its split preview pane needs a genuinely definite (not
-   just eventually-large-enough) height to resolve its own internal
-   `height: 100%` panes against, so their own `overflow: auto` can actually
-   engage instead of the whole pane growing to match its content the same
-   way this element does. `flex-basis: 0` (the `0` in `flex: 1 1 0`, in
-   place of the more common `auto`) sizes this element from available flex
-   space alone rather than from its own content first — the standard fix for
-   percentage-height children of a flex item not reliably resolving through
-   an `auto`-basis ancestor. `min-width: 0` is the same `min-height: 0`
-   guard, on the axis a wide unwrapped code line (Edit mode's preview pane,
-   Diff mode's rows) can overflow on instead. */
+   view, including this content and the sticky `.header` above it. `flex: 1
+   1 auto`, not `1 1 0`: this element's ancestor chain up to the resident
+   scrollport doesn't give it a reliably definite height on its own (this
+   view can be the first thing rendered after a Session opens, before that
+   chain settles), so an `auto` flex-basis — falling back to this element's
+   own content size when available space is ambiguous — is what keeps it
+   (and Edit mode's `FileEditor` inside it) from collapsing to zero height;
+   `0` collapsed it in exactly that way. `min-width: 0` is the same
+   `min-height: 0` guard already here, on the axis a wide unwrapped code
+   line (Edit mode's preview pane, Diff mode's rows) can overflow on
+   instead. */
 .body {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   padding: 16px;
