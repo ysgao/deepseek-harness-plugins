@@ -9,16 +9,16 @@
  * is the same shape of seam; it's now provided by
  * `dsh-plugins-client-ui-conversation-enhanced`, an out-of-tree replacement
  * for that package's own row (see `../../../ARCHITECTURE.md`'s "File tab: a
- * pristine slot, but a fork-only trigger"), not pristine prior art. The
- * upstream-ready diff this plugin itself pairs with is drafted and verified at
- * ../../../upstream-patches/0001-workspace-files-node-optional-service.patch
- * (not yet proposed as a real PR): it resolves this service once and
+ * pristine slot, but a fork-only trigger"), not pristine prior art.
+ *
+ * `dsh-plugins-client-ui-workspace-enhanced` resolves this service once and
  * renders `Component` in the same row `FilesNode` occupied in the fork —
  * sibling to the Session rows, the selected Workspace's own directory as
- * its implicit root, no extra click. This interface duplicates that
- * patch's own `WorkspaceFilesNodeProps`/`workspaceFilesNode` declarations
- * in `contract/slots.ts`; once the patch lands, this package can import
- * those instead of declaring its own copy.
+ * its implicit root, no extra click (see that package's own
+ * `WorkspaceBrowser.tsx`, and `../../../ARCHITECTURE.md`'s "Replace, don't
+ * patch"). This service declaration is this package's own permanent seam,
+ * not a stand-in for a future vendor change — `dsh-client-ui-workspace`
+ * itself never needs to know this package exists.
  * @module dsh-plugins-client-ui-workspace-files/service
  */
 import type { ComponentType } from 'react'

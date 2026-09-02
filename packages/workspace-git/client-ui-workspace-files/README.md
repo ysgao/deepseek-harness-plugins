@@ -65,18 +65,15 @@ out-of-tree package.
 its `Component` — a full out-of-tree replacement for `dsh-client-ui-
 workspace`'s own `sidebar.workspaces` registration (disabled and swapped
 via `cordis.patch.yml`, not patched), not an upstream diff to that package.
-See `../../../ARCHITECTURE.md`'s "Why replace the plugin instead of
-patching it" for the rationale and `upstream-patches/0001-workspace-files-
-node-optional-service.patch` for the smaller alternative kept as a
-drafted-but-unsubmitted proposal.
+See `../../../ARCHITECTURE.md`'s "Replace, don't patch" for the rationale.
 
 This package's own `tsdown.config.ts` builds a real browser closure-factory
 bundle (`lib/client.js`, `window.__ModuleLoader__.load({id, factory})`) via
 `../../../tsdown.client-plugin-preset.ts` — a genuine `dsh plugin add`
-target, confirmed present in a live `dsh web` combo-script manifest. See
-`../../../ARCHITECTURE.md`'s "Confirmed working" section for exactly what
-was checked (composition and the served manifest; not yet genuine browser
-DOM rendering).
+target, confirmed present in a live `dsh web` combo-script manifest and
+rendering correctly under real browser DOM interaction. See
+`../../../ARCHITECTURE.md`'s "Confirmed working" sections for exactly what
+was checked.
 
 ## Known Limitations and Deferred Work
 

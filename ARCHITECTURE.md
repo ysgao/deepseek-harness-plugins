@@ -20,10 +20,52 @@ multi-plugin argument parsing, and the `SlotMap` extension points
 such seam exists yet — *replaces* one existing plugin registration
 wholesale with an enhanced out-of-tree one, using `cordis.patch.yml`'s own
 `disabled: true` operation to turn the original off first (see
-`dsh-plugins-client-ui-workspace-enhanced` below and "Why replace the
-plugin instead of patching it"). Either way, installation is `dsh plugin
+`dsh-plugins-client-ui-workspace-enhanced` below and "Replace, don't
+patch"). Either way, installation is `dsh plugin
 --profile <name> add <package>` (see
 `packages/_vendor/deepseek-harness/packages/bundle/README.md`).
+
+## Core principles
+
+Three rules govern every package in this repo, non-negotiably:
+
+1. **Everything is a plugin.** Every feature — including one that replaces
+   part of the shipped UI — is an ordinary `dsh` plugin package, installed
+   through the ordinary `dsh plugin --profile <name> add <package>` /
+   `remove` composition mechanism (see `packages/_vendor/deepseek-harness/
+   packages/bundle/README.md`). There is no other installation path, no
+   build-time flag, no environment variable that turns a feature on.
+
+2. **Never patch, fork, or edit `packages/_vendor/deepseek-harness/`.** It
+   is a pinned git submodule tracking `deepseek-ai/deepseek-harness`
+   upstream; the only legitimate way its contents change is a pin bump
+   (`git submodule update --remote` + `pnpm install`), reviewed like any
+   other dependency bump, followed by re-verifying every plugin here still
+   builds and boots against the new pin. A local patch, however small,
+   however "temporary," reintroduces exactly the fork-divergence problem
+   this repo exists to avoid (see "Why this repo exists" below) — this
+   applies even to a patch that is never actually applied to the checked-in
+   submodule, only drafted for someday proposing upstream (this repo used
+   to keep exactly one such patch, in a since-deleted `upstream-patches/`
+   folder; see "Replace, don't patch" below for why even that was wrong).
+
+3. **A plugin's absence, or a plugin's failure, must never take down `dsh`
+   itself.** Two distinct guarantees, both required, both hard-won this
+   session (see "Plugin isolation" and "Testing procedures" below):
+   - **Absence is normal, not an error.** A feature that depends on another
+     out-of-tree package simply degrades — renders without the extra row,
+     without the sign-in affordance, whatever the missing piece was — when
+     that package isn't installed. This is ordinary Cordis lazy activation
+     (`ctx.get(name)` for a value read once, `ctx.inject([...], cb)` for a
+     seam a component subscribes through), used correctly.
+   - **A misbehaving plugin fails loud in its own log, not by taking the
+     whole app down.** Any operation that can genuinely fail at runtime
+     (mounting a Remote contribution, most concretely, in every plugin this
+     repo currently ships) must catch that failure and log it, never let it
+     propagate out of its own `apply()`. This turned out to be the harder
+     guarantee to get right — see "Plugin isolation" below for exactly why,
+     and what "isolated into its own dedicated plugin" alone does *not*
+     achieve.
 
 ## Why this repo exists
 
@@ -142,6 +184,90 @@ to think about it. Both bundles here mount it themselves
 (`id: authorization-seam`) so they're self-sufficient regardless of what
 profile they land in.
 
+## Plugin isolation
+
+"Everything is a plugin" is not enough by itself — a plugin architecture
+where one broken plugin can still blank the whole screen isn't actually
+isolated, it just moved the failure one layer down. This repo's Client boot
+(`@deepseek-ai/dsh-client-web`'s `AppWebEntry.runPluginBoot`/
+`assertEntriesActive`, `packages/client/web/src/boot.ts`) enforces this the
+hard way: after every top-level loader entry (every row in the composed
+`cordis.yml`/`cordis.patch.yml` tree) has had a chance to activate, it walks
+`ctx.loader.entries()` and throws if **any** of them is not `active` —
+whether that entry's `apply()` threw, or it's merely stuck `pending` forever
+waiting on a service nothing ever provided. Either state renders a blank
+"Failed to load plugins" page for the *entire application*, not just the
+feature that entry belongs to.
+
+This was discovered, not assumed: `dsh-plugins-client-remotes-anthropic-
+subscription`'s built bundle was deliberately patched to throw inside its
+own `apply()` (fault injection — see "Testing procedures" below), and the
+whole app went blank, falsifying an earlier assumption — that isolating a
+`ctx.remote.$mount()` call into its own dedicated plugin was sufficient to
+contain a mount failure. That isolation is necessary (see below) but not
+sufficient on its own.
+
+Two independent techniques are required together:
+
+1. **A plugin whose job includes something that can genuinely fail at
+   runtime — most concretely, mounting a Remote contribution — must be its
+   own dedicated plugin, doing nothing else** (`dsh-plugins-client-remotes-
+   workspace-git`, `dsh-plugins-client-remotes-anthropic-subscription`).
+   Bundling that mount into a plugin that also registers UI (an earlier,
+   rejected design here) would mean a mount failure throws the *whole*
+   function, taking working UI registrations down with it — pure
+   blast-radius containment, unrelated to point 2's fatal-boot problem, but
+   still necessary on its own terms.
+2. **That dedicated plugin's `apply()` must catch a mount failure and log
+   it (`ctx.logger.error`), never let it propagate.** Because of
+   `assertEntriesActive`, a throw from *any* top-level entry is fatal to
+   the whole app regardless of how narrowly scoped that entry's own job is
+   — isolating the mount into its own plugin only changes *what* throws,
+   not *whether* a throw is fatal. Both `dsh-plugins-client-remotes-
+   workspace-git` and `dsh-plugins-client-remotes-anthropic-subscription`
+   wrap their `ctx.remote.$mount()` calls in try/catch and return a no-op
+   disposer on failure — see each package's own README for the full
+   reasoning and how it was verified.
+
+A third, less obvious case: **a consumer of an optional cross-plugin
+service must not require that service in its own top-level `inject`
+array**, even though that is the ordinary, natural-looking way to declare a
+dependency in Cordis. `dsh-plugins-client-ui-settings-anthropic-
+subscription` originally listed `remote.authorization` in its own top-level
+`inject` — correct-looking, and it does mean the plugin never *crashes* if
+that service is never provided (Cordis's ordinary lazy-activation
+semantics: the fiber just stays `pending`). But "pending forever" is
+exactly the *other* condition `assertEntriesActive` treats as fatal for a
+*top-level* entry — the fatal-boot outcome is identical to a thrown
+exception, just reached a different way. The fix: keep the optional
+service out of the plugin's own top-level `inject`, and instead request it
+through a *nested* `ctx.inject(['remote.authorization'], (scope) => {...})`
+call made from inside an already-satisfied `apply()`. A fiber created this
+way is invisible to `ctx.loader.entries()` — it is not a top-level entry,
+just an ordinary descendant Cordis fiber nested inside one that already
+activated — so it can stay pending forever with no effect on
+`assertEntriesActive` at all. The consuming component (`ModelsSection`)
+treats the resulting value as genuinely optional
+(`authorization?: IAuthorization | undefined`) throughout, rendering and
+functioning normally either way; only the one feature that needs it (the
+sign-in affordance) is absent when it's unavailable.
+
+The rule this generalizes to, for every future plugin in this repo: **a
+top-level plugin's own `inject` array should list only services whose
+absence should legitimately block that plugin's own core purpose from
+existing at all.** An optional enhancement to an otherwise-complete plugin
+belongs behind a nested `ctx.inject()`/`ctx.get()` call inside an
+already-activatable `apply()`, never in the top-level `inject` array — that
+array is a promise this plugin makes to the whole app that it will not sit
+there pending forever, and `assertEntriesActive` holds every top-level entry
+to it.
+
+This guarantee is about a plugin's own *optional* surface — infrastructure
+the whole application depends on regardless of which plugins are installed
+(the webserver itself failing to bind its port, for instance) still fails
+loud and fatally, correctly so: nothing meaningful could happen without it,
+so there is nothing to gracefully degrade to.
+
 ## Package inventory
 
 ### `packages/workspace-git/` — File manager + git
@@ -152,9 +278,10 @@ profile they land in.
 | `dsh-plugins-api-workspace-file-controller` | New Typert Host controller | `packages/api/workspace-controller/src/{files,file-commands}.ts` (list/read/write/create/delete/diff) + their host specs |
 | `dsh-plugins-client-ui-file-editing` | Standalone components (no shared-package dependency) | `packages/client/ui-primitives/src/{FileEditor,FilePreview,SideBySideDiff}.tsx` + `.module.css` + `codemirror/theme.ts` + `useSplitRatio.ts` + tests — moved out of the shared `ui-primitives` package, which every other UI plugin depends on |
 | `dsh-plugins-client-ui-workspace-files` | **Confirmed working** — the sidebar Files tree and the optional `workspaceFilesNode` Context service it provides; typecheck + build + a real closure-factory bundle, confirmed present in a live `dsh web` combo-script manifest (see "Confirmed working" below) | `packages/client/ui-workspace/src/client/files/{FilesNode,FileViewer,classify}.tsx` — near-verbatim; also 7 icons the fork added directly to `ui-primitives` (`icons.tsx`, kept local) |
-| `dsh-plugins-client-ui-workspace-enhanced` | **Confirmed working** — replaces `dsh-client-ui-workspace`'s own `sidebar.workspaces`/`conversation.hero.workspace` registrations wholesale (not a patch to that package); the only behavior change is rendering `workspaceFilesNode`'s `Component` as a Files sibling row. See "Why replace the plugin instead of patching it" | New package; forks only `rows/WorkspaceBrowser.tsx` from `packages/client/ui-workspace/src/client/`, near-verbatim plus the Files row; everything else (`WorkspacePicker`, `navigation.ts`, `stores.ts`, `tree.ts`, `locales.ts`, `Rows.tsx`) is imported unchanged from the original package's own `./src/*` export, not duplicated |
+| `dsh-plugins-client-ui-workspace-enhanced` | **Confirmed working** — replaces `dsh-client-ui-workspace`'s own `sidebar.workspaces`/`conversation.hero.workspace` registrations wholesale (not a patch to that package); the only behavior change is rendering `workspaceFilesNode`'s `Component` as a Files sibling row. See "Replace, don't patch" | New package; forks only `rows/WorkspaceBrowser.tsx` from `packages/client/ui-workspace/src/client/`, near-verbatim plus the Files row; everything else (`WorkspacePicker`, `navigation.ts`, `stores.ts`, `tree.ts`, `locales.ts`, `Rows.tsx`) is imported unchanged from the original package's own `./src/*` export, not duplicated |
 | `dsh-plugins-client-ui-conversation-files` | **Confirmed working** — registers into the *pristine* `conversation.view` list slot (`dsh-client-ui-conversation`), no upstream diff needed for the tab itself. Populated through `conversationFileOpener`, provided by `dsh-plugins-client-ui-conversation-enhanced` below | `packages/client/ui-conversation-files/**` (already a clean, separate package in the fork — ported near-verbatim, repointed at `dsh-plugins-client-ui-file-editing`/this repo's own controllers instead of `ui-primitives`/the fork-extended `dsh-api-workspace-controller` client) |
 | `dsh-plugins-client-ui-conversation-enhanced` | **Confirmed working** — replaces `dsh-client-ui-conversation`'s own conversation-shell registration wholesale (not a patch to that package); the only behavior change is providing the `conversationFileOpener` cross-session bridge. See "File tab: a pristine slot, but a fork-only trigger" | New package; forks only `skeleton/ConversationSession.tsx`'s `ConversationSession` export from `packages/client/ui-conversation/src/client/`, near-verbatim plus a `pendingFileOpen` drain effect; everything else (`ConversationRoot`, `ConversationSessionHeader`, `InputBar`, the input hub, queue/settings docks, stores, locales) is imported unchanged from the original package's own `./src/*` export, not duplicated |
+| `dsh-plugins-client-remotes-workspace-git` | **Confirmed working** — the dedicated plugin that mounts `dsh-plugins-api-workspace-file-controller`/`-git-controller`'s generated `/remote` Client contributions; catches and logs a `$mount` failure instead of letting it propagate (see "Plugin isolation" above) | New package; no fork counterpart — `dsh-typert-loader` only auto-discovers a package's Host `./typert` half, so the Client `./remote` half of a controller needs an explicit composition owner this repo provides itself |
 | `dsh-plugins-bundle-workspace-git` | **Confirmed working** — installs via `dsh plugin --profile <name> add`; a real `dsh web` server boots and serves a working page whose combo-script manifest lists exactly the expected rows (all Client packages here present, both `@deepseek-ai/dsh-client-ui-workspace/client.js` and `@deepseek-ai/dsh-client-ui-conversation/client.js` absent — both disables took effect). See "Confirmed working" below for exactly what that checked and didn't | New — replaces the direct edits to `packages/bundle/base/cordis.patch.yml` and `packages/bundle/web-app/cordis.patch.yml`; mounts `@deepseek-ai/dsh-workspace` itself (only `web-app` mounts it by default, mirroring `authorization-seam` below); disables and replaces both the `ui-workspace` and `ui-conversation` rows (only present once `@deepseek-ai/dsh-web-app`'s own bundle has already inserted them — install order matters, see below) |
 
 ### `packages/anthropic-subscription/` — Anthropic subscription authorization
@@ -163,8 +290,9 @@ profile they land in.
 |---|---|---|---|
 | `dsh-plugins-api-authorization-controller` | **Confirmed working** — builds, installs, boots clean | New Typert Host controller, mounted as an independent top-level plugin — **not** nested inside `SettingsController`'s constructor the way the fork mounted it. That nesting turned out to be an organizational choice, not a requirement: the class only ever needed `ctx`, and `dsh-typert-loader` auto-discovers any top-level Loader entry that exports `./typert`. No edit to `api/settings-controller`. | `packages/api/settings-controller/src/authorization.ts` (271 lines) + `types.ts`'s authorization slice. Adapted to the current (newer-pinned) `dsh-typert-protocol` API: `TypertRemoteFailure({code,message,details})` was renamed to `RemoteError(code, message, details)`, keyed by a merge-extensible `RemoteErrorDetailsMap` a package declares its own codes into (`declare module '@deepseek-ai/dsh-typert-protocol' { interface RemoteErrorDetailsMap {...} }`) — this repo declares `authorization/not-found`, `authorization/in-flight`, `authorization/rejected`, `authorization/prompt-not-found`. |
 | `dsh-plugins-cli-login-app` | **Confirmed working** — builds, installs, boots clean, `--help` prints correctly | Its own standalone `dsh --profile <name>` application, **not** a `login` subcommand added to `@deepseek-ai/dsh-headless`. See "CLI login: why its own profile" below. | `packages/bundle/headless/src/index.ts`'s `login` mode (`buildTerminalInteraction`/`runLogin`) — the fork wove it into `headless-runner`'s shared `Config`/`apply()` instead of giving it independent argument grammar. |
-| `dsh-plugins-client-ui-settings-anthropic-subscription` | **Stub — upstream-PR candidate, not buildable out-of-tree** | None available. See "Settings UI: why it can't be a pure plugin" below. | `packages/client/ui-settings-models/src/client/{AuthorizationPanel.tsx,authorization-runtime.ts}` + the ~140-line diff across `ProviderEditor.tsx`/`ModelsSection.tsx`/`client/index.ts` that wires them in. |
-| `dsh-plugins-bundle-anthropic-subscription` | **Confirmed working** — `dsh plugin --profile acp add dsh-plugins-bundle-anthropic-subscription` reconciles into `dsh.profile.bundles`, and `dsh --profile acp` boots to a clean exit with the `authorization` Typert namespace registered | `cordis.patch.yml` bundle for `web`/`headless`/`acp`/`sdk` (`dsh-base`-derived) profiles — inserts `@deepseek-ai/dsh-authorization` itself (absent from every shipped bundle upstream — see below) plus `authorization-controller` | New |
+| `dsh-plugins-client-remotes-anthropic-subscription` | **Confirmed working** — the dedicated plugin that mounts `dsh-plugins-api-authorization-controller`'s generated `/remote` Client contribution (the `authorization` namespace); catches and logs a `$mount` failure instead of letting it propagate (see "Plugin isolation" above) | Mounts the `authorization` Remote namespace | New package; no fork counterpart — same auto-discovery gap as `dsh-plugins-client-remotes-workspace-git` above |
+| `dsh-plugins-client-ui-settings-anthropic-subscription` | **Confirmed working** — replaces `dsh-client-ui-settings-models`'s own `settings.section`/`settings.onboarding` registrations wholesale (not a patch to that package); the only behavior change is the sign-in affordance next to the API-key field. See "Settings UI: replacing the plugin, not patching it" below | Disables and replaces the `ui-settings-models` row | `packages/client/ui-settings-models/src/client/{AuthorizationPanel.tsx,authorization-runtime.ts}` + the diff across `ProviderEditor.tsx`/`ModelsSection.tsx`/`client/index.ts` that wires them in — adapted onto this repo's currently-vendored, newer `ui-settings-models` API rather than copied from the fork's own (older, diverged) snapshot; see "Settings UI" below. |
+| `dsh-plugins-bundle-anthropic-subscription` | **Confirmed working** — `dsh plugin --profile <name> add` (tested via a cloned, disposable test profile — see "Testing procedures" below) reconciles into `dsh.profile.bundles`; a real boot renders Settings > Models with the sign-in panel present, and a deliberate fault-injection test confirmed the app still boots and Models still works even with the authorization mount broken | `cordis.patch.yml` bundle for `web`/`headless`/`acp`/`sdk` (`dsh-base`-derived) profiles — inserts `@deepseek-ai/dsh-authorization` itself (absent from every shipped bundle upstream — see below), `authorization-controller`, `remotes-anthropic-subscription`, and disables+replaces the `ui-settings-models` row with `ui-settings-anthropic-subscription` | New |
 
 No new package needed for the OAuth flow itself: `@deepseek-ai/dsh-llm-pi-ai`
 (already upstream, untouched by the fork beyond its README) unconditionally
@@ -193,25 +321,78 @@ there's nothing else to disambiguate from). Confirmed: `dsh-cmdline`'s own
 README explicitly supports this ("Apps built outside this repository
 behave the same way").
 
-#### Settings UI: why it can't be a pure plugin
+#### Settings UI: replacing the plugin, not patching it
 
 `ui-settings-models` declares exactly two extension slots
 (`settings.models.provider-card`, `settings.models.footer` — see its own
-`slot-contract.ts`), and neither reaches where sign-in needs to render.
-Reading the fork's actual diff: `AuthorizationPanel` is imported and
-rendered *directly inside* `ProviderEditor.tsx`, right after the API-key
-input field — `ProviderEditor`'s `authorization?: IAuthorization` prop is
-already fully generic (its own doc: *"a route the catalog does not
-register a flow for... correctly shows none"*), so this reads as
-intentional, well-designed, upstream-worthy functionality that was simply
-never split into its own capability seam. Forcing it out-of-tree would mean
-either (a) a small core edit anyway, or (b) forking `ProviderEditor.tsx`'s
-~560 lines wholesale into this repo to splice in one panel — reintroducing
-exactly the drift problem this repo exists to avoid, one file later.
-Recommendation: propose the four-file diff (`AuthorizationPanel.tsx`,
-`authorization-runtime.ts`, the `ProviderEditor`/`ModelsSection`/`index.ts`
-wiring) as a small, self-contained PR to `deepseek-ai/deepseek-harness`
-directly, generalized (it already is) rather than Anthropic-specific.
+`slot-contract.ts`), and neither reaches inside `ProviderEditor`'s own card
+body, where a "sign in" affordance next to the API-key field has to render
+— the fork's own diff imports and renders `AuthorizationPanel` directly
+inside `ProviderEditor.tsx`, right after the API-key input field.
+`ProviderEditor`'s `authorization?: IAuthorization` prop is already fully
+generic (its own doc: *"a route the catalog does not register a flow
+for... correctly shows none"*), so this reads as intentional,
+well-designed functionality that was simply never split into its own
+capability seam.
+
+An earlier assessment of this repo concluded that gap meant this feature
+"can't be a pure plugin" and should be proposed as a small upstream PR
+instead, leaving Settings sign-in unimplemented here — treating this case
+as fundamentally different from the identical Files-row gap in
+`ui-workspace`. It isn't: `dsh-plugins-client-ui-settings-anthropic-
+subscription` applies the exact same "Replace, don't patch" pattern used
+there (see above). `cordis.patch.yml` disables the original `ui-settings-
+models` row (`{id: ui-settings-models, disabled: true}`) and inserts a full
+replacement that forks only the four files that actually change —
+`ModelsSection.tsx`, `ProviderEditor.tsx`, `client/index.ts`, and
+`locales.ts` (four new copy keys) — reusing everything else
+(`CustomProviderCard`, `DeepSeekModelsEditor`, `DeepSeekOnboardingDialog`,
+`WelcomeNotice`, `welcome-store`, `store`, `operations`,
+`schema-operations`, `slot-contract`, `EditorFooter`, `ModelListEditor`,
+`apiKey`, `ModelsSection.module.css`, `onboarding-copy`) as real values
+from that package's own `./src/*` export, exactly like `dsh-plugins-
+client-ui-workspace-enhanced` does for `dsh-client-ui-workspace`.
+
+Porting from `yga/deepseek-harness` surfaced a second, unrelated problem
+worth naming here: that fork's own `ui-settings-models` snapshot had
+already diverged from this repo's currently vendored, newer pin
+(`ModelsWire`/`api` refactored to `ModelsOperations`/`operations`,
+`JsonValue` relocated to `@deepseek-ai/dsh-util-values`, `messageOf`
+removed, two new locale keys, `ModelsSettingsStore`'s constructor taking
+`ctx` directly instead of a wire object). Every forked file here targets
+the *current* vendored API, adapting the fork's diff onto it rather than
+copying the fork's snapshot verbatim — a reminder that porting from
+`yga/deepseek-harness` always needs a diff against the currently pinned
+commit, not just the fork's own source, since the two can and do drift
+independently. See "Confirmed working: `dsh-plugins-client-ui-settings-
+anthropic-subscription`" below for how this was verified.
+
+#### Confirmed working: `dsh-plugins-client-ui-settings-anthropic-subscription`
+
+Verified end to end, including the part the earlier `workspace-git`
+verification round couldn't reach (see "Genuine browser-rendering
+verification" in Open items, now resolved):
+
+- `dsh --profile <name> --dump-config` shows `ui-settings-models` disabled
+  and `ui-settings-anthropic-subscription` inserted in its place.
+- `dsh plugin --profile <name> remove`/`add dsh-plugins-bundle-anthropic-
+  subscription`, run against a real (cloned, disposable) profile, correctly
+  removes/reconciles the bundle into `dsh.profile.bundles` — the actual
+  install/uninstall command a user runs, not just a manual `package.json`
+  edit. See "Testing procedures" below for the exact steps.
+- A real `dsh web` boot serves a working page; genuine DOM interaction in a
+  real Chrome tab (not just `curl`) — clicking through to Settings > Models,
+  confirmed via the page's own rendered text — shows all five configured
+  providers (DeepSeek, anthropic, google, LM Studio, LlamaCPP), the
+  `anthropic` provider's editor card opening and closing cleanly, and
+  Settings > Plugins' "Global plugins" list showing `authorization`/
+  `plugins-api-authorization-controller` as installed and enabled. No
+  console errors at any point.
+- Fault injection (see "Testing procedures" below) confirmed the
+  degradation path holds: with the authorization mount deliberately
+  broken, the app still boots, Settings > Models still renders and
+  functions normally, and only the sign-in affordance is absent — not a
+  blank "Failed to load plugins" page.
 
 #### Files tree: why an optional service, not a slot
 
@@ -234,59 +415,67 @@ slot, but a fork-only trigger" below.)
 directly: `workspaceFilesNode: WorkspaceFilesNodeService | undefined`,
 resolved once via `ctx.get('workspaceFilesNode')`.
 
-#### Why replace the plugin instead of patching it
+#### Replace, don't patch
 
-The service exists; something still has to *resolve* it and render its
-`Component` where `FilesNode` sat in the fork, and `dsh-client-ui-workspace`
-itself doesn't do that. Two ways to get there were considered:
+The service exists (`workspaceFilesNode`, declared by `dsh-plugins-client-
+ui-workspace-files` itself — see above); something still has to *resolve*
+it and render its `Component` where `FilesNode` sat in the fork, and
+pristine `dsh-client-ui-workspace` doesn't do that. A small source patch to
+`ui-workspace/src/client/{contract/slots.ts, index.ts, rows/
+WorkspaceBrowser.tsx}` would be genuinely small — three files, ~50 lines —
+but applying it locally would mean either forking `deepseek-ai/deepseek-
+harness` to hold the patched commit (a real repo to maintain, a submodule
+re-pin, and every future pin bump needs the patch rebased forward) or
+hand-patching the pinned submodule's working tree outside of git history
+(fragile — nothing forces a fresh clone to reapply it, and a dirty
+submodule risks an accidental bad commit landing in the pin). Per "Core
+principles" above, neither is acceptable regardless of how small the diff
+is — this repo does not carry vendor patches, staged or applied,
+"temporary" or not.
 
-1. **A small source patch** to `ui-workspace/src/client/{contract/slots.ts,
-   index.ts, rows/WorkspaceBrowser.tsx}` — drafted and verified as
-   `upstream-patches/0001-workspace-files-node-optional-service.patch`
-   (`git apply --check` clean against the pinned commit, a forced `tsc -b`
-   rebuild with it applied passes). Applying it locally would mean either
-   forking `deepseek-ai/deepseek-harness` to hold the patched commit (a real
-   repo to maintain, a submodule re-pin, and every future pin bump needs the
-   patch rebased forward) or hand-patching the pinned submodule's working
-   tree outside of git history (fragile — nothing forces a fresh clone to
-   reapply it, and a dirty submodule risks an accidental bad commit).
-2. **Replace the plugin.** `cordis.patch.yml` already has `{id, disabled:
-   true}` alongside `{insert: [...]}` — ordinary composition operations,
-   not a new mechanism. Disable the row `@deepseek-ai/dsh-web-app`'s own
-   bundle inserts for `dsh-client-ui-workspace`, insert
-   `dsh-plugins-client-ui-workspace-enhanced` in its place, and let the
-   replacement register the exact same slots the original did, plus the one
-   new row.
+The alternative `cordis.patch.yml` already provides: `{id, disabled:
+true}` alongside `{insert: [...]}` — ordinary composition operations, not
+a new mechanism. Disable the row `@deepseek-ai/dsh-web-app`'s own bundle
+inserts for `dsh-client-ui-workspace`, insert `dsh-plugins-client-ui-
+workspace-enhanced` in its place, and let the replacement register the
+exact same slots the original did, plus the one new row. This is what this
+repo does, on direct instruction: "everything is a plugin" applies to the
+seam-providing side too, not just the feature side — unplug the original,
+plug in an enhanced one, entirely through the same `dsh plugin add`
+composition mechanism every other package here already uses. No fork of
+`deepseek-ai/deepseek-harness`, no submodule pin tied to a patch branch, no
+vendored file touched even transiently, no patch file staged anywhere in
+this repo either. The replacement package reuses everything it isn't
+changing: `dsh-client-ui-workspace` declares `"./src/*": "./src/*"` in its
+own `exports` map (a convention this whole codebase uses), so
+`WorkspacePicker`, `UiWorkspaceService`, `createWorkspaceViewStore`,
+`tree.ts`'s group-deriving logic, and the `workspace` locale dictionaries
+are all imported as real values from that path — not copied. Only
+`rows/WorkspaceBrowser.tsx` (the one file that actually changes) is forked,
+with import paths repointed the same way `FilesNode.tsx` was in Task 18.
 
-Option 2 is what this repo does, on direct instruction: "everything is a
-plugin" applies to the seam-providing side too, not just the feature side —
-unplug the original, plug in an enhanced one, entirely through the same
-`dsh plugin add` composition mechanism every other package here already
-uses. No fork of `deepseek-ai/deepseek-harness`, no submodule pin tied to
-a patch branch, no vendored file touched even transiently. The replacement
-package reuses everything it isn't changing: `dsh-client-ui-workspace`
-declares `"./src/*": "./src/*"` in its own `exports` map (a convention this
-whole codebase uses), so `WorkspacePicker`, `UiWorkspaceService`,
-`createWorkspaceViewStore`, `tree.ts`'s group-deriving logic, and the
-`workspace` locale dictionaries are all imported as real values from that
-path — not copied. Only `rows/WorkspaceBrowser.tsx` (the one file that
-actually changes) is forked, with import paths repointed the same way
-`FilesNode.tsx` was in Task 18.
-
-`upstream-patches/0001-workspace-files-node-optional-service.patch` stays
-in the repo as a smaller, cleaner alternative some day, per "prepare it,
-don't submit it" — genuinely proposing the small addition to
-`dsh-client-ui-workspace` remains worthwhile even though this repo doesn't
-depend on it landing.
+An earlier revision of this repo kept a drafted, `git apply --check`-clean
+small source patch in `upstream-patches/` as a "prepare it, don't submit
+it" reference for someday proposing the addition to `deepseek-ai/deepseek-
+harness` directly. That folder has been deleted: keeping a patch on file at
+all, even unapplied, sits uncomfortably next to "never patch the vendor" —
+it invites exactly the temptation the principle exists to close off, and it
+duplicated the plugin's own already-complete, already-shipped functionality
+for no operational reason. Nothing here ever depended on it landing
+upstream; `dsh-plugins-client-ui-workspace-files`'s own optional-service
+declaration (see above) already achieves everything the patch would have.
+A genuinely upstream-worthy idea belongs in a real PR against
+`deepseek-ai/deepseek-harness`, filed from a personal fork when someone has
+time to shepherd it through review — never as a file sitting in this repo.
 
 `dsh-plugins-client-ui-conversation-enhanced` applies the identical
-pattern to `dsh-client-ui-conversation`'s own conversation-shell
-registration, for the `conversationFileOpener` bridge — see "File tab: a
-pristine slot, but a fork-only trigger" below. No separate upstream-patch
-alternative was drafted for that one: unlike `workspaceFilesNode`, the fork's
-own diff there touches a skeleton component's render body
-(`ConversationSession.tsx`), not just an added Context service, so a small
-source patch wouldn't be meaningfully smaller than the replacement package.
+replace-don't-patch pattern to `dsh-client-ui-conversation`'s own
+conversation-shell registration, for the `conversationFileOpener` bridge —
+see "File tab: a pristine slot, but a fork-only trigger" below.
+`dsh-plugins-client-ui-settings-anthropic-subscription` applies it a third
+time, to `ui-settings-models`'s `settings.section`/`settings.onboarding`
+registrations — see "Settings UI: replacing the plugin, not patching it"
+below.
 
 #### Confirmed working: `dsh-plugins-client-ui-workspace-enhanced`
 
@@ -317,18 +506,23 @@ Open items) and `apps/web`'s Vite frontend built as part of `pnpm run build`:
   unminified with sourcemaps) is served successfully and fast; all three of
   this repo's bundles pass `node --check` (syntax-valid).
 
-What this does **not** confirm: that the page actually renders in a
-browser. The Chrome extension used for this session's browser automation
-could not complete a normal page load against this dev server — `document.
-readyState` reported `"complete"` on a 219-byte, script-free document, well
-short of the ~25 KB real page `curl` fetched with the same fresh, unused
-auth token — while `curl` succeeded immediately every time. This looks like
-an incompatibility between the extension's request handling and this
-server's cookie/redirect-based auth flow (a `303` + `Set-Cookie` exchange),
-not a problem with this repo's code — the server-side pipeline this
-whole check exercises is identical whichever client asks for it — but it
-means genuine visual/DOM rendering is still unverified. See "Genuine
-browser-rendering verification" in Open items.
+At the time this was first written, genuine browser DOM rendering was
+still unverified: the Chrome extension's `navigate()` tool (CDP-initiated
+navigation) could not complete a normal page load against this dev server
+— `document.readyState` reported `"complete"` on a 219-byte, script-free
+document, well short of the ~25 KB real page `curl` fetched with the same
+fresh, unused auth token, while `curl` succeeded immediately every time.
+The cause turned out to be the navigation method, not this repo's code:
+CDP-initiated navigation didn't send the server's `SameSite=Strict` auth
+cookie correctly, while page-initiated navigation (`location.href = url`/
+`location.reload()`, driven through the extension's JS-execution tool
+instead) works reliably. Real DOM interaction — clicking through Settings,
+reading rendered page text, checking the console — has since confirmed
+this sidebar (visible throughout every later session's browser checks) and
+`dsh-plugins-client-ui-settings-anthropic-subscription` both actually
+render and function correctly, not just serve a valid bundle. See
+"Testing procedures" for the technique and the Open Items entry this
+resolved.
 
 #### File tab: a pristine slot, but a fork-only trigger
 
@@ -358,8 +552,8 @@ The fork built exactly this bridge (`conversationFileOpener`, backed by a
 gained the registry and a `pendingFileOpen` hook, and its skeleton component
 `ConversationSession.tsx` gained the code that drains that hook into
 `conversationStore`'s `openView` action. This repo now provides the same
-bridge via `dsh-plugins-client-ui-conversation-enhanced`, following "Why
-replace the plugin instead of patching it" above rather than touching the
+bridge via `dsh-plugins-client-ui-conversation-enhanced`, following "Replace,
+don't patch" above rather than touching the
 vendored skeleton component: it disables `dsh-client-ui-conversation`'s own
 row and inserts a replacement that forks only `ConversationSession`
 (the one component whose render body needs the drain effect) while reusing
@@ -382,10 +576,10 @@ conversation-enhanced/client.js` and **omits**
 `@deepseek-ai/dsh-client-ui-conversation/client.js`; the combo script itself
 fetches `HTTP 200` (4.87 MB unminified with sourcemaps) with this package's
 module id present and all 47 expected `window.__ModuleLoader__.load({...})`
-calls intact. Same caveat as the `ui-workspace` replacement: genuine
-browser-side DOM rendering is still unverified (see "Genuine
-browser-rendering verification" in Open items) — this only confirms
-composition and what the browser would actually be served.
+calls intact. Genuine browser-side DOM rendering — initially unverified
+here for the same reason noted in the `ui-workspace` replacement's own
+"Confirmed working" section above — has since been confirmed through real
+DOM interaction (see "Testing procedures").
 
 Verifying against `web-app` also hit the bundle's own then-unconditional
 `workspace-registry-seam` row duplicate-mounting `@deepseek-ai/dsh-workspace`
@@ -393,6 +587,102 @@ over `web-app`'s own `workspace` row — documented and since fixed in
 `bundle-workspace-git/README.md` (the row is gone; that controller
 dependency now resolves through `web-app`'s own mount instead), unrelated
 to this package.
+
+## Testing procedures
+
+Two things need testing for any plugin change in this repo: the ordinary
+install path (`dsh plugin add`/`remove` actually works, the way a real user
+would run it), and the failure path (this repo's "a plugin's failure must
+never take down `dsh`" guarantee actually holds, not just in theory).
+
+### Test `dsh plugin add`/`remove` on a disposable profile, never on a live one
+
+Never run `dsh plugin --profile <name> add`/`remove` against a profile a
+real session (yours or anyone else's) is actively using — `pnpm install`/
+`remove` rewrites `package.json`/`node_modules` on disk, and while an
+already-running server process isn't directly disrupted by that (Node has
+already loaded what it needs into memory), a live browser tab's next
+refresh or hot-reload would pick up a half-changed state mid-test. Clone
+the profile into a scratch name first:
+
+```sh
+ditto ~/.dsh/profiles/web ~/.dsh/profiles/web-verify
+```
+
+(macOS; handles the symlink-heavy pnpm `node_modules` tree correctly —
+plain `cp -r` does not, it fails with repeated "directory causes a cycle"
+errors walking pnpm's nested symlinks.)
+
+Then, from `packages/_vendor/deepseek-harness` (the CLI's source-launch
+location; `node --import tsx/esm apps/cli/src/bin.ts <args>` has been more
+reliable here than `pnpm run dsh -- <args>`, which has been observed to
+mis-parse a `--profile` flag depending on argument order):
+
+```sh
+node --import tsx/esm apps/cli/src/bin.ts plugin --profile web-verify \
+  remove dsh-plugins-bundle-anthropic-subscription
+node --import tsx/esm apps/cli/src/bin.ts plugin --profile web-verify \
+  add /absolute/path/to/packages/anthropic-subscription/bundle-anthropic-subscription
+cat ~/.dsh/profiles/web-verify/package.json   # confirm dsh.profile.bundles
+                                               # reconciled correctly
+node --import tsx/esm apps/cli/src/bin.ts --profile web-verify \
+  --port 0 --no-open                          # port 0: let the OS pick a
+                                               # free port, so this never
+                                               # collides with a live
+                                               # session's own port
+```
+
+Open the printed `http://127.0.0.1:<port>/?token=...` URL, confirm the new
+feature actually renders (`document.body.innerText` on the loaded page is
+a reliable, scriptable way to check this without relying on screenshots),
+then `kill` the process and `rm -rf ~/.dsh/profiles/web-verify` when done.
+Never leave a stray test server or test profile behind.
+
+### Fault-inject a plugin to prove `dsh` survives it
+
+This is the test that actually exercises "a plugin's failure must never
+take down `dsh`" — passing typecheck and a happy-path boot proves nothing
+about this guarantee, only a deliberate failure does. Patch the **built**
+output (never the committed source) of the plugin under test to fail,
+backing up the file first:
+
+```sh
+cp packages/<group>/<package>/lib/client.js /tmp/client.js.bak
+# edit lib/client.js: make its apply() throw, e.g. replace the first line
+# of the function body with: throw new Error('SIMULATED FAILURE: ...')
+```
+
+Reboot against the disposable test profile above, open the page, and check
+both the console and the rendered page text for one of two outcomes:
+
+- **Before the plugin correctly contains its own failures**: a blank
+  "HARNESS / Failed to load plugins" page, `document.body.innerText`
+  showing nothing else — confirms the failure really is fatal without a
+  fix (this is what surfaced the gap "Plugin isolation" above describes;
+  reproduce it once on purpose so a fix's effect is legible against a real
+  before/after, not assumed).
+- **After the fix**: the app boots and renders completely normally — the
+  broken plugin's own log line and, if applicable, one absent feature are
+  the *only* visible effect. Confirm the rest of what that plugin's bundle
+  sits near — the settings page it contributes to, the sidebar section
+  nearby, whatever else shares the same boot — still works exactly as it
+  does without the fault injected.
+
+Restore the backed-up file (`cp /tmp/client.js.bak lib/client.js`) and
+confirm a fresh `tsdown` build of the same package produces byte-identical
+output (`diff`) before considering the test clean — the built artifact must
+carry zero trace of the injected fault once done.
+
+### What each check catches
+
+| Check | Catches |
+|---|---|
+| `tsc -b` (package + `tsconfig.client.json` full aggregate) | Type errors, including ones only visible once a package is wired into the whole client program (e.g. a locale key union mismatch between a fork and the package it forked from) |
+| `pnpm run build` (host then client, per group) | Bundler-level failures — a cross-package import the purity gate rejects, a CSS Modules specifier the resolver can't follow, a Typert generator mismatch |
+| `--dump-config` | The composed `cordis.yml` tree is well-formed and reads as expected. Does *not* by itself confirm a disable/insert row resolved against something real — a `disabled: true` targeting a row that doesn't exist yet prints a non-fatal "entry not found" instead of erroring loud; read the printed tree, don't just check the command exits 0 |
+| A real boot + `--dump-config` together | The install-order dependency between bundles (a `disabled: true` needs the row it targets already inserted by an earlier bundle) |
+| A real boot + real browser DOM interaction | The feature actually renders and functions — composition and a served bundle manifest are necessary but not sufficient; only clicking through in a real page confirms the UI itself works |
+| Fault injection | The one guarantee none of the above checks exercise at all: that a plugin failing doesn't take the rest of `dsh` down with it |
 
 ## Explicitly out of scope
 
@@ -403,13 +693,20 @@ either bundle here.
 
 ## Open items
 
-- **Genuine browser-rendering verification.** See "Confirmed working:
-  `dsh-plugins-client-ui-workspace-enhanced`" above — composition and the
-  served combo-script manifest are wire-level verified; actual DOM
-  rendering in a browser is not, blocked by what looks like a Chrome
-  extension/dev-server auth incompatibility in this environment, not a
-  known code issue. Re-attempt with a different browser-automation path
-  (or a real user in a real browser) before calling the UI itself confirmed.
+- ~~**Genuine browser-rendering verification.**~~ **Resolved.** The Chrome
+  extension's `navigate()` tool (CDP-initiated navigation) was the actual
+  blocker — it did not send this server's `SameSite=Strict` auth cookie
+  correctly; page-initiated navigation (`location.href = url`/
+  `location.reload()`, driven through the extension's JS-execution tool
+  instead of its navigate tool) works reliably. Real DOM interaction —
+  clicking through Settings, opening a provider editor card, reading
+  rendered page text, checking the console for errors — has since
+  confirmed both `dsh-plugins-client-ui-workspace-enhanced` (its sidebar
+  was visible throughout later sessions' checks) and `dsh-plugins-client-
+  ui-settings-anthropic-subscription` actually render and function
+  correctly in a real browser, not just serve a valid bundle. See
+  "Confirmed working: `dsh-plugins-client-ui-settings-anthropic-
+  subscription`" above and "Testing procedures" for the technique.
 - **Bundle install order.** `dsh-plugins-bundle-workspace-git`'s
   `disabled: true` rows for `ui-workspace` and `ui-conversation` only
   resolve if `@deepseek-ai/dsh-web-app`'s own bundle (or whatever bundle

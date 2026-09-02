@@ -57,11 +57,6 @@
 # confirm that id still matches if the submodule pin ever moves and this
 # row starts failing to find anything to disable.
 #
-# upstream-patches/0001-workspace-files-node-optional-service.patch is kept
-# as a drafted, verified proposal for a smaller alternative some day (a
-# small addition to dsh-client-ui-workspace itself instead of replacing it
-# wholesale) — not applied here, not yet proposed as a real PR.
-#
 # remotes-workspace-git mounts this bundle's own workspace-files/workspace-
 # git generated Remote contributions on the Client — the role
 # @deepseek-ai/dsh-api-remotes fills for every other namespace, but can't
