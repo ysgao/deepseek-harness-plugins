@@ -2,19 +2,24 @@
  * Fork of `dsh-client-ui-conversation`'s own `apply.ts` — registers the
  * same target-neutral Conversation assembly, shell, input, and docks, plus
  * the `conversationFileOpener` optional service (`./service.ts`) that lets
- * the sidebar Files tree dock a file into the current session's File tab.
+ * the sidebar Files tree dock a file into the current session's File tab,
+ * even before that session's first turn.
  * `dsh-plugins-bundle-workspace-git`'s `cordis.patch.yml` disables the
  * original `ui-conversation` row and installs this one in its place — see
  * `../../../../ARCHITECTURE.md`'s "Replace, don't patch".
  *
  * Every registration here is unchanged from the pristine `apply()` except
- * `registerConversationSession`, whose `inject()` factory gains a
- * `pendingFileOpen` hook and `completePendingFileOpen` callback, and its
- * registered component, which is this package's own forked
- * `./ConversationSession.tsx` instead of the pristine one.
- * `ConversationSessionHeader`, `ConversationRoot`, and `InputBar` are
- * reused unchanged from `@deepseek-ai/dsh-client-ui-conversation`'s own
- * `./src/*` export.
+ * `registerConversationRoot`, `registerConversationSession`, and
+ * `registerConversationHeader`: each `inject()` factory gains an
+ * `everOpenedFile` hook (the `FileOpenRegistry`'s sticky per-session "has a
+ * file ever been opened here" bit), `registerConversationSession` also
+ * gains a `pendingFileOpen` hook and `completePendingFileOpen` callback, and
+ * all three register this package's own forked components
+ * (`./ConversationRoot.tsx`, `./ConversationSession.tsx`) instead of the
+ * pristine ones — their blank/Hero gate needs to stay open once
+ * `everOpenedFile` is true, so a file opened before a session's first turn
+ * doesn't land in a hidden view. `InputBar` is reused unchanged from
+ * `@deepseek-ai/dsh-client-ui-conversation`'s own `./src/*` export.
  *
  * Resilience (see `../../../../ARCHITECTURE.md`'s "Plugin isolation"):
  * every `ctx.slots.register()` call below registers at `priority: -1`, one
@@ -70,10 +75,6 @@ import { EnterBehaviorRow } from '@deepseek-ai/dsh-client-ui-conversation/src/cl
 import type {
   EnterBehaviorRowInjected,
 } from '@deepseek-ai/dsh-client-ui-conversation/src/client/settings/EnterBehaviorRow.tsx'
-import { ConversationRoot } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/ConversationRoot.tsx'
-import {
-  ConversationSessionHeader,
-} from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/ConversationSession.tsx'
 import { InputBar } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/InputBar.tsx'
 import { todoDockEntry } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/TodoPanel.tsx'
 import { resolveActiveView } from '@deepseek-ai/dsh-client-ui-conversation/src/client/view-selection.ts'
@@ -82,7 +83,8 @@ import {
   CONVERSATION_SETTINGS_NAMESPACE, type ConversationSettings,
 } from '@deepseek-ai/dsh-client-ui-conversation/src/submission-settings.ts'
 import { apply as pristineApply } from '@deepseek-ai/dsh-client-ui-conversation/src/client/apply.ts'
-import { ConversationSession } from './ConversationSession.tsx'
+import { ConversationRoot } from './ConversationRoot.tsx'
+import { ConversationSession, ConversationSessionHeader } from './ConversationSession.tsx'
 import { FileOpenRegistry, type PendingFileOpen } from './FileOpenRegistry.ts'
 import type { ConversationFileOpener } from './service.ts'
 
@@ -117,6 +119,13 @@ const ABSENT_MENU_LAUNCHER = {
   getSnapshot: (): string | null => null,
   subscribe: () => () => {},
 }
+// No-session root render: never true for a real session (FileOpenRegistry
+// only ever answers true for a sessionId that has actually requested an
+// open), so a stable constant is correct, not just convenient.
+const ABSENT_EVER_OPENED = {
+  getSnapshot: (): boolean => false,
+  subscribe: () => () => {},
+}
 
 interface WorkspaceNavigation {
   connectWorkspace(
@@ -124,14 +133,32 @@ interface WorkspaceNavigation {
   ): Promise<SessionId>
 }
 
-/** Business callbacks injected into the strict Session body, widened with the file-open drain. */
+/** Business callbacks injected into the resident Conversation shell, widened with the sticky ever-opened-a-file bit. */
+export interface EnhancedConversationInjected extends ConversationInjected {
+  readonly hooks: ConversationInjected['hooks'] & {
+    /** Whether this session (absent without one) has ever opened a file — see `FileOpenRegistry`. */
+    readonly everOpenedFile: ObservableSnapshot<boolean>
+  }
+}
+
+/** Business callbacks injected into the strict Session body, widened with the file-open drain and the sticky ever-opened-a-file bit. */
 export interface EnhancedConversationSessionInjected extends ConversationSessionInjected {
   readonly hooks: ConversationSessionInjected['hooks'] & {
     /** This Session's own pending `conversationFileOpener` request, if any. */
     readonly pendingFileOpen: ObservableSnapshot<PendingFileOpen | undefined>
+    /** Whether this session has ever opened a file — see `FileOpenRegistry`. */
+    readonly everOpenedFile: ObservableSnapshot<boolean>
   }
   /** Acknowledge the current pending file-open request (one-shot, mirrors `completeViewRequest`). */
   completePendingFileOpen: () => void
+}
+
+/** Business callbacks injected into the strict Session header, widened with the sticky ever-opened-a-file bit. */
+export interface EnhancedConversationSessionHeaderInjected extends ConversationSessionHeaderInjected {
+  readonly hooks: ConversationSessionHeaderInjected['hooks'] & {
+    /** Whether this session has ever opened a file — see `FileOpenRegistry`. */
+    readonly everOpenedFile: ObservableSnapshot<boolean>
+  }
 }
 
 /** Resolve the session-scoped Conversation action face, failing loud. */
@@ -293,9 +320,10 @@ export function apply(ctx: Context): void {
       'conversation.hero.workspace': { kind: 'single', scope: 'root' },
       'conversation.hero.agentPreset': { kind: 'single', scope: 'root' },
     },
-    inject: (sessionId: SessionId | undefined): ConversationInjected => ({
+    inject: (sessionId: SessionId | undefined): EnhancedConversationInjected => ({
       hooks: {
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
+        everOpenedFile: sessionId === undefined ? ABSENT_EVER_OPENED : fileOpenRegistry.hookForEverOpened(sessionId),
       },
       selectWorkspace: async (workspaceId) => {
         const nextId = await workspaceNavigation.connectWorkspace(workspaceId)
@@ -329,7 +357,11 @@ export function apply(ctx: Context): void {
     inject: (
       sessionId: SessionId, actions: BoundActions<typeof conversationStore>,
     ): EnhancedConversationSessionInjected => ({
-      hooks: { conversationViews, pendingFileOpen: fileOpenRegistry.hookFor(sessionId) },
+      hooks: {
+        conversationViews,
+        pendingFileOpen: fileOpenRegistry.hookFor(sessionId),
+        everOpenedFile: fileOpenRegistry.hookForEverOpened(sessionId),
+      },
       bindDraftMirror: write => inputHub.shell(sessionId).bindMirror(write),
       openView: (view, focus) => {
         activateView(sessionId, view)
@@ -349,8 +381,10 @@ export function apply(ctx: Context): void {
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
     },
     store: conversationStore,
-    inject: (sessionId: SessionId, actions: BoundActions<typeof conversationStore>): ConversationSessionHeaderInjected => ({
-      hooks: { conversationViews },
+    inject: (
+      sessionId: SessionId, actions: BoundActions<typeof conversationStore>,
+    ): EnhancedConversationSessionHeaderInjected => ({
+      hooks: { conversationViews, everOpenedFile: fileOpenRegistry.hookForEverOpened(sessionId) },
       open: (id) => { sessions.open(id) },
       selectView: (view) => {
         activateView(sessionId, view)
@@ -479,19 +513,11 @@ export function apply(ctx: Context): void {
     openFile: (sessionId, path, workspaceId) => {
       if (sessions.binding(sessionId) === undefined) return false
       if (!slots.entries('conversation.view').some(entry => entry.options.id === 'file')) return false
-      // A session that has never had a first turn renders neither its
-      // header tabs nor its view body — both gate on the pristine
-      // `session.blank && conversationPhase(...) === 'blank'` Hero posture
-      // (`ConversationSessionHeader`/`ConversationSession` in
-      // `dsh-client-ui-conversation`) — so queuing a File-tab request here
-      // would silently land in a hidden view with no visible effect. `blank`
-      // on the list row is the same summary signal `dsh-client-ui-workspace`
-      // itself reads for this (see `WorkspaceBrowser.tsx`'s
-      // `currentBlankSessionId`); it can't see a since-typed, not-yet-sent
-      // draft, but neither can the Hero gate itself. Returning false here
-      // lets the sidebar's own in-app preview modal (`FilesNode`'s own
-      // fallback) show the file instead.
-      if (sessions.list.getSnapshot().byId[sessionId]?.blank === true) return false
+      // Queuing this also marks the session's sticky `everOpenedFile` bit
+      // (see FileOpenRegistry), which is what keeps ConversationRoot/
+      // ConversationSessionHeader/ConversationSession out of their pristine
+      // blank/Hero gate even when the session has never had a first turn —
+      // otherwise a queued request would drain into a hidden view.
       fileOpenRegistry.request(sessionId, path, workspaceId)
       return true
     },

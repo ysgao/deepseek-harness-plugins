@@ -16,20 +16,24 @@ this package provides the `conversationFileOpener` optional Context
 service (`ctx.get('conversationFileOpener')`) — the cross-session bridge
 that lets `dsh-plugins-client-ui-workspace-files`'s sidebar Files tree dock
 a file into a session's File tab (View/Diff/Edit, from
-`dsh-plugins-client-ui-conversation-files`) instead of always falling back
-to its own in-app preview modal.
+`dsh-plugins-client-ui-conversation-files`), even before that session's
+first turn, when the pristine shell would otherwise still be showing its
+centered Hero landing screen.
 
 To get there:
 
 - `src/FileOpenRegistry.ts` is new: a small per-session pending-request
   queue (`request`/`complete`/`hookFor`), the only mechanism available to
   hand a file-open request across the React boundary between the sidebar
-  (any session) and the Session body slot (only the currently mounted
+  (any session) and the Session's own slots (only the currently mounted
   session) — no pristine API reaches a live per-session store instance from
   outside its own render tree (`ui-renderer`'s `SlotRegistry.resolveStore`
   is private, and `StoreHandle.create()` is documented "framework machinery
   and tests only" — calling it directly would create a disconnected
-  instance, not the live one the mounted component uses).
+  instance, not the live one the mounted component uses). It also tracks a
+  second, sticky fact per session: `hookForEverOpened` reports whether a
+  file has ever been opened there, independent of the one-shot pending
+  request — see "`conversationFileOpener` design notes" below for why.
 - `src/service.ts` is new: the `ConversationFileOpener` service interface
   and its `declare module '@deepseek-ai/cordis'` Context merge, following
   this codebase's standing convention for optional cross-package services.
@@ -38,29 +42,36 @@ To get there:
   `ComposerBlockRegistry`, `ComposerSubmissionPolicy`), same four slot
   registrations, same locale dictionaries, same `ConversationController`/
   `todoDockEntry`/`queueDockEntry` plugins, all imported unchanged from the
-  original package's own `./src/*` export. The only edits:
-  `registerConversationSession`'s `inject()` factory gains a
-  `pendingFileOpen` hook and `completePendingFileOpen` callback
-  (`EnhancedConversationSessionInjected`, widening the pristine
-  `ConversationSessionInjected`), its registered component is this
-  package's own forked `ConversationSession` instead of the pristine one,
-  and one `ctx.provide('conversationFileOpener', ...)` call is added at the
-  end.
+  original package's own `./src/*` export. The edits: `registerConversationRoot`,
+  `registerConversationSession`, and `registerConversationHeader` each gain
+  an `everOpenedFile` hook (`EnhancedConversationInjected`/
+  `EnhancedConversationSessionInjected`/`EnhancedConversationSessionHeaderInjected`,
+  each widening its pristine counterpart), `registerConversationSession`
+  additionally gains a `pendingFileOpen` hook and `completePendingFileOpen`
+  callback, all three register this package's own forked components instead
+  of the pristine ones, and one `ctx.provide('conversationFileOpener', ...)`
+  call is added at the end.
+- `src/ConversationRoot.tsx` is a fork of the original's own
+  `skeleton/ConversationRoot.tsx` — same body (Hero chrome, composer
+  positioning, the composer chain, width handles), with `hero` (and
+  therefore `phase`) also staying `false` once `everOpenedFile` is true.
 - `src/ConversationSession.tsx` is a fork of the original's own
-  `skeleton/ConversationSession.tsx` `ConversationSession` export — same
-  body, plus one effect that drains a pending `conversationFileOpener`
-  request into this Session's own `actions.openView('file', focus)` (the
-  same one-shot `viewRequest`/`completeViewRequest` mechanism the File tab
-  already reads — see `dsh-plugins-client-ui-conversation-files/src/
-  FileView.tsx`'s `OpenFileFocus`). `ConversationSessionHeader` (the
-  pristine file's other export, unaffected by file-opening) is reused
-  unchanged from `@deepseek-ai/dsh-client-ui-conversation/src/client/
-  skeleton/ConversationSession.tsx`; so are `ConversationRoot` and
-  `InputBar`.
+  `skeleton/ConversationSession.tsx` — both its exports.
+  `ConversationSession` gains one effect that drains a pending
+  `conversationFileOpener` request into this Session's own
+  `actions.openView('file', focus)` (the same one-shot
+  `viewRequest`/`completeViewRequest` mechanism the File tab already reads
+  — see `dsh-plugins-client-ui-conversation-files/src/FileView.tsx`'s
+  `OpenFileFocus`), and both it and `ConversationSessionHeader` widen the
+  pristine `session.blank && conversationPhase(...) === 'blank'` gate (which
+  hides the header tabs and the view body alike) with the same
+  `!everOpenedFile` escape hatch `ConversationRoot` uses for `hero`.
+  `InputBar` is reused unchanged.
 - `src/ConversationRoot.module.css` is a local copy of the original's CSS
   Module, not a cross-package import: the CSS-modules-inline transform
   resolves only relative paths (the same finding
   `../client-ui-workspace-enhanced` made for `WorkspaceBrowser.module.css`).
+  Both forked skeleton files share this one copy.
 
 ## Why inlining the original package's internals is safe here
 
@@ -79,15 +90,23 @@ duplicate identity against.
 ## `conversationFileOpener` design notes
 
 - `openFile(sessionId, path, workspaceId)` returns `false` when `sessionId`
-  resolves no session binding, when no `conversation.view` entry registers
-  the `file` id (this package installed without
-  `dsh-plugins-client-ui-conversation-files`), or when `sessionId` is still
-  blank (no first turn yet) — a blank session's `ConversationSessionHeader`
-  and `ConversationSession` both stay behind the pristine Hero gate
-  regardless of what `openView` is told, so a queued request there would
-  vanish with no visible effect. All three checks fail loud toward the
-  caller's own documented fallback (`FilesNode`'s in-app preview modal)
+  resolves no session binding, or when no `conversation.view` entry
+  registers the `file` id (this package installed without
+  `dsh-plugins-client-ui-conversation-files`). Both checks fail loud toward
+  the caller's own documented fallback (`FilesNode`'s in-app preview modal)
   rather than silently queuing a request nothing will ever drain.
+- A session that has never had a first turn is NOT refused: `request()`
+  also marks the session's `everOpened` bit (sticky — set once, never
+  cleared), which `ConversationRoot`'s `hero`, `ConversationSessionHeader`'s
+  `hideChrome`, and `ConversationSession`'s own blank early-return all read
+  alongside the pristine `session.blank && conversationPhase(...) ===
+  'blank'` check. Without this, opening a file from the sidebar on a brand
+  new conversation would queue correctly but drain into a view the pristine
+  Hero gate keeps hidden — the bug this whole `everOpened` mechanism exists
+  to close. The bit deliberately never reverts to `false`: once a session
+  has shown a file, it keeps the ordinary (non-Hero) header/tabs/composer
+  layout for the rest of its life in this registry, the same way an actual
+  first turn would have.
 - The queue is keyed by `sessionId`, not restricted to "the current
   session" — `dsh-plugins-client-ui-workspace-files`'s own `FilesNode` only
   ever calls it with `currentSessionId` today (its own choice, not this
@@ -102,25 +121,25 @@ duplicate identity against.
 
 ## Verification
 
-`typecheck` + `build` are clean; the closure-factory bundle (`lib/client.js`,
-622.67 kB before gzip — the whole conversation shell, including the lexical
-composer editor, ends up in this one package now that it owns the
-registration) is byte-verified against the expected
-`window.__ModuleLoader__.load({id, factory})` wire format, exporting
-`apply`, `inject`, `ConversationSession`, with 11 CSS injection markers (this
-package's own `ConversationRoot.module.css` plus the unchanged, inlined
-`InputBar`/queue/settings skeleton CSS Modules). A real `dsh --profile
-web-app --dump-config` against `dsh-plugins-bundle-workspace-git` shows
-`ui-conversation` disabled and `conversation-enhanced` inserted with no
-composition errors. A real `dsh web` boot serves a working page whose
+`typecheck` + `build` are clean (the closure-factory bundle, `lib/client.js`
+— the whole conversation shell, including the lexical composer editor, ends
+up in this one package now that it owns the registration — grew from the
+`ConversationSession`-only fork's 622.67 kB to 646.73 kB before gzip once
+`ConversationRoot`/`ConversationSessionHeader` joined it). A real `dsh
+--profile web-app --dump-config` against `dsh-plugins-bundle-workspace-git`
+shows `ui-conversation` disabled and `conversation-enhanced` inserted with
+no composition errors, and a real `dsh web` boot serves a working page whose
 combo-script manifest lists this package's `client.js` and **omits**
 `@deepseek-ai/dsh-client-ui-conversation/client.js` — confirming the
-disable took effect at the wire level; the combo script itself fetches
-`HTTP 200` with this package's module id present and every expected
-`window.__ModuleLoader__.load({...})` call intact. See
-`../../../ARCHITECTURE.md`'s "Confirmed working" section for exactly what
-was and wasn't checked (genuine browser-side DOM rendering is still
-unverified, same caveat as every other Client package here).
+disable took effect at the wire level. See `../../../ARCHITECTURE.md`'s
+"Confirmed working" section for exactly what was and wasn't checked
+(genuine browser-side DOM rendering of the `everOpenedFile` escape hatch —
+opening a file on a brand-new session and seeing the same header/tabs/
+composer layout an engaged session gets — is the one behavior this write-up
+describes but a future verification pass still needs to confirm against a
+live boot; the byte-for-byte wire-format/CSS-injection-marker counts the
+`ConversationSession`-only fork was once checked against are stale after
+this widening and are not restated here).
 
 **Test-only finding, not part of this package:** verifying against a
 `web-app`-derived profile once hit `dsh-plugins-bundle-workspace-git`'s own

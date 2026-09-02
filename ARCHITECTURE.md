@@ -335,21 +335,30 @@ is scoped to whichever session is currently mounted, and no pristine API
 reaches a live per-session store instance from outside its own render tree.
 `dsh-plugins-client-ui-conversation-enhanced` provides this bridge
 (`conversationFileOpener`) by disabling `dsh-client-ui-conversation`'s own
-row and inserting a replacement that forks only `ConversationSession` (the
-one component whose render body needs the drain effect), reusing
-`ConversationRoot`, `ConversationSessionHeader`, `InputBar`, and everything
-else unchanged. Because `ConversationSessionHeader` and `ConversationSession`
-are unchanged, a session that has never had a first turn still hits their
-pristine `session.blank && conversationPhase(...) === 'blank'` Hero gate —
-tabs and view body both stay hidden regardless of what `openView` is told,
-so `conversationFileOpener` refuses a blank target session up front (the
-list row's own `blank` summary bit) rather than queuing a request that would
-land with no visible effect. `dsh-plugins-client-ui-workspace-files`'s
-`openFileInSession` degrades correctly whenever this bridge declines a
-request — whether because this package isn't composed in, the target
-session has no binding, or the session is still blank — `FilesNode` falls
-back to its own in-app preview modal in every case, so the two packages
-remain independently useful.
+row and inserting a replacement that forks `ConversationRoot`,
+`ConversationSessionHeader`, and `ConversationSession` (`InputBar` and
+everything else stay unchanged). All three need forking, not just the one
+whose render body drains the request: `dsh-client-ui-conversation`'s
+pristine `session.blank && conversationPhase(...) === 'blank'` Hero gate is
+duplicated across all three — `ConversationRoot`'s `hero` computation (which
+also decides the composer's docked-vs-centered layout and the width
+handles), `ConversationSessionHeader`'s `hideChrome` (the title/tabs row),
+and `ConversationSession`'s own blank early-return (the view body) — so a
+session that has never had a first turn would otherwise show a file
+requested from the sidebar in a fully hidden tree, regardless of what
+`openView` is told. Each fork's gate ORs in one more condition: the
+session's `everOpenedFile` bit, a sticky (never reverts) per-session flag
+that `FileOpenRegistry` sets the moment `conversationFileOpener.openFile`
+is first called for that session. Once true, the session gets the same
+active-phase layout (ordinary header, docked composer, width handles, all
+tabs visible) an engaged session already has — a File preview opened before
+any turn behaves exactly like one opened after. `dsh-plugins-client-ui-
+workspace-files`'s `openFileInSession` still degrades correctly whenever
+this bridge declines a request outright — no binding for the target
+session, or this package installed without the File-tab package
+(`dsh-plugins-client-ui-conversation-files`) — `FilesNode` falls back to its
+own in-app preview modal in both cases, so the two packages remain
+independently useful.
 
 ## Testing procedures
 
