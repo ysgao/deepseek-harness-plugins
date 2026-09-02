@@ -43,6 +43,17 @@ type SplitRootStyle = CSSProperties & { '--ds-file-editor-ratio': number }
 /** Debounce between a keystroke and the preview pane (Markdown or syntax-highlighted text) re-rendering it. */
 const PREVIEW_DEBOUNCE_MS = 150
 
+/**
+ * `ReadBlock`'s own default (16) caps displayed lines with a collapse/expand
+ * toggle in place of the rest — the right posture for a bounded chat-message
+ * excerpt, its original use, but wrong for this pane: a live full-file
+ * preview needs every line rendered so `.previewPane`'s own scroll container
+ * (`FileEditor.module.css`) has real content to scroll, not a toggle hiding
+ * it. `Infinity` keeps `ReadBlock`'s own "hidden > 0" cap check false
+ * unconditionally, at any file length.
+ */
+const NO_MAX_LINES = Number.POSITIVE_INFINITY
+
 /** The preview pane's resize divider: accessible name and drag/double-click hint. */
 export interface FileEditorResizeLabels {
   /** The divider's `aria-label`. */
@@ -168,6 +179,7 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
                   totalLines={previewLines.length}
                   lang={lang}
                   labels={labels.read}
+                  maxLines={NO_MAX_LINES}
                 />
               )}
           </div>

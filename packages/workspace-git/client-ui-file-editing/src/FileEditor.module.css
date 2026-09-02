@@ -68,3 +68,17 @@
   padding: 16px;
   background: var(--dsw-alias-markdown-code-block);
 }
+
+/* ReadBlock's own banner (path label, lang tag, copy button) duplicates
+   chrome this split view already has elsewhere (the open file's path in the
+   File tab header, copy-via-selection in the editor pane itself) — dead
+   weight in a live side-by-side preview, unlike ReadBlock's original
+   standalone-excerpt use where it's the only such chrome. `[data-read]` is
+   ReadBlock's own stable query hook, not a hashed CSS Modules class name —
+   the only handle available without patching the vendored primitives
+   package (`../../../ARCHITECTURE.md`: never patch the vendor). Targets the
+   banner by DOM position (ReadBlock's first child), since the hashed
+   `.banner` class itself isn't reachable from here. */
+.previewPane :global([data-read]) > :first-child {
+  display: none;
+}
