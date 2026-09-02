@@ -1,0 +1,10 @@
+{
+  "name": "anthropic-subscription",
+  "private": true,
+  "description": "Build-only grouping for this plugin bundle's packages — declares no dependencies of its own. `pnpm run build` (from this directory, or `pnpm --filter anthropic-subscription run build` from the root) builds every package below in the same host-then-client order the root's own `build` script uses: the client packages import the Typert `/remote` stub that only exists once the host packages' own tsdown pass has generated it.",
+  "scripts": {
+    "build:host": "tsc -b api-authorization-controller cli-login-app && (cd ../.. && tsdown --filter dsh-plugins-api-authorization-controller --filter dsh-plugins-cli-login-app)",
+    "build:client": "tsc -b client-remotes-anthropic-subscription client-ui-settings-anthropic-subscription && for d in client-remotes-anthropic-subscription client-ui-settings-anthropic-subscription; do (cd \"$d\" && tsdown) || exit 1; done",
+    "build": "pnpm run build:host && pnpm run build:client"
+  }
+}

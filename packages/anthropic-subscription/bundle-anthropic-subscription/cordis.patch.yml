@@ -24,10 +24,25 @@
 # generated Remote contribution on the Client — the role
 # @deepseek-ai/dsh-api-remotes fills for every other namespace, but can't
 # for this out-of-tree one (see that package's own README). Kept as its own
-# dedicated plugin, not folded into any future Settings UI consumer: a
+# dedicated plugin, not folded into the Settings UI consumer below: a
 # $mount failure there would throw that plugin's whole apply() and take
 # down everything else it renders. This row's own failure stays local to
 # its own fiber instead.
+#
+# ui-settings-models (disabled) / ui-settings-anthropic-subscription
+# (inserted in its place): the Settings > Models sign-in panel. Neither of
+# that package's own extension slots (settings.models.provider-card/footer)
+# reaches inside ProviderEditor's own card body, so — same as workspace-git's
+# ui-workspace/ui-conversation replacements — the only options were a vendor
+# patch (forbidden) or a full replacement: "unplug the original plugin row,
+# plug in an enhanced one" (see ../../../ARCHITECTURE.md's "Why replace the
+# plugin instead of patching it"). `id: ui-settings-models` matches the row
+# name the vendored packages/bundle/web-app/cordis.patch.yml uses; this
+# bundle therefore requires installing into a web-app-derived profile after
+# @deepseek-ai/dsh-web-app itself (cordis.patch.yml operations apply in
+# bundle-list order — installing this bundle first leaves nothing to
+# disable, a harmless no-op warning, not an error, same as workspace-git's
+# own documented install-order requirement).
 
 - insert:
     - id: authorization-seam
@@ -38,3 +53,10 @@
 
     - id: remotes-anthropic-subscription
       name: 'dsh-plugins-client-remotes-anthropic-subscription'
+
+- id: ui-settings-models
+  disabled: true
+
+- insert:
+    - id: ui-settings-anthropic-subscription
+      name: 'dsh-plugins-client-ui-settings-anthropic-subscription'

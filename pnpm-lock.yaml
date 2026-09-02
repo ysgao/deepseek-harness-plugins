@@ -9692,6 +9692,8 @@ importers:
         specifier: link:../cosmokit
         version: link:../cosmokit
 
+  packages/anthropic-subscription: {}
+
   packages/anthropic-subscription/api-authorization-controller:
     dependencies:
       zod:
@@ -9725,6 +9727,9 @@ importers:
       dsh-plugins-client-remotes-anthropic-subscription:
         specifier: workspace:^
         version: link:../client-remotes-anthropic-subscription
+      dsh-plugins-client-ui-settings-anthropic-subscription:
+        specifier: workspace:^
+        version: link:../client-ui-settings-anthropic-subscription
     devDependencies:
       '@deepseek-ai/dsh-llm-pi-ai':
         specifier: workspace:^
@@ -9782,28 +9787,61 @@ importers:
 
   packages/anthropic-subscription/client-ui-settings-anthropic-subscription:
     dependencies:
-      '@deepseek-ai/dsh-client-locale':
+      '@deepseek-ai/dsh-client-ui-primitives':
         specifier: workspace:^
-        version: link:../../_vendor/deepseek-harness/packages/client/locale
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-primitives
       '@deepseek-ai/dsh-client-ui-settings-models':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/client/ui-settings-models
-      '@deepseek-ai/dsh-client-ui-slots':
-        specifier: workspace:^
-        version: link:../../_vendor/deepseek-harness/packages/client/ui-slots
       dsh-plugins-api-authorization-controller:
         specifier: workspace:^
         version: link:../api-authorization-controller
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/api/remotes
+      '@deepseek-ai/dsh-authorization':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/authorization
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/locale
+      '@deepseek-ai/dsh-client-store':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/store
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-settings
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-slots
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/credentials
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/typert/protocol
+      '@deepseek-ai/dsh-util-values':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/util/values
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ~18.3.0
+        version: 18.3.7(@types/react@18.3.31)
       react:
         specifier: ^18.2.0
         version: 18.3.1
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
-    devDependencies:
-      '@types/react':
-        specifier: ~18.3.1
-        version: 18.3.31
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

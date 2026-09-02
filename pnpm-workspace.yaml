@@ -20,6 +20,7 @@ packages:
   # host-before-client order — see that package.json's own description.
   - packages/workspace-git
   - packages/workspace-git/*
+  - packages/anthropic-subscription
   - packages/anthropic-subscription/*
 
 # Mirrors deepseek-ai/deepseek-harness's own allowBuilds policy (pnpm 10+

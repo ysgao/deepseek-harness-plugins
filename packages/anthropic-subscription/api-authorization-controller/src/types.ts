@@ -31,6 +31,9 @@ export type AuthorizationStreamFrame =
   | { readonly type: 'prompt-requested'; readonly key: CredentialKey; readonly prompt: WireAuthorizationPrompt }
   | { readonly type: 'prompt-resolved'; readonly key: CredentialKey }
 
+/** Authorization events available to a Remote Event assembly (see `@deepseek-ai/dsh-authorization`'s own `Events` declaration). */
+type AuthorizationRemoteEvent = 'authorization/settled'
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** No flow claims the requested key. */
@@ -42,4 +45,6 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     /** No prompt is pending for the requested key. */
     'authorization/prompt-not-found': {}
   }
+
+  interface TypertRemoteEventSelection extends Record<AuthorizationRemoteEvent, true> {}
 }

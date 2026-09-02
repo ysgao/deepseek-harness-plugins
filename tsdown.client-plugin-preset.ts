@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { readFile as readFileAsync } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { dirname, resolve as resolvePath, sep } from 'node:path'
 import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
@@ -69,8 +70,21 @@ function styleInjectionModule(id: string, fileId: string, css: string, classMap?
   return source.join('\n')
 }
 
-/** Resolve an emitted JS asset import back to its source-tree counterpart under `src/`. */
+const requireFromPreset = createRequire(import.meta.url)
+
+/**
+ * Resolve an emitted JS asset import back to its source-tree counterpart
+ * under `src/`. A bare package specifier (a package forking another's
+ * `./src/*` export, e.g. `@deepseek-ai/dsh-client-ui-settings-models/src/
+ * client/ModelsSection.module.css`) is not a path fragment relative to the
+ * importer's directory — it is resolved through real Node module resolution
+ * (honoring the target package's own `exports` map) instead, rooted at the
+ * importer's directory so it walks up to that package's own `node_modules`.
+ */
 function sourceAssetPath(source: string, importer: string): string {
+  if (!source.startsWith('.') && !source.startsWith('/')) {
+    return requireFromPreset.resolve(source, { paths: [dirname(importer)] })
+  }
   const emitted = resolvePath(dirname(importer), source)
   if (existsSync(emitted)) return emitted
   const boundary = emitted.indexOf(TYPES_MARKER)

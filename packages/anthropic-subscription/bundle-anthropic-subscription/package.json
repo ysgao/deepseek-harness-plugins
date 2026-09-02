@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugins-bundle-anthropic-subscription",
-  "description": "Installable dsh --profile patch layer that mounts the generic ctx.authorization RPC controller (and dsh-llm-pi-ai, if not already present) into a base-derived profile such as web",
+  "description": "Installable dsh --profile patch layer that mounts the generic ctx.authorization RPC controller, its Client Remote mount, and the Settings > Models sign-in panel into a web-app-derived profile",
   "version": "0.0.0",
   "type": "module",
   "main": "lib/index.js",
@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "dsh-plugins-api-authorization-controller": "workspace:^",
-    "dsh-plugins-client-remotes-anthropic-subscription": "workspace:^"
+    "dsh-plugins-client-remotes-anthropic-subscription": "workspace:^",
+    "dsh-plugins-client-ui-settings-anthropic-subscription": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-llm-pi-ai": "workspace:^"
