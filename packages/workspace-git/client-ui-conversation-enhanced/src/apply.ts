@@ -5,7 +5,7 @@
  * the sidebar Files tree dock a file into the current session's File tab.
  * `dsh-plugins-bundle-workspace-git`'s `cordis.patch.yml` disables the
  * original `ui-conversation` row and installs this one in its place — see
- * `../ARCHITECTURE.md`'s "Why replace the plugin instead of patching it".
+ * `../../../../ARCHITECTURE.md`'s "Why replace the plugin instead of patching it".
  *
  * Every registration here is unchanged from the pristine `apply()` except
  * `registerConversationSession`, whose `inject()` factory gains a

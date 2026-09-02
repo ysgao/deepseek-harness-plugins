@@ -36,7 +36,7 @@ export type EnhancedConversationSessionProps =
  * one pending `conversationFileOpener` request per render, addressed to
  * this Session's own id, by calling this Session's own `openView` action —
  * the only way to reach a live per-session store instance from outside its
- * render tree (`../ARCHITECTURE.md`'s "File tab: a pristine slot, but a
+ * render tree (`../../../../ARCHITECTURE.md`'s "File tab: a pristine slot, but a
  * fork-only trigger").
  * @param props - Strict Session input/store, view ledger, pending file-open, and render shares.
  * @returns the active view area, or null while the Session remains blank.
