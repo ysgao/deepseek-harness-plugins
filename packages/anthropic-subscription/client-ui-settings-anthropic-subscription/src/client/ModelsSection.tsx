@@ -52,8 +52,17 @@ export interface ModelsSectionInjected {
   }
   /** The Host operations the section and its cards invoke. */
   operations: ModelsOperations
-  /** Subscription sign-in service, threaded to each row's editor card. */
-  authorization: IAuthorization
+  /**
+   * Subscription sign-in service, threaded to each row's editor card.
+   * Absent whenever `dsh-plugins-client-remotes-anthropic-subscription`
+   * hasn't mounted `remote.authorization` (not installed, or its own
+   * mount failed and was caught rather than thrown — see that package's
+   * own README): this section still renders and functions normally, just
+   * without the sign-in affordance, per this plugin's own resilience
+   * design (see `../index.ts`'s doc comment on why `remote.authorization`
+   * is never in this plugin's own top-level `inject`).
+   */
+  authorization?: IAuthorization | undefined
   /** Settings schema and immutable path callbacks. */
   schema: SettingsSchemaOperations
   /** Section copy. */
@@ -213,7 +222,7 @@ export function ModelsSection(props: ModelsSectionProps): ReactNode {
   const { controller, useSnapshot, operations, authorization, schema, t, renderSlot } = props
   if (
     controller === undefined || useSnapshot === undefined || operations === undefined
-    || authorization === undefined || schema === undefined || t === undefined
+    || schema === undefined || t === undefined
   ) return null
   return <Loaded injected={{ controller, useSnapshot, operations, authorization, schema, t }} renderSlot={renderSlot} />
 }

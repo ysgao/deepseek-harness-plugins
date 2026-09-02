@@ -87,7 +87,7 @@ export interface ProviderEditorProps {
    * registered for this row's derived key — no per-family hardcoding decides
    * that, the registry does.
    */
-  authorization?: IAuthorization
+  authorization?: IAuthorization | undefined
   /** Section copy. */
   t: (key: keyof typeof en) => string
   /** Disable writes (read-only settings provider). */

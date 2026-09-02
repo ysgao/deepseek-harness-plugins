@@ -50,6 +50,7 @@ import type {} from 'dsh-plugins-api-authorization-controller/remote'
 // never becomes a legal ctx.remote.$on key.
 import type {} from '@deepseek-ai/dsh-authorization'
 import { AuthorizationRuntime } from './authorization-runtime.ts'
+import type { IAuthorization } from './authorization-runtime.ts'
 import { ModelsSection } from './ModelsSection.tsx'
 import type { ModelsSectionInjected } from './ModelsSection.tsx'
 import {
@@ -108,14 +109,26 @@ export function refreshIfLoaded(controller: ModelsSettingsStore): void {
  * Required services (cordis fiber inject). The target slot is declared by
  * ui-settings' apply, whose activation order relative to this one is NOT
  * constrained; registration depends on each slot through `slots.inject()`.
- * `remote.authorization` is required alongside the generic `remote`: the
- * `ctx.remote[...]` property proxy is topology-sensitive and only resolves a
- * namespace this fiber's own inject names, so this plugin stays pending
- * (never crashes) until dsh-plugins-client-remotes-anthropic-subscription
- * mounts it.
+ *
+ * Deliberately NOT listed here: `remote.authorization`. This plugin is
+ * itself a top-level loader entry (inserted by `bundle-anthropic-
+ * subscription`'s own `cordis.patch.yml`), and this repo's Client boot
+ * (`@deepseek-ai/dsh-client-web`'s `assertEntriesActive`) treats ANY
+ * top-level entry left "pending" at the end of boot as a FATAL error for
+ * the whole app — not a silently-degraded feature — exactly like a thrown
+ * exception. A fiber merely nested inside an already-active entry's own
+ * `apply()` is invisible to that check, so `remote.authorization` is instead
+ * required by a nested `ctx.inject()` call inside `apply()` below, which can
+ * stay pending forever (dsh-plugins-client-remotes-anthropic-subscription
+ * never installed, or its own mount failed and was caught rather than
+ * thrown) without blocking this plugin's own activation. This was
+ * discovered by deliberately breaking the mount during development and
+ * observing "web boot: 1 entry did not activate" as a second, independent
+ * fatal-boot path even after the mounting plugin's own throw was fixed —
+ * see `dsh-plugins-client-remotes-anthropic-subscription`'s own README.
  */
 export const inject = [
-  'slots', 'locale', 'remote', 'remote.credentials', 'remote.llm', 'remote.settings', 'remote.authorization',
+  'slots', 'locale', 'remote', 'remote.credentials', 'remote.llm', 'remote.settings',
   'settingsScope', 'settingsSchema',
 ]
 
@@ -127,7 +140,30 @@ export const inject = [
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-anthropic-subscription: copy dictionaries')
-  const authorization = new AuthorizationRuntime(ctx, ctx.remote.authorization)
+
+  // Optional: see the `inject` doc comment above for why `remote.authorization`
+  // is required here, nested, instead of in this plugin's own top-level
+  // `inject`. `injected()` below reads this mutable capture on every call, so
+  // the sign-in panel appears once (if) this nested inject activates, and
+  // simply never appears if it doesn't — the rest of the Models section
+  // renders and functions normally either way.
+  let authorization: IAuthorization | undefined
+  void ctx.inject(['remote.authorization'], (scope) => {
+    const runtime = new AuthorizationRuntime(scope, scope.remote.authorization)
+    authorization = runtime
+    scope.effect(() => {
+      // authorization/settled rides the generic forwarded-event channel
+      // rather than a dedicated HostFrame, so dsh-client-runtime itself never
+      // subscribes to it (it only ever calls ctx.remote.$dispatch, never
+      // $on); this plugin, already bridging $on for its own refresh needs
+      // below, reports the settlement into this runtime instead.
+      const dispose = scope.remote.$on('authorization/settled', (key) => { runtime.notifySettled(key) })
+      return () => {
+        authorization = undefined
+        dispose()
+      }
+    }, 'ui-settings-anthropic-subscription: authorization settlement bridge')
+  })
 
   const schema = createSettingsSchemaOperations(ctx.settingsSchema)
   // Bound once here, where the Remote namespaces are declared in this plugin's
@@ -175,12 +211,6 @@ export function apply(ctx: ClientContext): void {
       ctx.remote.$on('settings/document-updated', () => { refreshModels() }),
       ctx.remote.$on('credentials/reference-updated', refreshModels),
       ctx.remote.$on('llm/adapters-updated', refreshModels),
-      // authorization/settled rides the generic forwarded-event channel
-      // rather than a dedicated HostFrame, so dsh-client-runtime itself never
-      // subscribes to it (it only ever calls ctx.remote.$dispatch, never
-      // $on); this plugin, already bridging $on for its own refresh needs,
-      // reports the settlement into its own AuthorizationRuntime instead.
-      ctx.remote.$on('authorization/settled', (key) => { authorization.notifySettled(key) }),
       ctx.on('connection/reset', refreshModels),
     ]
     return () => {
