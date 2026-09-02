@@ -10065,6 +10065,12 @@ importers:
       clsx:
         specifier: ^2.0.0
         version: 2.1.1
+      dsh-plugins-api-workspace-file-controller:
+        specifier: workspace:^
+        version: link:../api-workspace-file-controller
+      dsh-plugins-api-workspace-git-controller:
+        specifier: workspace:^
+        version: link:../api-workspace-git-controller
       dsh-plugins-client-ui-workspace-files:
         specifier: workspace:^
         version: link:../client-ui-workspace-files

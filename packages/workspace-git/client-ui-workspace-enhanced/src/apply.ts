@@ -46,6 +46,24 @@ import { UiWorkspaceService } from '@deepseek-ai/dsh-client-ui-workspace/src/cli
 import { createWorkspaceViewStore } from '@deepseek-ai/dsh-client-ui-workspace/src/client/stores.ts'
 import { WorkspacePicker } from '@deepseek-ai/dsh-client-ui-workspace/src/client/WorkspacePicker.tsx'
 import { en, zh } from '@deepseek-ai/dsh-client-ui-workspace/src/client/locales.ts'
+// This bundle's own generated Remote namespace contributions
+// (dsh-plugins-api-workspace-file-controller, dsh-plugins-api-workspace-git-
+// controller): mounted below via ctx.remote.$mount, since dsh-typert-loader
+// only auto-discovers the Host `./typert` half (see
+// @deepseek-ai/dsh-typert-loader's README, "Known Limitations" — client
+// runtimes need an explicit composition owner) and the vendored
+// @deepseek-ai/dsh-api-remotes client assembly is a static, hand-curated
+// list unaware of this out-of-tree plugin. Mounted here, not in
+// dsh-plugins-client-ui-workspace-files (the actual consumer of both
+// namespaces): Cordis requires the reading fiber's own `inject` to name a
+// service (`remote.<namespace>`), so the plugin that calls
+// `ctx.remote.$mount()` for a namespace can never be the same plugin that
+// also injects that namespace's own key — a self-cycle Cordis's activation
+// would deadlock on, since apply() never runs until inject is satisfied.
+// This plugin injects only the generic 'remote' (already required for
+// `ctx.remote.directoryPicker`), so it has no such cycle.
+import workspaceFileRemote from 'dsh-plugins-api-workspace-file-controller/remote'
+import workspaceGitRemote from 'dsh-plugins-api-workspace-git-controller/remote'
 import { EnhancedWorkspaceBrowser } from './WorkspaceBrowser.tsx'
 
 /** Dictionary namespace owned by this plugin — same namespace, same dictionaries, as the original it replaces. */
@@ -61,11 +79,23 @@ export const inject = [
 ]
 
 /**
- * Register the enhanced browser and the unmodified picker once their slot
- * declarations are on the ledger.
+ * Mount this bundle's own `workspace-files`/`workspace-git` Remote
+ * contributions (see the import comment above), then register the enhanced
+ * browser and the unmodified picker once their slot declarations are on
+ * the ledger.
  * @param ctx - client root context.
+ * @returns disposer unmounting both Remote contributions in reverse order.
  */
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<() => Promise<void>> {
+  const disposers: Array<() => Promise<void>> = []
+  try {
+    for (const contribution of [workspaceFileRemote, workspaceGitRemote]) {
+      disposers.push(await ctx.remote.$mount(contribution))
+    }
+  } catch (error) {
+    for (const dispose of disposers.reverse()) await dispose()
+    throw error
+  }
   const sessions = ctx.get('sessions') as ISessions
   const workspaces = ctx.get('workspaces') as IWorkspaces
   const uiWorkspace = new UiWorkspaceService(
@@ -148,4 +178,7 @@ export function apply(ctx: Context): void {
     },
     WorkspacePicker,
   ))
+  return async () => {
+    for (const dispose of disposers.reverse()) await dispose()
+  }
 }

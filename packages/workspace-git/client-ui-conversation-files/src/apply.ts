@@ -38,8 +38,12 @@ import { en, zh } from './locales.ts'
 /** Dictionary namespace owned by this plugin. */
 const NS = 'conversation-files'
 
-/** Services required by the File view. */
-export const inject = ['slots', 'locale', 'remote']
+/** Services required by the File view. The two specific 'remote.<namespace>'
+ * sub-keys are required alongside the generic 'remote': the ctx.remote[...]
+ * property proxy is topology-sensitive and only resolves a namespace this
+ * fiber's own inject names (see dsh-plugins-client-ui-workspace-enhanced's
+ * apply.ts, which mounts both contributions). */
+export const inject = ['slots', 'locale', 'remote', 'remote.workspace-files', 'remote.workspace-git']
 
 /** Unwrap a generated Remote call's result, rejecting with its typed `RemoteError` on failure. */
 async function unwrap<T>(promise: Promise<RemoteResult<T>>): Promise<T> {

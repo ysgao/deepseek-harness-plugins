@@ -31,7 +31,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-// Type-only: pulls this package's own generated Remote namespace merges.
+// Type-only: this package's own generated Remote namespace merges, and the
+// two contributions mounted by dsh-plugins-client-ui-workspace-enhanced
+// (see that package's apply.ts) before this package's own apply() runs —
+// Cordis requires the reading fiber's own `inject` to name a service
+// (`remote.<namespace>`), so the plugin that calls `ctx.remote.$mount()`
+// for a namespace can never be the same plugin that also injects that
+// namespace's own key (a self-cycle Cordis's activation would deadlock
+// on): the mount lives in workspace-enhanced instead.
 import type {} from 'dsh-plugins-api-workspace-file-controller/remote'
 import type {} from 'dsh-plugins-api-workspace-git-controller/remote'
 // Type-only: pulls ctx.remote.session (openWorkspacePath), already required
@@ -56,8 +63,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required Client services. */
-export const inject = ['locale', 'remote']
+/** Required Client services. Both namespace sub-keys are required alongside the
+ * parent 'remote': the ctx.remote[...] property proxy is topology-sensitive and
+ * only resolves a namespace declared here, unlike ctx.get('remote'). */
+export const inject = ['locale', 'remote', 'remote.workspace-files', 'remote.workspace-git']
 
 /**
  * Register the `workspace-files` locale dictionaries and the
