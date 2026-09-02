@@ -10,6 +10,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   height: 100%;
 }
 
@@ -20,6 +21,7 @@
     8px
     calc((100% - 8px) * (1 - var(--ds-file-editor-ratio, 0.5)));
   min-height: 0;
+  min-width: 0;
   height: 100%;
 }
 
@@ -48,6 +50,7 @@
 
 .editorPane {
   min-height: 0;
+  min-width: 0;
   height: 100%;
   overflow: hidden;
   background: var(--dsw-alias-markdown-code-block);
@@ -61,11 +64,24 @@
   overflow: auto;
 }
 
+/* `min-width: 0` matters here specifically: ReadBlock's rows keep
+   `white-space: pre` (real code, unwrapped), so a single long line's
+   intrinsic width can exceed the pane's own grid-column width. Without an
+   explicit `min-width: 0`, a grid item's default automatic minimum size
+   still lets that line's own width win, growing this column (and the whole
+   split view, and potentially the page) past the pane's assigned track
+   instead of scrolling within it — the same failure mode `min-height: 0`
+   already guards against on the vertical axis throughout this file.
+
+   No pane-level padding (unlike a standalone ReadBlock use): ReadBlock's
+   own `.body` already contributes `padding: 12px 0`, which `.cm-content`'s
+   own matching padding (`codemirror/theme.ts`) mirrors for `.editorPane` —
+   see that file's own comment for why both need to agree exactly. */
 .previewPane {
   min-height: 0;
+  min-width: 0;
   height: 100%;
   overflow: auto;
-  padding: 16px;
   background: var(--dsw-alias-markdown-code-block);
 }
 
@@ -87,11 +103,12 @@
    `margin: 16px 0` ReadBlock's root (`[data-read]`, its `.block` class)
    carries regardless of which children it has — sized for ReadBlock's
    standalone chat-message-excerpt use, where that margin is the block's own
-   breathing room against surrounding prose. Here `.previewPane`'s 16px
-   `padding` already plays that role, so ReadBlock's own margin on top of it
-   only pushed the code rows down without the (now-hidden) banner to fill
-   that space, misaligning them against the editor pane's rows, which start
-   at the pane's own top edge. */
+   breathing room against surrounding prose. `.previewPane` has no padding
+   of its own (below) for the same reason `.editorPane` doesn't: each pane's
+   own internal element (ReadBlock's `.body`, CodeMirror's `.cm-content`)
+   supplies its own matching inset instead, so the two panes' rows start at
+   the same vertical offset — a pane-level margin/padding on only one side
+   would push its rows down without a counterpart on the other. */
 .previewPane :global([data-read]) {
   margin: 0;
 }
