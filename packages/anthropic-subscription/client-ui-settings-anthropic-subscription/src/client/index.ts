@@ -28,6 +28,37 @@
  * inserts this one instead, so no sibling instance of the reused files'
  * shared identity (React contexts, module-level singletons) ever coexists —
  * see `../../../../ARCHITECTURE.md` and this package's own README.
+ *
+ * Resilience (see `../../../../ARCHITECTURE.md`'s "Plugin isolation"):
+ * every `ctx.slots.register()` call below registers at `priority: -1`, one
+ * lower than the pristine plugin's own default (0) — if a bundle
+ * install-order violation ever leaves the pristine `ui-settings-models` row
+ * active too, both registrations land instead of the second one throwing,
+ * and this one wins deterministically (lowest priority renders). Each of
+ * the three slot registrations is also individually try/catch-guarded: a
+ * failure there degrades only that one row rather than crashing the app.
+ *
+ * Unlike `dsh-plugins-client-ui-workspace-enhanced`/`-conversation-
+ * enhanced`, `apply()` does NOT fall back to calling the pristine
+ * `ui-settings-models` plugin's own `apply(ctx)` if enhanced setup fails —
+ * it logs and gives up instead, leaving the Models section entirely absent
+ * (still never crashing the whole app). That fallback is deliberately not
+ * implemented here: this package's own `declare module` merge widens
+ * `LocaleNamespaceMap['settings.models']` with four extra `signIn*` keys
+ * (see `locales.ts`), and the pristine package's own `apply` is defined
+ * directly in its `./src/client/index.ts` — the same file that declares
+ * *its own*, narrower version of that exact merge. Importing that file for
+ * its `apply` value, by any static import form, pulls its ambient
+ * `declare module` block into this program too, and TypeScript rejects two
+ * non-identical declarations of the same augmented property
+ * (`LocaleNamespaceMap['settings.models']`) as a compile error — there is
+ * no value-only import that avoids this for an ambient declaration. A
+ * dynamic `import()` with a non-literal specifier sidesteps the type
+ * conflict but is not a real fix: this package ships as a browser
+ * closure-factory bundle (`window.__ModuleLoader__.load({id, factory})`,
+ * `../../../../tsdown.client-plugin-preset.ts`), which has no bare-specifier
+ * or `.ts`-extension resolution mechanism at runtime for an arbitrary
+ * module path — only for this bundle's own statically-known dependencies.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // Type-only: pulls the shell's SlotMap merge (the 'settings.section' entry).
@@ -139,107 +170,154 @@ export const inject = [
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-anthropic-subscription: copy dictionaries')
+  let injected: () => ModelsSectionInjected
+  let deepSeekOnboardingInjected: () => DeepSeekOnboardingInjected
+  let welcomeInjected: () => WelcomeNoticeInjected
+  let t: ModelsSectionInjected['t']
+  try {
+    ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-anthropic-subscription: copy dictionaries')
 
-  // Optional: see the `inject` doc comment above for why `remote.authorization`
-  // is required here, nested, instead of in this plugin's own top-level
-  // `inject`. `injected()` below reads this mutable capture on every call, so
-  // the sign-in panel appears once (if) this nested inject activates, and
-  // simply never appears if it doesn't — the rest of the Models section
-  // renders and functions normally either way.
-  let authorization: IAuthorization | undefined
-  void ctx.inject(['remote.authorization'], (scope) => {
-    const runtime = new AuthorizationRuntime(scope, scope.remote.authorization)
-    authorization = runtime
-    scope.effect(() => {
-      // authorization/settled rides the generic forwarded-event channel
-      // rather than a dedicated HostFrame, so dsh-client-runtime itself never
-      // subscribes to it (it only ever calls ctx.remote.$dispatch, never
-      // $on); this plugin, already bridging $on for its own refresh needs
-      // below, reports the settlement into this runtime instead.
-      const dispose = scope.remote.$on('authorization/settled', (key) => { runtime.notifySettled(key) })
+    // Optional: see the `inject` doc comment above for why `remote.authorization`
+    // is required here, nested, instead of in this plugin's own top-level
+    // `inject`. `injected()` below reads this mutable capture on every call, so
+    // the sign-in panel appears once (if) this nested inject activates, and
+    // simply never appears if it doesn't — the rest of the Models section
+    // renders and functions normally either way.
+    let authorization: IAuthorization | undefined
+    void ctx.inject(['remote.authorization'], (scope) => {
+      const runtime = new AuthorizationRuntime(scope, scope.remote.authorization)
+      authorization = runtime
+      scope.effect(() => {
+        // authorization/settled rides the generic forwarded-event channel
+        // rather than a dedicated HostFrame, so dsh-client-runtime itself never
+        // subscribes to it (it only ever calls ctx.remote.$dispatch, never
+        // $on); this plugin, already bridging $on for its own refresh needs
+        // below, reports the settlement into this runtime instead.
+        const dispose = scope.remote.$on('authorization/settled', (key) => { runtime.notifySettled(key) })
+        return () => {
+          authorization = undefined
+          dispose()
+        }
+      }, 'ui-settings-anthropic-subscription: authorization settlement bridge')
+    })
+
+    const schema = createSettingsSchemaOperations(ctx.settingsSchema)
+    // Bound once here, where the Remote namespaces are declared in this plugin's
+    // own `inject`; the cards receive callbacks and never a context.
+    const operations = createModelsOperations(ctx)
+    const controller = new ModelsSettingsStore(ctx, schema, ctx.settingsScope.describe())
+    // Registration-time text (the nav label thunk) and the inject faces share
+    // one bound translate; copy freshness rides the locale revision.
+    t = ctx.locale.bind(NS) as ModelsSectionInjected['t']
+    injected = (): ModelsSectionInjected => ({
+      controller,
+      hooks: { snapshot: controller.store },
+      operations,
+      authorization,
+      schema,
+      t,
+    })
+    deepSeekOnboardingInjected = (): DeepSeekOnboardingInjected => ({
+      controller,
+      hooks: { models: controller.store },
+      operations,
+      schema,
+      t,
+    })
+    // The scope's own memory mode is what keeps a remote browser process-local,
+    // so the store needs no isLoopback branch of its own.
+    const welcomeController = new WelcomeNoticeStore(ctx.settingsScope.bind({
+      namespace: WELCOME_NOTICE_SETTINGS_NAMESPACE,
+      decode: decodeWelcomeSection,
+    }))
+    welcomeInjected = (): WelcomeNoticeInjected => ({
+      controller: welcomeController,
+      hooks: { welcome: welcomeController.store },
+      t,
+    })
+
+    // Pushed invalidations converge every open surface without polling. The
+    // settingsScope injection makes ui-settings activate first, and remote
+    // dispatch preserves listener order; its listener therefore starts the
+    // mirror refresh before this store joins that refresh. The welcome notice
+    // follows its settings scope, so it needs no subscription here.
+    ctx.effect(() => {
+      const refreshModels = (): void => { refreshIfLoaded(controller) }
+      const disposers = [
+        ctx.remote.$on('settings/document-updated', () => { refreshModels() }),
+        ctx.remote.$on('credentials/reference-updated', refreshModels),
+        ctx.remote.$on('llm/adapters-updated', refreshModels),
+        ctx.on('connection/reset', refreshModels),
+      ]
       return () => {
-        authorization = undefined
-        dispose()
+        welcomeController.dispose()
+        for (const dispose of disposers) dispose()
       }
-    }, 'ui-settings-anthropic-subscription: authorization settlement bridge')
-  })
+    }, 'ui-settings-anthropic-subscription: pushed invalidations')
+  } catch (error) {
+    // No pristine-apply fallback is possible here — see this file's own
+    // doc comment. Logging and giving up still means only the Models
+    // section is absent, never a crash of the whole Client boot.
+    ctx.logger.error(
+      'dsh-plugins-client-ui-settings-anthropic-subscription: enhanced setup failed — the Models settings section will be unavailable',
+    )
+    ctx.logger.error(error)
+    return
+  }
 
-  const schema = createSettingsSchemaOperations(ctx.settingsSchema)
-  // Bound once here, where the Remote namespaces are declared in this plugin's
-  // own `inject`; the cards receive callbacks and never a context.
-  const operations = createModelsOperations(ctx)
-  const controller = new ModelsSettingsStore(ctx, schema, ctx.settingsScope.describe())
-  // Registration-time text (the nav label thunk) and the inject faces share
-  // one bound translate; copy freshness rides the locale revision.
-  const t = ctx.locale.bind(NS) as ModelsSectionInjected['t']
-  const injected = (): ModelsSectionInjected => ({
-    controller,
-    hooks: { snapshot: controller.store },
-    operations,
-    authorization,
-    schema,
-    t,
-  })
-  const deepSeekOnboardingInjected = (): DeepSeekOnboardingInjected => ({
-    controller,
-    hooks: { models: controller.store },
-    operations,
-    schema,
-    t,
-  })
-  // The scope's own memory mode is what keeps a remote browser process-local,
-  // so the store needs no isLoopback branch of its own.
-  const welcomeController = new WelcomeNoticeStore(ctx.settingsScope.bind({
-    namespace: WELCOME_NOTICE_SETTINGS_NAMESPACE,
-    decode: decodeWelcomeSection,
-  }))
-  const welcomeInjected = (): WelcomeNoticeInjected => ({
-    controller: welcomeController,
-    hooks: { welcome: welcomeController.store },
-    t,
-  })
-
-  // Pushed invalidations converge every open surface without polling. The
-  // settingsScope injection makes ui-settings activate first, and remote
-  // dispatch preserves listener order; its listener therefore starts the
-  // mirror refresh before this store joins that refresh. The welcome notice
-  // follows its settings scope, so it needs no subscription here.
-  ctx.effect(() => {
-    const refreshModels = (): void => { refreshIfLoaded(controller) }
-    const disposers = [
-      ctx.remote.$on('settings/document-updated', () => { refreshModels() }),
-      ctx.remote.$on('credentials/reference-updated', refreshModels),
-      ctx.remote.$on('llm/adapters-updated', refreshModels),
-      ctx.on('connection/reset', refreshModels),
-    ]
-    return () => {
-      welcomeController.dispose()
-      for (const dispose of disposers) dispose()
+  ctx.slots.inject('settings.section', () => {
+    try {
+      return ctx.slots.register({
+        name: 'settings.section',
+        id: 'models',
+        // Lower than the pristine ui-settings-models row's default priority
+        // (0): if a bundle install-order violation ever leaves that row
+        // active too (see ARCHITECTURE.md's "Plugin isolation"), both
+        // registrations land instead of the second one throwing, and this
+        // one wins deterministically (lowest priority renders).
+        priority: -1,
+        order: 10,
+        label: () => t('nav'),
+        inject: injected,
+        children: {
+          'settings.models.provider-card': { kind: 'keyed', scope: 'root' },
+          'settings.models.footer': { kind: 'list', scope: 'root' },
+        },
+      }, ModelsSection)
+    } catch (error) {
+      ctx.logger.error('dsh-plugins-client-ui-settings-anthropic-subscription: failed to register the settings.section models row')
+      ctx.logger.error(error)
+      return []
     }
-  }, 'ui-settings-anthropic-subscription: pushed invalidations')
-
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section',
-    id: 'models',
-    order: 10,
-    label: () => t('nav'),
-    inject: injected,
-    children: {
-      'settings.models.provider-card': { kind: 'keyed', scope: 'root' },
-      'settings.models.footer': { kind: 'list', scope: 'root' },
-    },
-  }, ModelsSection))
-  ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
-    name: 'settings.onboarding',
-    id: 'welcome-notice',
-    order: -100,
-    inject: welcomeInjected,
-  }, WelcomeNotice))
-  ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
-    name: 'settings.onboarding',
-    id: 'deepseek-official',
-    order: 0,
-    inject: deepSeekOnboardingInjected,
-  }, DeepSeekOnboardingDialog))
+  })
+  ctx.slots.inject('settings.onboarding', () => {
+    try {
+      return ctx.slots.register({
+        name: 'settings.onboarding',
+        id: 'welcome-notice',
+        priority: -1,
+        order: -100,
+        inject: welcomeInjected,
+      }, WelcomeNotice)
+    } catch (error) {
+      ctx.logger.error('dsh-plugins-client-ui-settings-anthropic-subscription: failed to register the welcome-notice onboarding entry')
+      ctx.logger.error(error)
+      return []
+    }
+  })
+  ctx.slots.inject('settings.onboarding', () => {
+    try {
+      return ctx.slots.register({
+        name: 'settings.onboarding',
+        id: 'deepseek-official',
+        priority: -1,
+        order: 0,
+        inject: deepSeekOnboardingInjected,
+      }, DeepSeekOnboardingDialog)
+    } catch (error) {
+      ctx.logger.error('dsh-plugins-client-ui-settings-anthropic-subscription: failed to register the deepseek-official onboarding entry')
+      ctx.logger.error(error)
+      return []
+    }
+  })
 }

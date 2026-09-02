@@ -5,7 +5,7 @@
  * the sidebar Files tree dock a file into the current session's File tab.
  * `dsh-plugins-bundle-workspace-git`'s `cordis.patch.yml` disables the
  * original `ui-conversation` row and installs this one in its place — see
- * `../../../../ARCHITECTURE.md`'s "Why replace the plugin instead of patching it".
+ * `../../../../ARCHITECTURE.md`'s "Replace, don't patch".
  *
  * Every registration here is unchanged from the pristine `apply()` except
  * `registerConversationSession`, whose `inject()` factory gains a
@@ -15,6 +15,22 @@
  * `ConversationSessionHeader`, `ConversationRoot`, and `InputBar` are
  * reused unchanged from `@deepseek-ai/dsh-client-ui-conversation`'s own
  * `./src/*` export.
+ *
+ * Resilience (see `../../../../ARCHITECTURE.md`'s "Plugin isolation"):
+ * every `ctx.slots.register()` call below registers at `priority: -1`, one
+ * lower than the pristine plugin's own default (0) — if a bundle
+ * install-order violation ever leaves the pristine `ui-conversation` row
+ * active too, both registrations land instead of the second one throwing,
+ * and this one wins deterministically (lowest priority renders). `apply()`
+ * itself falls back to the pristine, unmodified `apply(ctx)` (imported as a
+ * real value) if enhanced setup fails *before* any registration has been
+ * attempted — safe because nothing of this plugin's has registered yet at
+ * that point. Once past that point each individual slot registration
+ * (`settings.general.item`, and each of the four Conversation-assembly
+ * registrations) is independently try/catch-guarded instead: a failure
+ * there degrades only that one row, rather than either crashing the whole
+ * app or falling back to a full pristine replay that would double-register
+ * whatever already succeeded.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -65,6 +81,7 @@ import { en, NS, zh, type ConversationKey } from '@deepseek-ai/dsh-client-ui-con
 import {
   CONVERSATION_SETTINGS_NAMESPACE, type ConversationSettings,
 } from '@deepseek-ai/dsh-client-ui-conversation/src/submission-settings.ts'
+import { apply as pristineApply } from '@deepseek-ai/dsh-client-ui-conversation/src/client/apply.ts'
 import { ConversationSession } from './ConversationSession.tsx'
 import { FileOpenRegistry, type PendingFileOpen } from './FileOpenRegistry.ts'
 import type { ConversationFileOpener } from './service.ts'
@@ -142,27 +159,49 @@ function concreteConversation(ctx: Context): ConversationController {
 export function apply(ctx: Context): void {
   const sessions = ctx.sessions
   const slots = ctx.slots
-  const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
-  const uiConversation = new UiConversation(ctx, sessions)
-  const fileOpenRegistry = new FileOpenRegistry()
-
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-conversation: dictionaries')
+  let workspaceNavigation: WorkspaceNavigation
+  let uiConversation: UiConversation
+  let fileOpenRegistry: FileOpenRegistry
+  try {
+    workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
+    uiConversation = new UiConversation(ctx, sessions)
+    fileOpenRegistry = new FileOpenRegistry()
+    ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-conversation: dictionaries')
+  } catch (error) {
+    // Nothing of this plugin's has registered yet at this point, so a full
+    // pristine replay is safe — see this file's own doc comment.
+    ctx.logger.error(
+      'dsh-plugins-client-ui-conversation-enhanced: enhanced setup failed — falling back to the pristine dsh-client-ui-conversation plugin',
+    )
+    ctx.logger.error(error)
+    pristineApply(ctx)
+    return
+  }
   const t = ctx.locale.bind(NS)
   const conversationStore = createConversationStore()
   const submissionPolicy = new ComposerSubmissionPolicy(
     ctx.settingsScope.bind<ConversationSettings>({ namespace: CONVERSATION_SETTINGS_NAMESPACE }),
   )
 
-  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
-    name: 'settings.general.item',
-    id: 'composer-enter',
-    order: 20,
-    locale: NS,
-    inject: (): EnterBehaviorRowInjected => ({
-      hooks: { busyEnter: submissionPolicy.busyEnter },
-      setBusyEnter: (behavior) => { submissionPolicy.setBusyEnter(behavior) },
-    }),
-  }, EnterBehaviorRow))
+  ctx.slots.inject('settings.general.item', () => {
+    try {
+      return ctx.slots.register({
+        name: 'settings.general.item',
+        id: 'composer-enter',
+        priority: -1,
+        order: 20,
+        locale: NS,
+        inject: (): EnterBehaviorRowInjected => ({
+          hooks: { busyEnter: submissionPolicy.busyEnter },
+          setBusyEnter: (behavior) => { submissionPolicy.setBusyEnter(behavior) },
+        }),
+      }, EnterBehaviorRow)
+    } catch (error) {
+      ctx.logger.error('dsh-plugins-client-ui-conversation-enhanced: failed to register the composer-enter settings item')
+      ctx.logger.error(error)
+      return []
+    }
+  })
 
   const viewTabs = (): ViewTab[] => {
     const tabs: ViewTab[] = []
@@ -242,6 +281,7 @@ export function apply(ctx: Context): void {
 
   const registerConversationRoot = () => slots.register({
     name: 'conversation',
+    priority: -1,
     locale: NS,
     children: {
       'conversation.session': { kind: 'single', scope: 'session' },
@@ -281,6 +321,7 @@ export function apply(ctx: Context): void {
 
   const registerConversationSession = () => slots.register({
     name: 'conversation.session',
+    priority: -1,
     children: {
       'conversation.view': { kind: 'list', scope: 'session' },
     },
@@ -300,6 +341,7 @@ export function apply(ctx: Context): void {
 
   const registerConversationHeader = () => slots.register({
     name: 'conversation.session.header',
+    priority: -1,
     locale: NS,
     children: {
       'conversation.session.header.lineage': { kind: 'single', scope: 'session' },
@@ -319,6 +361,7 @@ export function apply(ctx: Context): void {
 
   const registerComposerBar = () => slots.register({
     name: 'conversation.composer.bar',
+    priority: -1,
     locale: NS,
     children: {
       'conversation.input.attachments': { kind: 'single', scope: 'session-maybe' },
@@ -406,10 +449,26 @@ export function apply(ctx: Context): void {
   }, InputBar)
 
   slots.inject('conversation', function* () {
-    yield registerConversationRoot()
-    yield registerConversationSession()
-    yield registerConversationHeader()
-    yield registerComposerBar()
+    const attempts: ReadonlyArray<{ readonly label: string; readonly register: () => () => void }> = [
+      { label: 'conversation', register: registerConversationRoot },
+      { label: 'conversation.session', register: registerConversationSession },
+      { label: 'conversation.session.header', register: registerConversationHeader },
+      { label: 'conversation.composer.bar', register: registerComposerBar },
+    ]
+    // Each registration is independently guarded: registerConversationRoot
+    // declares the child slots the other three register into, so if it
+    // fails the others would fail too (their target slots never existed) —
+    // catching each individually still means every failure here logs and
+    // is skipped, never propagates out of this generator to crash the
+    // whole Client boot.
+    for (const { label, register } of attempts) {
+      try {
+        yield register()
+      } catch (error) {
+        ctx.logger.error(`dsh-plugins-client-ui-conversation-enhanced: failed to register ${label}`)
+        ctx.logger.error(error)
+      }
+    }
   })
 
   ctx.plugin(ConversationController, { input: inputHub, blocks: composerBlocks })

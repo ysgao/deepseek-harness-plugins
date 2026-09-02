@@ -164,6 +164,66 @@ the whole application depends on regardless of which plugins are installed
 (the webserver itself failing to bind its port, for instance) still fails
 loud and fatally, correctly so: nothing meaningful could happen without it.
 
+### Replaced-plugin resilience
+
+A replacement plugin (see "Replace, don't patch" below) carries two further
+containment layers, for risks that pattern specifically introduces.
+
+**Every `ctx.slots.register()` call in a replacement plugin registers at
+`priority: -1`, one lower than a plugin's own default (0).** Two
+registrations into the same slot only throw when they share the exact same
+priority; a lower priority instead shadows deterministically — the lowest
+priority present is the one that renders — with no throw at all.
+`dsh-plugins-client-ui-workspace-enhanced`, `dsh-plugins-client-ui-
+conversation-enhanced`, and `dsh-plugins-client-ui-settings-anthropic-
+subscription` all use this, so a `disabled: true` operation that silently
+failed to find its target (see "Bundle install order" in Open items) no
+longer crashes the app purely from the resulting duplicate slot
+registration.
+
+**`dsh-plugins-client-ui-workspace-enhanced` and `dsh-plugins-client-ui-
+conversation-enhanced` also fall back to the pristine plugin's own
+unmodified `apply(ctx)` (imported as a real value) if their own enhanced
+setup fails before any registration is attempted** — safe because nothing
+of the replacement's has registered yet at that point, so calling the
+pristine `apply()` fresh cannot double-register anything. Past that point,
+each individual slot registration is separately try/catch-guarded instead
+(logging and leaving just that one row unregistered on failure): falling
+back to a full pristine replay after some registrations already succeeded
+would double-register those and crash on exactly the same collision this
+whole section exists to prevent.
+
+`dsh-plugins-client-ui-settings-anthropic-subscription` cannot use the
+pristine-`apply()` fallback. `@deepseek-ai/dsh-client-ui-settings-models`'s
+own `apply` is defined directly in its `./src/client/index.ts` — the same
+file that declares its own `LocaleNamespaceMap['settings.models']` merge,
+the exact key this package's own `locales.ts` deliberately widens with four
+extra keys. Importing that file for its `apply` value, by any static import
+form, pulls its ambient declaration into this program too, and TypeScript
+rejects the resulting non-identical duplicate declaration as a compile
+error. A dynamic `import()` with a non-literal specifier avoids that type
+error but has no working runtime counterpart here: this package ships as a
+closure-factory browser bundle (`window.__ModuleLoader__.load({id,
+factory})`) with no bare-specifier or `.ts`-extension resolution for an
+arbitrary module path at runtime. This plugin keeps the `priority`/
+per-registration guards above; on a setup failure it logs and leaves the
+Models settings section entirely absent rather than either crashing or
+replaying the pristine plugin.
+
+**Priority-based shadowing does not fully protect against a bundle
+install-order violation.** It only prevents the throw `ctx.slots.register()`
+itself would raise on a same-priority collision. If a `disabled: true`
+operation silently fails to find its target and the pristine plugin ends up
+active alongside the replacement, the pristine plugin's own unmodified
+code — never designed to run twice in the same session — can still fail
+some other way that priority has no bearing on (a repeated `ctx.slots.
+provideRoot()` call, most concretely), and that failure is fatal to the
+whole Client boot exactly like any other unguarded top-level throw. Correct
+install order therefore remains a hard requirement for these bundles, not
+merely a best practice: priority-based shadowing and the pristine-apply
+fallback both assume, and only fully hold under, a plugin tree where the
+row being replaced is genuinely absent, not merely out-shadowed.
+
 ## Package inventory
 
 ### `packages/workspace-git/` — File manager + git
