@@ -124,7 +124,7 @@ duplicate identity against.
 `typecheck` + `build` are clean (the closure-factory bundle, `lib/client.js`
 — the whole conversation shell, including the lexical composer editor, ends
 up in this one package now that it owns the registration — grew from the
-`ConversationSession`-only fork's 622.67 kB to 646.73 kB before gzip once
+`ConversationSession`-only fork's 622.67 kB to 667.57 kB before gzip once
 `ConversationRoot`/`ConversationSessionHeader` joined it). A real `dsh
 --profile web-app --dump-config` against `dsh-plugins-bundle-workspace-git`
 shows `ui-conversation` disabled and `conversation-enhanced` inserted with
