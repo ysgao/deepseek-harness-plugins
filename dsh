@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Unambiguous entry point for this repo's own built dsh CLI.
+#
+# Always resolves to packages/_vendor/deepseek-harness/apps/cli/lib/bin.js
+# relative to this script's own location — not $PATH, not the caller's cwd
+# — so it can never be shadowed by (or silently fall back to) a different
+# dsh build installed elsewhere on the machine (a global pnpm-linked dsh
+# from an unrelated project, for instance). Run it as ./dsh from anywhere;
+# it does not need to be on PATH itself.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BIN="$SCRIPT_DIR/packages/_vendor/deepseek-harness/apps/cli/lib/bin.js"
+if [[ ! -f "$BIN" ]]; then
+  echo "dsh: $BIN not found — build the vendored submodule first:" >&2
+  echo "  pnpm run build:vendor" >&2
+  exit 1
+fi
+exec node "$BIN" "$@"

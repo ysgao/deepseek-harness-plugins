@@ -46,15 +46,15 @@ pnpm run build   # tsc -b + tsdown, host then client
 ## Running
 
 **Don't rely on a bare `dsh` from your `PATH`** — a globally-linked `dsh`
-may silently resolve to a different checkout; `which dsh` can point
-anywhere. Shadow it for the session with a function pointing at this repo's
-built CLI:
+(from an unrelated project, a different checkout) may exist on the same
+machine, and there is no reliable way to tell which one a bare `dsh`
+resolves to from the command name alone. This repo ships its own
+unambiguous entry point instead: `./dsh` at the repo root always resolves
+to this repo's own built CLI (`packages/_vendor/deepseek-harness/apps/cli/
+lib/bin.js`) via its own script location, never via `$PATH` — run it from
+anywhere as `./dsh` (repo root) or the script's full path.
 
-```sh
-dsh() { node "$(pwd)/packages/_vendor/deepseek-harness/apps/cli/lib/bin.js" "$@"; }
-```
-
-Install a bundle into a profile with `dsh plugin --profile <name> add
+Install a bundle into a profile with `./dsh plugin --profile <name> add
 <path>` (nothing here is published to npm, so pass this repo's own
 absolute package paths). `web` is one of the profile names `dsh` knows how
 to auto-initialize from a shipped template (already including
@@ -62,9 +62,9 @@ to auto-initialize from a shipped template (already including
 first `plugin add` against it is enough to bring the whole profile up:
 
 ```sh
-dsh plugin --profile web add "$(pwd)/packages/workspace-git/bundle-workspace-git"
-dsh plugin --profile web add "$(pwd)/packages/anthropic-subscription/bundle-anthropic-subscription"
-dsh --profile web
+./dsh plugin --profile web add "$(pwd)/packages/workspace-git/bundle-workspace-git"
+./dsh plugin --profile web add "$(pwd)/packages/anthropic-subscription/bundle-anthropic-subscription"
+./dsh --profile web
 ```
 
 **Install order matters for any profile name `dsh` does *not* auto-initialize
@@ -79,8 +79,8 @@ bundle must be added first.
 The standalone CLI login profile doesn't need `dsh-web-app` at all:
 
 ```sh
-dsh plugin --profile anthropic add "$(pwd)/packages/anthropic-subscription/cli-login-app"
-dsh --profile anthropic llm-pi-ai/anthropic
+./dsh plugin --profile anthropic add "$(pwd)/packages/anthropic-subscription/cli-login-app"
+./dsh --profile anthropic llm-pi-ai/anthropic
 ```
 
 `dsh plugin add` initializes a named profile under `~/.dsh/profiles/` if it
