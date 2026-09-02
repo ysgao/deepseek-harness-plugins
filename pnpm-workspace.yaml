@@ -39,6 +39,14 @@ linkWorkspacePackages: true
 overrides:
   '@deepseek-ai/cosmokit': 'link:packages/_vendor/deepseek-harness/vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:packages/_vendor/deepseek-harness/vendor/schemastery'
+  # Pinned to the exact version packages/_vendor/deepseek-harness's own
+  # committed pnpm-lock.yaml resolves. A workspace-wide `pnpm install` here
+  # otherwise re-resolves the newest version satisfying vendored packages'
+  # own `^0.84.2` range, which can drift ahead of what the vendored source
+  # was written and tested against (e.g. 0.84.4 adds catalog.ts fields the
+  # pinned commit's drift gates don't classify yet) — never fix that by
+  # editing vendor source; re-pin here to match the vendor's own lockfile.
+  '@earendil-works/pi-ai': '0.84.2'
 
 peerDependencyRules:
   allowedVersions:

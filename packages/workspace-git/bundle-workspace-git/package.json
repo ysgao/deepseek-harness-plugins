@@ -18,7 +18,8 @@
     "dsh-plugins-client-ui-workspace-files": "workspace:^",
     "dsh-plugins-client-ui-workspace-enhanced": "workspace:^",
     "dsh-plugins-client-ui-conversation-files": "workspace:^",
-    "dsh-plugins-client-ui-conversation-enhanced": "workspace:^"
+    "dsh-plugins-client-ui-conversation-enhanced": "workspace:^",
+    "dsh-plugins-client-remotes-workspace-git": "workspace:^"
   },
   "devDependencies": {
     "typescript": "^6.0.3"

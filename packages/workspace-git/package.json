@@ -4,7 +4,7 @@
   "description": "Build-only grouping for this plugin bundle's packages — declares no dependencies of its own. `pnpm run build` (from this directory, or `pnpm --filter workspace-git run build` from the root) builds every package below in the same host-then-client order the root's own `build` script uses: the client packages import the Typert `/remote` stub that only exists once the host packages' own tsdown pass has generated it.",
   "scripts": {
     "build:host": "tsc -b api-workspace-git-controller api-workspace-file-controller && (cd ../.. && tsdown --filter dsh-plugins-api-workspace-git-controller --filter dsh-plugins-api-workspace-file-controller)",
-    "build:client": "tsc -b client-ui-file-editing client-ui-workspace-files client-ui-conversation-files client-ui-workspace-enhanced client-ui-conversation-enhanced && for d in client-ui-file-editing client-ui-workspace-files client-ui-conversation-files client-ui-workspace-enhanced client-ui-conversation-enhanced; do (cd \"$d\" && tsdown) || exit 1; done",
+    "build:client": "tsc -b client-ui-file-editing client-ui-workspace-files client-ui-conversation-files client-ui-workspace-enhanced client-ui-conversation-enhanced client-remotes-workspace-git && for d in client-ui-file-editing client-ui-workspace-files client-ui-conversation-files client-ui-workspace-enhanced client-ui-conversation-enhanced client-remotes-workspace-git; do (cd \"$d\" && tsdown) || exit 1; done",
     "build": "pnpm run build:host && pnpm run build:client"
   }
 }

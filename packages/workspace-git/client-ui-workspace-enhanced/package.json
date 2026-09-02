@@ -46,8 +46,6 @@
   "license": "MIT",
   "dependencies": {
     "clsx": "^2.0.0",
-    "dsh-plugins-api-workspace-file-controller": "workspace:^",
-    "dsh-plugins-api-workspace-git-controller": "workspace:^",
     "dsh-plugins-client-ui-workspace-files": "workspace:^"
   },
   "peerDependencies": {

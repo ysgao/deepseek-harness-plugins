@@ -1,0 +1,50 @@
+{
+  "name": "dsh-plugins-client-remotes-workspace-git",
+  "description": "Mounts this bundle's own workspace-files/workspace-git generated Remote contributions on the Client, the role @deepseek-ai/dsh-api-remotes fills for every other namespace but can't for these two out-of-tree ones. Kept as its own dedicated plugin, independent of dsh-plugins-client-ui-workspace-enhanced, so a mount failure here never takes down the core Workspace sidebar UI.",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/client.js.map",
+    "lib/types/**/*.d.ts"
+  ],
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-gateway"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT",
+  "dependencies": {
+    "dsh-plugins-api-workspace-file-controller": "workspace:^",
+    "dsh-plugins-api-workspace-git-controller": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-api-gateway": "workspace:^",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-api-gateway": "workspace:^",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "typescript": "^6.0.3"
+  }
+}

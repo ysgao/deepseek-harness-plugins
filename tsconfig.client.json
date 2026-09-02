@@ -10,6 +10,7 @@
     { "path": "packages/workspace-git/client-ui-workspace-files" },
     { "path": "packages/workspace-git/client-ui-conversation-files" },
     { "path": "packages/workspace-git/client-ui-workspace-enhanced" },
-    { "path": "packages/workspace-git/client-ui-conversation-enhanced" }
+    { "path": "packages/workspace-git/client-ui-conversation-enhanced" },
+    { "path": "packages/workspace-git/client-remotes-workspace-git" }
   ]
 }

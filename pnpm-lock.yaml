@@ -7,6 +7,7 @@ settings:
 overrides:
   '@deepseek-ai/cosmokit': link:packages/_vendor/deepseek-harness/vendor/cosmokit
   '@deepseek-ai/schemastery': link:packages/_vendor/deepseek-harness/vendor/schemastery
+  '@earendil-works/pi-ai': 0.84.2
 
 importers:
 
@@ -6070,8 +6071,8 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@earendil-works/pi-ai':
-        specifier: ^0.84.2
-        version: 0.84.4(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))(ws@8.21.0)(zod@4.5.4)
+        specifier: 0.84.2
+        version: 0.84.2(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))(ws@8.21.0)(zod@4.5.4)
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -9851,6 +9852,9 @@ importers:
       dsh-plugins-api-workspace-git-controller:
         specifier: workspace:^
         version: link:../api-workspace-git-controller
+      dsh-plugins-client-remotes-workspace-git:
+        specifier: workspace:^
+        version: link:../client-remotes-workspace-git
       dsh-plugins-client-ui-conversation-enhanced:
         specifier: workspace:^
         version: link:../client-ui-conversation-enhanced
@@ -9867,6 +9871,28 @@ importers:
         specifier: workspace:^
         version: link:../client-ui-workspace-files
     devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/workspace-git/client-remotes-workspace-git:
+    dependencies:
+      dsh-plugins-api-workspace-file-controller:
+        specifier: workspace:^
+        version: link:../api-workspace-file-controller
+      dsh-plugins-api-workspace-git-controller:
+        specifier: workspace:^
+        version: link:../api-workspace-git-controller
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-api-gateway':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/api/gateway
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/typert/protocol
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -10065,12 +10091,6 @@ importers:
       clsx:
         specifier: ^2.0.0
         version: 2.1.1
-      dsh-plugins-api-workspace-file-controller:
-        specifier: workspace:^
-        version: link:../api-workspace-file-controller
-      dsh-plugins-api-workspace-git-controller:
-        specifier: workspace:^
-        version: link:../api-workspace-git-controller
       dsh-plugins-client-ui-workspace-files:
         specifier: workspace:^
         version: link:../client-ui-workspace-files
@@ -10505,8 +10525,8 @@ packages:
     peerDependencies:
       '@bufbuild/protobuf': ^2.2.0
 
-  '@earendil-works/pi-ai@0.84.4':
-    resolution: {integrity: sha512-AClAZxf5+c4RRu44NJPS6wyQy+Nmq+Mzyyrdvm4ZVMNuixelO02RZX4G4Aq1F145Yzp43wnM5S+hLlSI7ypfVw==}
+  '@earendil-works/pi-ai@0.84.2':
+    resolution: {integrity: sha512-6MzsrYIYNVlE7SfpbL2yYb67Qo58p/7Q+xWG1RZvoX1P80aRCHSod2/13aFpxkow1lPO2LEh3c495J0Gwmyjig==}
     engines: {node: '>=22.19.0'}
     hasBin: true
 
@@ -11328,6 +11348,10 @@ packages:
 
   '@opentelemetry/api-logs@0.220.0':
     resolution: {integrity: sha512-CmVa4ImJ+ynfrPMNaAXHET6Bhb44SwzmfyVJFq9ni2jgXJR/l7C6gfVFddNmHP+ZOkP9cf4f9DBe68qVLTHc9w==}
+    engines: {node: '>=8.0.0'}
+
+  '@opentelemetry/api@1.9.0':
+    resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
     engines: {node: '>=8.0.0'}
 
   '@opentelemetry/api@1.9.1':
@@ -14572,12 +14596,13 @@ snapshots:
     dependencies:
       '@bufbuild/protobuf': 2.14.0
 
-  '@earendil-works/pi-ai@0.84.4(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))(ws@8.21.0)(zod@4.5.4)':
+  '@earendil-works/pi-ai@0.84.2(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))(ws@8.21.0)(zod@4.5.4)':
     dependencies:
       '@anthropic-ai/sdk': 0.91.1(zod@4.5.4)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
       '@earendil-works/pi-telemetry': 0.84.4
       '@google/genai': 1.52.0(@modelcontextprotocol/sdk@1.30.0(zod@4.5.4))
+      '@opentelemetry/api': 1.9.0
       '@smithy/node-http-handler': 4.7.3
       http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
@@ -15200,6 +15225,8 @@ snapshots:
   '@opentelemetry/api-logs@0.220.0':
     dependencies:
       '@opentelemetry/api': 1.9.1
+
+  '@opentelemetry/api@1.9.0': {}
 
   '@opentelemetry/api@1.9.1': {}
 
