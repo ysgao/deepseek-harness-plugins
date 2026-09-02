@@ -82,3 +82,16 @@
 .previewPane :global([data-read]) > :first-child {
   display: none;
 }
+
+/* `display: none` above removes the banner's own box, but not the 16px
+   `margin: 16px 0` ReadBlock's root (`[data-read]`, its `.block` class)
+   carries regardless of which children it has — sized for ReadBlock's
+   standalone chat-message-excerpt use, where that margin is the block's own
+   breathing room against surrounding prose. Here `.previewPane`'s 16px
+   `padding` already plays that role, so ReadBlock's own margin on top of it
+   only pushed the code rows down without the (now-hidden) banner to fill
+   that space, misaligning them against the editor pane's rows, which start
+   at the pane's own top edge. */
+.previewPane :global([data-read]) {
+  margin: 0;
+}
