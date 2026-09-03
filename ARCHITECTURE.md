@@ -183,15 +183,39 @@ registration.
 
 **`dsh-plugins-client-ui-workspace-enhanced` and `dsh-plugins-client-ui-
 conversation-enhanced` also fall back to the pristine plugin's own
-unmodified `apply(ctx)` (imported as a real value) if their own enhanced
-setup fails before any registration is attempted** — safe because nothing
-of the replacement's has registered yet at that point, so calling the
-pristine `apply()` fresh cannot double-register anything. Past that point,
-each individual slot registration is separately try/catch-guarded instead
-(logging and leaving just that one row unregistered on failure): falling
-back to a full pristine replay after some registrations already succeeded
-would double-register those and crash on exactly the same collision this
-whole section exists to prevent.
+unmodified `apply(ctx)` if their own enhanced setup fails before any
+registration is attempted** — safe because nothing of the replacement's has
+registered yet at that point, so calling the pristine `apply()` fresh cannot
+double-register anything. Past that point, each individual slot
+registration is separately try/catch-guarded instead (logging and leaving
+just that one row unregistered on failure): falling back to a full pristine
+replay after some registrations already succeeded would double-register
+those and crash on exactly the same collision this whole section exists to
+prevent.
+
+That fallback loads the pristine `apply` through a dynamic `import()` inside
+the `catch` branch, not a static top-level import — both packages used a
+static import for this until it caused a real incident. A static import of
+vendor's `apply.ts` evaluates unconditionally at module load, on every
+install, whether or not the fallback branch ever runs; evaluating it also
+evaluates every component vendor's `apply.ts` imports, including the exact
+same-named CSS Module the fork itself owns and forked
+(`ConversationRoot.module.css`, `WorkspaceBrowser.module.css`). Both land in
+the same bundle and inject under the same `<style data-plugin-css>` tag id —
+`styleInjectionModule` (`tsdown.client-plugin-preset.ts`) used to derive that
+id from a CSS Module's basename alone, so the two collided, and its
+`document.querySelector(...) === null` injection guard silently skipped
+whichever one lost the race. In `dsh-plugins-client-ui-conversation-
+enhanced`'s case, vendor's `apply.ts` — imported this way purely for its
+fallback value — evaluated first and won, leaving `ConversationRoot`'s own
+DOM rendered with the fork's scoped classnames but only vendor's rules ever
+inserted for that tag: `.scrollBody`'s `overflow-y: auto` and `.root`'s
+`overflow: hidden` never applied, breaking mouse-wheel scrolling app-wide
+(Chat, Trajectory, and File all mount inside this one forked skeleton).
+Fixed in the shared preset (the tag id now incorporates a hash of the full
+resolved source path, not just the basename — the unconditional fix, safe
+regardless of import timing) and in both packages' own fallback imports (now
+lazy, so the always-on eager-evaluation trigger is gone too).
 
 `dsh-plugins-client-ui-settings-anthropic-subscription` cannot use the
 pristine-`apply()` fallback. `@deepseek-ai/dsh-client-ui-settings-models`'s

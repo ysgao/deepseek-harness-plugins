@@ -141,6 +141,55 @@ live boot; the byte-for-byte wire-format/CSS-injection-marker counts the
 `ConversationSession`-only fork was once checked against are stale after
 this widening and are not restated here).
 
+**Do not read this section as confirmation that mouse-wheel scrolling is
+fixed app-wide** — nobody has re-run the live browser repro since either fix
+below landed; both are `typecheck`/`build`-clean and bundle-grep-confirmed,
+not DOM-confirmed.
+
+- `FileOpenRegistry.hookFor`/`hookForEverOpened` memoization (per-session
+  hook objects, not a fresh object literal per `inject()` call) is a real,
+  independently worth-keeping correctness fix — it matches vendor's own
+  `ComposerBlockRegistry.storeFor` contract and was confirmed by bisection to
+  restore scrolling when this package's whole conversation fork is disabled.
+  It was NOT independently confirmed against a live boot with this package
+  active, and turned out not to be the actual cause of a reported
+  app-wide mouse-wheel scrolling regression that reproduced with this fix
+  already in place — see the next item.
+- The actual cause: `../../../tsdown.client-plugin-preset.ts`'s
+  `styleInjectionModule` derived its CSS `<style>`-tag id from a source
+  file's basename alone (`${id}/${basename}`), which collides whenever a
+  fork and the vendor package it forks each own a same-named CSS Module —
+  exactly this package's own `ConversationRoot.module.css` vs.
+  `dsh-client-ui-conversation`'s own file of the same name. This package's
+  `apply.ts` used to statically import vendor's whole `apply.ts` (for its
+  fallback path only, but a static top-level import evaluates unconditionally),
+  which evaluated vendor's `ConversationRoot.tsx` and injected vendor's CSS
+  under that tag id before this package's own CSS Module ever got a chance
+  to — the `document.querySelector(...) === null` injection guard then saw
+  the tag already present and silently skipped this package's own stylesheet.
+  The DOM rendered with this package's own scoped classnames, but the only
+  rules ever inserted under that tag were vendor's, scoped to different
+  classnames — so `.scrollBody`'s `overflow-y: auto` and `.root`'s
+  `overflow: hidden` never took effect anywhere in the conversation column
+  (Chat, Trajectory, and File alike, since all three mount inside this one
+  forked skeleton). Fixed two ways: the tag id now incorporates a hash of the
+  full resolved source path, not just the basename (unconditional fix, in the
+  shared preset, covers every current and future same-named-CSS-Module fork);
+  and the `pristineApply` import in this package's own `apply.ts` (and
+  `../client-ui-workspace-enhanced`'s, which has the identical pattern with
+  `WorkspaceBrowser.module.css`) is now a dynamic `import()` invoked only
+  inside the fallback branch that actually needs it, so the always-on
+  eager-evaluation trigger is gone even though the tag-id fix alone is
+  sufficient.
+- **Sharp edge for future plugins:** any fork that both owns a CSS Module and
+  imports (statically or dynamically) the vendor package it forks — for its
+  own fallback path or otherwise — shares a build with vendor's same-named
+  CSS Module. The tag-id fix makes that safe by construction now, but a
+  *content* collision (two different `.root` rules both racing to the DOM)
+  is a distinct question the tag-id fix does not answer; keep forked CSS
+  Modules feature-complete forks, not partial overrides that rely on
+  vendor's rules cascading underneath.
+
 **Test-only finding, not part of this package:** verifying against a
 `web-app`-derived profile once hit `dsh-plugins-bundle-workspace-git`'s own
 `workspace-registry-seam` row duplicate-mounting `@deepseek-ai/dsh-workspace`

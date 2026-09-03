@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { readFile as readFileAsync } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -54,7 +55,20 @@ const SOURCEMAP_COMMENT = /\n\/\/# sourceMappingURL=.*\s*$/
 
 /** Emit one plugin-owned style injector and an optional CSS Modules class-name export. */
 function styleInjectionModule(id: string, fileId: string, css: string, classMap?: Readonly<Record<string, string>>): string {
-  const tagId = `${id}/${fileId.split(sep).pop()}`
+  // Keyed on the resolved source path, not just its basename: two packages
+  // (a fork and the vendor package it forks) routinely each own a
+  // same-named CSS Module (e.g. both `dsh-plugins-client-ui-conversation-
+  // enhanced`'s and `dsh-client-ui-conversation`'s own
+  // `ConversationRoot.module.css`) that land in the very same bundle
+  // whenever the fork's fallback path pulls in the vendor's own component
+  // tree — a basename-only tag id collided between them, so the second
+  // injection's `document.querySelector(...) === null` guard saw a tag
+  // already present and silently skipped inserting its own stylesheet,
+  // leaving the DOM's fork-scoped classnames with no matching rules at all
+  // (see ARCHITECTURE.md's "Replaced-plugin resilience").
+  const basename = fileId.split(sep).pop()
+  const hash = createHash('sha1').update(fileId).digest('hex').slice(0, 8)
+  const tagId = `${id}/${hash}-${basename}`
   const source = [
     `const css = ${JSON.stringify(css)};`,
     `const tagId = ${JSON.stringify(tagId)};`,
@@ -223,6 +237,18 @@ export function clientPluginBundle(id: string, entry: string, options: ClientPlu
     outputOptions: {
       entryFileNames: 'client.js',
       sourcemapExcludeSources: false,
+      // A dynamic import() inside plugin source (e.g. a replacement
+      // plugin's own lazy pristine-apply fallback) must stay physically
+      // inside this one output file: the closure-factory `require` the
+      // banner below receives only resolves this bundle's declared
+      // externals, not a second chunk file this bundler would otherwise
+      // split off — no browser-side loader here ever fetches or registers
+      // that second file. Disabling code splitting keeps rolldown's
+      // evaluation laziness (the imported module's top-level code still
+      // only runs the first time the import() expression executes) while
+      // packing it into the single `client.js` this preset's
+      // `entryFileNames` promises.
+      codeSplitting: false,
       banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (require) => {`,
       footer: 'return module.exports; } });',
       intro: 'var module = { exports: {} }; var exports = module.exports;',

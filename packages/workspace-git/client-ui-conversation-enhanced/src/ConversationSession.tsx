@@ -238,11 +238,17 @@ export function ConversationSession({
   // 'file' is dsh-plugins-client-ui-conversation-files's own registered
   // conversation.view id — the only consumer of this focus payload shape
   // (see that package's FileView.tsx `OpenFileFocus`/`parseOpenFileFocus`).
+  // Deps pinned to pendingFileOpen alone, the same convention the draft-mirror
+  // effect above uses: `openView`/`completePendingFileOpen` are fresh closures
+  // every render (apply.ts's `inject()` recreates them), but both close over
+  // this same Session instance's unchanging sessionId, so including them
+  // would rerun this drain on every unrelated render instead of only when a
+  // new request actually arrives.
   useEffect(() => {
     if (pendingFileOpen === undefined) return
     openView('file', JSON.stringify({ path: pendingFileOpen.path, workspaceId: pendingFileOpen.workspaceId }))
     completePendingFileOpen()
-  }, [pendingFileOpen, openView, completePendingFileOpen])
+  }, [pendingFileOpen])
 
   if (session.blank && conversationPhase(session, conversation) === 'blank' && !everOpenedFile) return null
   return (

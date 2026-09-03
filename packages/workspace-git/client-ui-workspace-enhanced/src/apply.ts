@@ -15,13 +15,15 @@
  * `../../../../ARCHITECTURE.md`'s "Plugin isolation"): `apply()` below
  * catches any synchronous setup failure in `applyEnhanced()` — everything
  * before either slot is registered — and falls back to calling
- * `dsh-client-ui-workspace`'s own unmodified `apply(ctx)`, imported as a
- * real value (this package's own `inject` array is identical to the
- * original's, so every service the fallback needs is already guaranteed
- * available). A failure *inside* one of the two `ctx.slots.inject(...)`
- * callbacks — which can fire asynchronously, after `applyEnhanced()` has
- * already returned, making an outer try/catch unable to see it — is caught
- * at that call site instead; there is no clean way to fall back to just the
+ * `dsh-client-ui-workspace`'s own unmodified `apply(ctx)`, loaded through a
+ * dynamic `import()` rather than a static one (this package's own `inject`
+ * array is identical to the original's, so every service the fallback needs
+ * is already guaranteed available) — see `apply()`'s own doc comment for why
+ * the import must stay dynamic. A failure *inside* one of the two
+ * `ctx.slots.inject(...)` callbacks — which can fire asynchronously, after
+ * `applyEnhanced()` has already returned, making an outer try/catch unable
+ * to see it — is caught at that call site instead; there is no clean way to
+ * fall back to just the
  * pristine registration for one hole without re-running (and thus
  * double-registering) the whole original `apply()`, so that path logs and
  * leaves the one affected row unregistered, degrading only that feature
@@ -29,7 +31,6 @@
  * @module dsh-plugins-client-ui-workspace-enhanced/apply
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { apply as pristineApply } from '@deepseek-ai/dsh-client-ui-workspace/src/client/index.ts'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { IWorkspaces } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -80,10 +81,19 @@ export const inject = [
 /**
  * Register the enhanced browser and the unmodified picker once their slot
  * declarations are on the ledger, falling back to the pristine plugin if
- * enhanced setup fails before either registration begins.
+ * enhanced setup fails before either registration begins. The fallback
+ * loads vendor's `apply.ts` through a dynamic `import()`, not a static
+ * top-level one: a static import would unconditionally evaluate (and
+ * CSS-inject) vendor's whole `WorkspaceBrowser` component tree on every
+ * load, including the overwhelmingly common path where this fallback never
+ * fires, racing this package's own `WorkspaceBrowser.module.css` injection
+ * for the same tag id (see `styleInjectionModule` in
+ * `tsdown.client-plugin-preset.ts` and `dsh-plugins-client-ui-conversation-
+ * enhanced`'s own `apply.ts` for the sibling collision this same pattern
+ * caused there).
  * @param ctx - client root context.
  */
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<void> {
   try {
     applyEnhanced(ctx)
   } catch (error) {
@@ -91,6 +101,7 @@ export function apply(ctx: Context): void {
       'dsh-plugins-client-ui-workspace-enhanced: enhanced setup failed — falling back to the pristine dsh-client-ui-workspace plugin',
     )
     ctx.logger.error(error)
+    const { apply: pristineApply } = await import('@deepseek-ai/dsh-client-ui-workspace/src/client/index.ts')
     pristineApply(ctx)
   }
 }

@@ -134,6 +134,24 @@ export class FileOpenRegistry {
     return hook
   }
 
+  /**
+   * Release every entry this registry holds for `sessionId` — mirrors
+   * vendor's `ComposerBlockRegistry.forget` (same package,
+   * `./input/blocks.ts`). Without this, a long-lived Client keeps one Map
+   * entry per session per field (six fields) for every session that ever
+   * requested or completed a file open, for the rest of the process
+   * lifetime — call once a session is known gone (its id drops out of
+   * `ctx.sessions.list`'s `ids`).
+   */
+  forget(sessionId: SessionId): void {
+    this.pending.delete(sessionId)
+    this.listeners.delete(sessionId)
+    this.everOpened.delete(sessionId)
+    this.everOpenedListeners.delete(sessionId)
+    this.pendingHooks.delete(sessionId)
+    this.everOpenedHooks.delete(sessionId)
+  }
+
   private notify(sessionId: SessionId): void {
     for (const fn of this.listeners.get(sessionId) ?? []) fn()
   }

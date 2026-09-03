@@ -27,10 +27,18 @@
  * install-order violation ever leaves the pristine `ui-conversation` row
  * active too, both registrations land instead of the second one throwing,
  * and this one wins deterministically (lowest priority renders). `apply()`
- * itself falls back to the pristine, unmodified `apply(ctx)` (imported as a
- * real value) if enhanced setup fails *before* any registration has been
- * attempted — safe because nothing of this plugin's has registered yet at
- * that point. Once past that point each individual slot registration
+ * itself falls back to the pristine, unmodified `apply(ctx)` if enhanced
+ * setup fails *before* any registration has been attempted — safe because
+ * nothing of this plugin's has registered yet at that point. That fallback
+ * is a dynamic `import()`, not a static top-level one: statically importing
+ * vendor's `apply.ts` would unconditionally evaluate (and CSS-inject)
+ * vendor's whole Conversation component tree on every load, including the
+ * overwhelmingly common path where the fallback never fires — see
+ * `styleInjectionModule` in `tsdown.client-plugin-preset.ts` for the CSS
+ * injection tag-identity collision that caused with this package's own
+ * `ConversationRoot.module.css`.
+ *
+ * Once past that point each individual slot registration
  * (`settings.general.item`, and each of the four Conversation-assembly
  * registrations) is independently try/catch-guarded instead: a failure
  * there degrades only that one row, rather than either crashing the whole
@@ -82,7 +90,6 @@ import { en, NS, zh, type ConversationKey } from '@deepseek-ai/dsh-client-ui-con
 import {
   CONVERSATION_SETTINGS_NAMESPACE, type ConversationSettings,
 } from '@deepseek-ai/dsh-client-ui-conversation/src/submission-settings.ts'
-import { apply as pristineApply } from '@deepseek-ai/dsh-client-ui-conversation/src/client/apply.ts'
 import { ConversationRoot } from './ConversationRoot.tsx'
 import { ConversationSession, ConversationSessionHeader } from './ConversationSession.tsx'
 import { FileOpenRegistry, type PendingFileOpen } from './FileOpenRegistry.ts'
@@ -183,7 +190,7 @@ function concreteConversation(ctx: Context): ConversationController {
  * Mount the Conversation core and target-neutral presentation.
  * @param ctx - Client root context.
  */
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<void> {
   const sessions = ctx.sessions
   const slots = ctx.slots
   let workspaceNavigation: WorkspaceNavigation
@@ -201,6 +208,15 @@ export function apply(ctx: Context): void {
       'dsh-plugins-client-ui-conversation-enhanced: enhanced setup failed — falling back to the pristine dsh-client-ui-conversation plugin',
     )
     ctx.logger.error(error)
+    // Dynamic, not static: a static top-level import of vendor's apply.ts
+    // unconditionally evaluates (and CSS-injects) vendor's whole
+    // Conversation component tree even on the overwhelmingly common path
+    // where this fallback never fires, racing this package's own
+    // `ConversationRoot.module.css` injection for the same tag id (see
+    // ../../../../ARCHITECTURE.md's "Replaced-plugin resilience"). Loading it
+    // only here means the fallback's own CSS injection wins the race
+    // whenever it is the one that actually runs.
+    const { apply: pristineApply } = await import('@deepseek-ai/dsh-client-ui-conversation/src/client/apply.ts')
     pristineApply(ctx)
     return
   }
@@ -283,6 +299,22 @@ export function apply(ctx: Context): void {
       disposeViews()
     }
   }, 'ui-conversation: View selection')
+
+  // FileOpenRegistry's pending/everOpened/hook Maps and Sets are keyed by
+  // SessionId and never pruned on their own (see FileOpenRegistry.forget's
+  // own doc comment) — release a session's entries once it drops out of the
+  // Host-authoritative list, mirroring vendor's own
+  // `ComposerBlockRegistry.forget` contract.
+  ctx.effect(() => {
+    let knownIds = new Set(sessions.list.getSnapshot().ids)
+    return sessions.list.subscribe(() => {
+      const nextIds = new Set(sessions.list.getSnapshot().ids)
+      for (const id of knownIds) {
+        if (!nextIds.has(id)) fileOpenRegistry.forget(id)
+      }
+      knownIds = nextIds
+    })
+  }, 'ui-conversation: FileOpenRegistry pruning')
 
   const inputHub = new InputHub(ctx, t)
   const composerBlocks = new ComposerBlockRegistry()
