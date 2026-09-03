@@ -361,16 +361,21 @@ function TerminalPanel(props) {
   /** conversation-column geometry: the panel never covers the side rails */
   const [geo, setGeo] = useState({ left: 0, width: window.innerWidth });
 
-  /* The terminal bar/panel is pinned to the viewport bottom; the composer card
-   * (the nearest ancestor holding the textarea) gets margin-bottom equal to the
-   * panel's rendered height, so the input dialog ALWAYS sits above the terminal
-   * - collapsed bar (34px) and expanded panel alike. */
+  /* The terminal bar/panel is pinned to the viewport bottom; the sticky
+   * composer seat (host's [data-composer-seat] - wraps both the input box AND
+   * the turns/tokens/context stats dock beside it) gets margin-bottom equal to
+   * the panel's rendered height, so the input dialog AND that stats row ALWAYS
+   * sit above the terminal - collapsed bar (34px) and expanded panel alike.
+   * Falls back to the nearest ancestor holding a <textarea> for host apps that
+   * don't expose data-composer-seat. */
   const { useLayoutEffect } = React;
   useLayoutEffect(() => {
     const rootEl = rootRef.current;
     if (rootEl === null) return;
     const host = () => rootEl.closest("[data-conversation-scroll]") ?? rootEl.parentElement;
     const findComposer = () => {
+      const seat = host().querySelector("[data-composer-seat]") ?? document.querySelector("[data-composer-seat]");
+      if (seat !== null) return seat;
       let el = rootEl.parentElement;
       while (el !== null && el !== document.body) {
         if (el.querySelector("textarea") !== null) return el;
