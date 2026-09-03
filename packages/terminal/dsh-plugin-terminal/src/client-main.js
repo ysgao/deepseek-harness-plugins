@@ -316,7 +316,7 @@ function TermPane({ tab, active, onExit }) {
  * draggable panel. Ctrl+` toggles. Height persists across reloads. */
 function TerminalPanel(props) {
   const { useEffect, useRef, useState, useCallback } = React;
-  const { sessionId, useSessions, useWorkspaces } = props ?? {};
+  const { sessionId, useSessions, useWorkspaces, t } = props ?? {};
   const [open, setOpen] = useState(false);
   /** cwd of the DSH session this panel is mounted in. Prefer the workspace
    *  membership (what the user sees on screen - the workspace the session
@@ -402,7 +402,7 @@ function TerminalPanel(props) {
     };
   }, []);
 
-  const active = tabs.find((t) => t.id === activeId) ?? null;
+  const active = tabs.find((tab) => tab.id === activeId) ?? null;
 
   /* Restore live sessions on EVERY mount (page load, workspace switch):
    * the panel is injected per-conversation, so switching workspaces remounts
@@ -466,7 +466,7 @@ function TerminalPanel(props) {
   }, []);
 
   const onExit = useCallback((id) => {
-    setTabs((cur) => cur.map((t) => (t.id === id ? { ...t, exited: true } : t)));
+    setTabs((cur) => cur.map((tab) => (tab.id === id ? { ...tab, exited: true } : tab)));
   }, []);
 
   /* + button: new session in a new tab, spawned in the current workspace.
@@ -489,9 +489,9 @@ function TerminalPanel(props) {
   /* x on a tab: delete session, drop tab, activate a neighbor */
   const closeTab = useCallback(async (id) => {
     setTabs((cur) => {
-      const idx = cur.findIndex((t) => t.id === id);
+      const idx = cur.findIndex((tab) => tab.id === id);
       if (idx === -1) return cur;
-      const next = cur.filter((t) => t.id !== id);
+      const next = cur.filter((tab) => tab.id !== id);
       setActiveId((act) => {
         if (act !== id) return act;
         if (next.length === 0) return null;
@@ -516,7 +516,7 @@ function TerminalPanel(props) {
        * workspace than the one currently on screen); legacy tabs without a
        * persisted cwd fall back to the current workspace. */
       const s = await post("/sessions/" + active.id + "/restart", { cwd: active.cwd ?? workspaceCwd });
-      setTabs((cur) => cur.map((t) => (t.id === active.id ? { id: s.id, title: active.title, shell: s.shell, cwd: s.cwd ?? active.cwd ?? workspaceCwd, exited: false } : t)));
+      setTabs((cur) => cur.map((tab) => (tab.id === active.id ? { id: s.id, title: active.title, shell: s.shell, cwd: s.cwd ?? active.cwd ?? workspaceCwd, exited: false } : tab)));
       setActiveId(s.id);
     } catch (err) {
       console.error("[dsh-plugin-terminal] restart failed:", err);
@@ -551,10 +551,10 @@ function TerminalPanel(props) {
   const toggle = useCallback(() => setOpen((v) => !v), []);
 
   const stateLabel = busy
-    ? "启动中…"
+    ? t("terminal-panel.starting")
     : active === null
-      ? tabs.length === 0 ? "无会话" : "空闲"
-      : active.exited ? tabLabel(active) + " 已退出，点 ⟳ 重启" : tabLabel(active);
+      ? tabs.length === 0 ? t("terminal-panel.noActiveSession") : t("terminal-panel.idle")
+      : active.exited ? t("terminal-panel.sessionExitedHint", { name: tabLabel(active) }) : tabLabel(active);
 
   return React.createElement(
     "div",
@@ -565,7 +565,7 @@ function TerminalPanel(props) {
           { className: "dshTermPanel", id: "dshTermPanel", style: { height: height + "px" } },
           React.createElement("div", {
             className: "dshTermResize",
-            title: "拖动调整高度",
+            title: t("terminal-panel.dragResize"),
             onPointerDown: startResize,
           }),
           /* single merged header row: lead + scrollable tabs + new + state + restart + collapse */
@@ -576,28 +576,28 @@ function TerminalPanel(props) {
             React.createElement(
               "div",
               { className: "dshTermTabsScroll", role: "tablist" },
-              ...tabs.map((t) =>
+              ...tabs.map((tab) =>
                 React.createElement(
                   "button",
                   {
-                    key: t.id,
+                    key: tab.id,
                     role: "tab",
-                    "aria-selected": t.id === activeId,
-                    className: "dshTermTab" + (t.id === activeId ? " isActive" : "") + (t.exited ? " isExited" : ""),
-                    title: t.exited ? tabLabel(t) + " (已退出)" : tabLabel(t),
-                    onClick: () => setActiveId(t.id),
+                    "aria-selected": tab.id === activeId,
+                    className: "dshTermTab" + (tab.id === activeId ? " isActive" : "") + (tab.exited ? " isExited" : ""),
+                    title: tab.exited ? t("terminal-panel.tabTitleExited", { name: tabLabel(tab) }) : tabLabel(tab),
+                    onClick: () => setActiveId(tab.id),
                   },
                   React.createElement("span", { className: "dshTermTabLead", "aria-hidden": true }, TerminalGlyph12()),
-                  React.createElement("span", { className: "dshTermTabLabel" }, tabLabel(t)),
+                  React.createElement("span", { className: "dshTermTabLabel" }, tabLabel(tab)),
                   React.createElement(
                     "span",
                     {
                       className: "dshTermTabClose",
                       role: "button",
-                      title: "关闭 " + tabLabel(t),
+                      title: t("terminal-panel.closeTab", { name: tabLabel(tab) }),
                       onClick: (e) => {
                         e.stopPropagation();
-                        closeTab(t.id);
+                        closeTab(tab.id);
                       },
                     },
                     Close14(),
@@ -609,8 +609,8 @@ function TerminalPanel(props) {
               "button",
               {
                 className: "dshTermNew",
-                title: "新建终端",
-                "aria-label": "新建终端",
+                title: t("terminal-panel.newTerminal"),
+                "aria-label": t("terminal-panel.newTerminal"),
                 disabled: busy,
                 onClick: newTab,
               },
@@ -621,7 +621,7 @@ function TerminalPanel(props) {
             active !== null
               ? React.createElement(
                   "button",
-                  { className: "dshTermBarAction", title: active.exited ? "重启进程（保留标签位）" : "重启当前会话", "aria-label": "重启当前会话", disabled: busy, onClick: restartActive },
+                  { className: "dshTermBarAction", title: active.exited ? t("terminal-panel.restartProcessKeepSlot") : t("terminal-panel.restartCurrentSession"), "aria-label": t("terminal-panel.restartCurrentSession"), disabled: busy, onClick: restartActive },
                   Refresh14(),
                 )
               : null,
@@ -629,8 +629,8 @@ function TerminalPanel(props) {
               "button",
               {
                 className: "dshTermCollapse",
-                title: "收起面板（Ctrl+`）",
-                "aria-label": "收起面板",
+                title: t("terminal-panel.collapsePanelHint"),
+                "aria-label": t("terminal-panel.collapsePanel"),
                 onClick: toggle,
               },
               ChevronDown14(),
@@ -639,11 +639,11 @@ function TerminalPanel(props) {
           React.createElement(
             "div",
             { className: "dshTermBody" },
-            ...tabs.map((t) =>
+            ...tabs.map((tab) =>
               React.createElement(TermPane, {
-                key: t.id,
-                tab: t,
-                active: t.id === activeId,
+                key: tab.id,
+                tab: tab,
+                active: tab.id === activeId,
                 onExit,
               }),
             ),
@@ -651,12 +651,12 @@ function TerminalPanel(props) {
               ? React.createElement(
                   "div",
                   { className: "dshTermEmpty" },
-                  React.createElement("span", null, "没有终端会话"),
+                  React.createElement("span", null, t("terminal-panel.noTerminalSession")),
                   React.createElement(
                     "button",
                     { className: "dshTermEmptyBtn", onClick: newTab },
                     Plus12(),
-                    "新建终端",
+                    t("terminal-panel.newTerminal"),
                   ),
                 )
               : null,
@@ -670,7 +670,7 @@ function TerminalPanel(props) {
             tabIndex: 0,
             "aria-expanded": open,
             "aria-controls": "dshTermPanel",
-            title: "终端面板（Ctrl+` 切换）",
+            title: t("terminal-panel.terminalPanelHint"),
             onClick: toggle,
             onKeyDown: (e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -680,7 +680,7 @@ function TerminalPanel(props) {
             },
           },
           React.createElement("span", { className: "dshTermBarLead", "aria-hidden": true }, TerminalGlyph14()),
-          React.createElement("span", { className: "dshTermBarTitle" }, "终端" + (tabs.length > 1 ? " · " + tabs.length : "")),
+          React.createElement("span", { className: "dshTermBarTitle" }, tabs.length > 1 ? t("terminal-panel.titleWithCount", { count: tabs.length }) : t("terminal-panel.title")),
           React.createElement("span", { className: "dshTermBarState" }, stateLabel),
           React.createElement(
             "span",
@@ -688,7 +688,7 @@ function TerminalPanel(props) {
             active !== null
               ? React.createElement(
                   "button",
-                  { className: "dshTermBarAction", title: active.exited ? "重启进程（保留标签位）" : "重启当前会话", "aria-label": "重启当前会话", disabled: busy, onClick: restartActive },
+                  { className: "dshTermBarAction", title: active.exited ? t("terminal-panel.restartProcessKeepSlot") : t("terminal-panel.restartCurrentSession"), "aria-label": t("terminal-panel.restartCurrentSession"), disabled: busy, onClick: restartActive },
                   Refresh14(),
                 )
               : null,
