@@ -1,0 +1,620 @@
+/**
+ * dsh-plugin-terminal — host half.
+ *
+ * In-repo fork of the upstream `dsh-plugin-terminal` npm package — see
+ * ../README.md for what was changed from upstream and why (an auth gap that
+ * gave any local caller unauthenticated shell access, and a broken node-pty
+ * prebuild).
+ *
+ * Owns node-pty sessions and exposes them to the Web GUI through named
+ * routes on ctx.webServer, authenticated via ctx.connection (see below).
+ *
+ * Why node-pty directly: the built-in ctx.subprocess.spawnTerminal() has no
+ * process inspector on Windows and throws there. node-pty ships prebuilt
+ * ConPTY binaries for win32, so this plugin gives every platform a real
+ * interactive terminal while the upstream seam catches up.
+ */
+import { randomUUID } from 'node:crypto'
+import { execSync } from 'node:child_process'
+import { appendFileSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join as pathJoin } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { spawn as ptySpawn } from 'node-pty'
+import { WebSocketServer } from 'ws'
+
+/**
+ * Child environment for PTY sessions, tuned for TUI agents (codex / claude
+ * code) and CJK output:
+ * - TERM: node-pty also writes the name option into env.TERM; keep it explicit
+ * - COLORTERM=truecolor: xterm.js renders truecolor; without it the CLIs fall
+ *   back to 256-color and drop gradients/background fills
+ * - LANG/LC_ALL/PYTHONIOENCODING: guard against non-UTF-8 hosts so CJK output
+ *   from shells/python never turns into mojibake
+ * Existing non-empty user values win; only missing/empty slots get defaults.
+ */
+export function buildSessionEnv(base = process.env) {
+  const pick = (key, fallback) => {
+    const v = base[key]
+    return v === undefined || v === '' ? fallback : v
+  }
+  return {
+    ...base,
+    TERM: 'xterm-256color',
+    COLORTERM: pick('COLORTERM', 'truecolor'),
+    PYTHONIOENCODING: pick('PYTHONIOENCODING', 'utf-8'),
+    ...(process.platform === 'win32'
+      ? {}
+      : {
+          LANG: pick('LANG', 'en_US.UTF-8'),
+          LC_ALL: pick('LC_ALL', 'en_US.UTF-8'),
+        }),
+  }
+}
+
+/** Route namespace; the client half must agree. */
+const PREFIX = '/terminal-panel'
+/** Max chars of scrollback kept per session (ring buffer).
+ *  500k chars ~ 8-10k terminal lines: long agent sessions (codex/claude
+ *  code) stream a lot of tool output, and this buffer is also the replay
+ *  source on reconnect, so it must cover the client scrollback. */
+const SCROLLBACK_CHARS = 500_000
+/** xterm.css shipped with this package (served at /terminal-panel/xterm.css). */
+const XTERM_CSS_PATH = fileURLToPath(new URL('./client.css', import.meta.url))
+let xtermCss = null
+try {
+  xtermCss = readFileSync(XTERM_CSS_PATH, 'utf8')
+} catch {
+  /* css absent — client degrades gracefully */
+}
+/** Resolve a session working directory.
+ *  1. The client-supplied path when it still exists as a directory.
+ *  2. The DSH workspace path of the owning session (the workspace registry
+ *     keeps the canonical session -> path index) - this is what makes a "+"
+ *     click inside a workspace session reuse the workspace directory even
+ *     when the client sent no cwd of its own.
+ *  3. The host process cwd as a last resort, so a deleted workspace cannot
+ *     prevent terminal creation. */
+function resolveSessionCwd(cwd, sessionId, workspaceRegistry) {
+  const candidates = []
+  if (typeof cwd === 'string' && cwd.length > 0) candidates.push(cwd)
+  if (typeof sessionId === 'string' && sessionId.length > 0 && workspaceRegistry !== undefined) {
+    try {
+      const path = workspaceRegistry.host?.sessionPath?.(sessionId)
+      if (typeof path === 'string' && path.length > 0) candidates.push(path)
+    } catch {
+      /* workspace service absent or not ready - fall through */
+    }
+  }
+  for (const candidate of candidates) {
+    try {
+      if (statSync(candidate).isDirectory()) return candidate
+    } catch {
+      /* missing / inaccessible - try the next candidate */
+    }
+  }
+  return process.cwd()
+}
+
+/** Pick a real interactive shell for the current platform. */
+function resolveShell() {
+  if (process.platform !== 'win32') return process.env.SHELL || '/bin/bash'
+  for (const candidate of ['pwsh.exe', 'powershell.exe']) {
+    try {
+      execSync(`where ${candidate}`, { shell: 'cmd.exe', stdio: 'ignore' })
+      return candidate
+    } catch {
+      /* try next */
+    }
+  }
+  return 'cmd.exe'
+}
+
+let sessionCounter = 0
+
+export const name = 'dsh-plugin-terminal'
+export const inject = ['webServer', 'connection']
+
+export function apply(ctx) {
+  const webServer = ctx.webServer
+  /** Optional DSH workspace registry: the authoritative session -> workspace
+   *  path index. Absent in compositions without dsh-workspace; the cwd
+   *  resolver degrades to the process cwd in that case. */
+  const workspaceRegistry = typeof ctx.get === 'function' ? ctx.get('workspaceRegistry') : undefined
+
+  /** id -> session record */
+  const sessions = new Map()
+  /** id -> per-session WS upgrade route disposer */
+  const upgradeDisposers = new Map()
+
+  /* --- restart persistence: sessions survive a `dsh web` restart as exited
+   * history (meta + scrollback log under $DSH_HOME). A live PTY cannot
+   * outlive its host process by nature; replayable history + one-click
+   * restart is the closest a same-process backend can get.
+   * DSH_PLUGIN_TERMINAL_DATA overrides the dir (used by tests). */
+  const DATA_DIR = process.env.DSH_PLUGIN_TERMINAL_DATA ?? pathJoin(process.env.DSH_HOME ?? pathJoin(homedir(), '.dsh'), 'plugin-data', 'terminal')
+  const META_PATH = pathJoin(DATA_DIR, 'sessions.json')
+  const LOG_DIR = pathJoin(DATA_DIR, 'logs')
+  const logPath = (id) => pathJoin(LOG_DIR, id + '.log')
+
+  /** rewrite sessions.json from the in-memory map (small N, full rewrite) */
+  function persistMeta() {
+    try {
+      mkdirSync(DATA_DIR, { recursive: true })
+      const meta = [...sessions.values()].map((s) => ({
+        id: s.id,
+        shell: s.shell,
+        title: s.title,
+        cwd: s.cwd ?? null,
+        bornAt: s.bornAt,
+        exited: s.exited,
+        exitDetail: s.exitDetail ?? null,
+      }))
+      writeFileSync(META_PATH, JSON.stringify(meta))
+    } catch (err) {
+      console.error('[dsh-plugin-terminal] persist meta failed:', err)
+    }
+  }
+
+  /** append output to the session log, coalesced at 250ms to keep IO cheap */
+  function queueLog(record, data) {
+    record.pending = (record.pending ?? '') + data
+    if (record.flushTimer !== undefined && record.flushTimer !== null) return
+    record.flushTimer = setTimeout(() => {
+      record.flushTimer = null
+      const chunk = record.pending ?? ''
+      record.pending = ''
+      if (chunk.length === 0) return
+      try {
+        mkdirSync(LOG_DIR, { recursive: true })
+        appendFileSync(logPath(record.id), chunk)
+      } catch (err) {
+        console.error('[dsh-plugin-terminal] log write failed:', err)
+      }
+    }, 250)
+  }
+
+  /** flush any pending log chunk (call on exit / dispose) */
+  function flushLog(record) {
+    if (record.flushTimer !== undefined && record.flushTimer !== null) {
+      clearTimeout(record.flushTimer)
+      record.flushTimer = null
+    }
+    const chunk = record.pending ?? ''
+    record.pending = ''
+    if (chunk.length === 0) return
+    try {
+      mkdirSync(LOG_DIR, { recursive: true })
+      appendFileSync(logPath(record.id), chunk)
+    } catch (err) {
+      console.error('[dsh-plugin-terminal] log flush failed:', err)
+    }
+  }
+
+  /** drop a session from disk (explicit user close) */
+  function forgetSession(id) {
+    const record = sessions.get(id)
+    // Clear any pending log chunks FIRST: pty.kill() above fires onExit
+    // asynchronously, whose flushLog() would recreate the file we unlink.
+    if (record !== undefined) {
+      if (record.flushTimer !== undefined && record.flushTimer !== null) {
+        clearTimeout(record.flushTimer)
+        record.flushTimer = null
+      }
+      record.pending = ''
+    }
+    try {
+      unlinkSync(logPath(id))
+    } catch {
+      /* no log */
+    }
+    sessions.delete(id)
+    persistMeta()
+  }
+
+  /** restore persisted sessions as exited history after a restart */
+  function loadPersisted() {
+    let meta = []
+    try {
+      meta = JSON.parse(readFileSync(META_PATH, 'utf8'))
+    } catch {
+      return // nothing persisted yet
+    }
+    for (const m of meta) {
+      if (sessions.has(m.id)) continue
+      let buffer = ''
+      try {
+        buffer = readFileSync(logPath(m.id), 'utf8').slice(-SCROLLBACK_CHARS)
+      } catch {
+        /* no log - empty history */
+      }
+      const record = {
+        id: m.id,
+        pty: null,
+        shell: m.shell ?? 'shell',
+        title: m.title ?? 'restored session',
+        cwd: typeof m.cwd === 'string' ? m.cwd : null,
+        buffer,
+        exited: true,
+        exitDetail: m.exitDetail ?? 0,
+        subscribers: new Set(),
+        wsClients: new Set(),
+        bornAt: m.bornAt ?? Date.now(),
+        pending: '',
+        flushTimer: null,
+      }
+      sessions.set(m.id, record)
+      registerSessionWs(m.id)
+    }
+  }
+
+  /** per-session WS upgrade route: live sessions stream + accept input;
+   *  exited (incl. restored) sessions replay the buffer then close. */
+  function registerSessionWs(id) {
+    upgradeDisposers.set(id, webServer.registerUpgrade({
+      path: PREFIX + '/ws/' + id,
+      handler(req, socket, head) {
+        // Real auth, mirroring the HTTP routes: ctx.webServer routes get no
+        // authentication for free (it's a bare node:http router), so this
+        // must apply the same Host/Origin fence + signed-cookie check the
+        // rest of the app's own routes go through. Checked BEFORE the
+        // session-existence probe so the route never answers whether an id
+        // exists to an unauthenticated caller.
+        if (ctx.connection.requestRejection(req) !== undefined) {
+          socket.destroy()
+          return
+        }
+        const current = sessions.get(id)
+        if (current === undefined) {
+          socket.destroy()
+          return
+        }
+        const wss = new WebSocketServer({ noServer: true })
+        wss.on('connection', (ws) => {
+          current.wsClients.add(ws)
+          if (current.buffer.length > 0) ws.send(current.buffer)
+          if (current.exited) {
+            ws.close(1000, 'session exited')
+            return
+          }
+          ws.on('message', (data) => {
+            if (current.exited || current.pty === null) return
+            const text = String(data)
+            if (text.startsWith('{"type":"resize"')) {
+              try {
+                const body = JSON.parse(text)
+                if (typeof body.cols === 'number' && typeof body.rows === 'number') {
+                  current.pty.resize(body.cols, body.rows)
+                }
+              } catch {
+                /* ignore malformed resize */
+              }
+            } else {
+              current.pty.write(text)
+            }
+          })
+          ws.on('close', () => current.wsClients.delete(ws))
+          ws.on('error', () => current.wsClients.delete(ws))
+        })
+        wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
+      },
+    }))
+  }
+
+  /** Unpredictable session id: readable counter prefix + crypto-random
+   *  suffix, so id secrecy is never the security boundary (WS routes are
+   *  now origin-gated; the random suffix is defense in depth against
+   *  enumeration on top of that). */
+  const makeId = () => `t${++sessionCounter}-${randomUUID()}`
+
+  function createSession({ cols = 80, rows = 24, cwd, shell, seed = '', sessionId } = {}) {
+    const file = shell && shell.length > 0 ? shell : resolveShell()
+    const argv = file.endsWith('cmd.exe') ? [file] : [file, process.platform === 'win32' ? '-NoLogo' : '-i']
+    const id = makeId()
+    const sessionCwd = resolveSessionCwd(cwd, sessionId, workspaceRegistry)
+    const pty = ptySpawn(file, argv.slice(1), {
+      name: 'xterm-256color',
+      cols,
+      rows,
+      cwd: sessionCwd,
+      env: buildSessionEnv(),
+    })
+    /** session record */
+    const record = {
+      id,
+      pty,
+      shell: file,
+      title: `${file} #${sessionCounter}`,
+      cwd: sessionCwd,
+      /* seed: inherited scrollback from a restart - replayed to WS clients
+       * on connect and persisted to the new session log up front */
+      buffer: seed.slice(-SCROLLBACK_CHARS),
+      exited: false,
+      exitDetail: null,
+      /** SSE response objects currently subscribed */
+      subscribers: new Set(),
+      /** live WebSocket clients for this session */
+      wsClients: new Set(),
+      bornAt: Date.now(),
+    }
+    if (record.buffer.length > 0) {
+      try {
+        mkdirSync(LOG_DIR, { recursive: true })
+        writeFileSync(logPath(id), record.buffer)
+      } catch {
+        /* best effort */
+      }
+    }
+    sessions.set(id, record)
+    registerSessionWs(id)
+    persistMeta()
+    pty.onData((data) => {
+      if (record.dead) return // restarted: old pty may still emit a few frames
+      record.buffer = (record.buffer + data).slice(-SCROLLBACK_CHARS)
+      queueLog(record, data)
+      for (const res of record.subscribers) {
+        res.write(`event: data\ndata: ${JSON.stringify(data)}\n\n`)
+      }
+      for (const ws of record.wsClients) {
+        if (ws.readyState === ws.OPEN) ws.send(data)
+      }
+    })
+    pty.onExit(({ exitCode }) => {
+      record.exited = true
+      record.exitDetail = exitCode
+      if (!record.dead) {
+        flushLog(record)
+        persistMeta()
+      }
+      for (const res of record.subscribers) {
+        res.write(`event: exit\ndata: ${JSON.stringify({ exitCode })}\n\n`)
+        res.end()
+      }
+      record.subscribers.clear()
+      for (const ws of record.wsClients) {
+        try {
+          ws.close(1000, 'session exited')
+        } catch {
+          /* ignore */
+        }
+      }
+      record.wsClients.clear()
+      // keep the exited record as restartable/replayable history; removed
+      // only by explicit DELETE or plugin dispose
+    })
+    return record
+  }
+
+  function killSession(id, reason = 'panel request') {
+    const record = sessions.get(id)
+    if (record === undefined) return false
+    try {
+      record.pty?.kill()
+    } catch {
+      /* already gone */
+    }
+    return true
+  }
+
+  const json = (res, status, body) => {
+    res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify(body))
+  }
+  const readBody = (req) =>
+    new Promise((resolve, reject) => {
+      let text = ''
+      req.on('data', (chunk) => {
+        text += chunk
+        if (text.length > 1_000_000) reject(new Error('body too large'))
+      })
+      req.on('end', () => {
+        try {
+          resolve(text.length === 0 ? {} : JSON.parse(text))
+        } catch (err) {
+          reject(err)
+        }
+      })
+      req.on('error', reject)
+    })
+
+  // restore persisted sessions (exited history) before serving
+  loadPersisted()
+
+  const disposeRoute = webServer.register({
+    kind: 'prefix',
+    path: PREFIX,
+    async handler(req, res) {
+      // Real auth: ctx.webServer is a bare node:http router with no built-in
+      // authentication, so every route registered on it is otherwise wide
+      // open to any local caller regardless of the app's own token/cookie
+      // gate on '/'. ctx.connection.requestRejection() is the documented,
+      // shared primitive for exactly this ("Apply Connection's Host/Origin
+      // checks and browser authentication to another Web route") — the same
+      // check the rest of the app's own routes go through. This plugin used
+      // to hand-roll its own Origin-header comparison here, which trusted
+      // any request with no Origin header at all (every non-browser client,
+      // e.g. curl) — full unauthenticated session list/create/input access.
+      const rejection = ctx.connection.requestRejection(req)
+      if (rejection !== undefined) {
+        json(res, rejection, { error: rejection === 401 ? 'authentication required' : 'cross-origin rejected' })
+        return
+      }
+      const url = new URL(req.url ?? '/', 'http://x')
+      const path = url.pathname
+      const rest = path.slice(PREFIX.length)
+      const method = req.method ?? 'GET'
+
+      try {
+        // GET /sessions — list live sessions
+        if (rest === '/sessions' && method === 'GET') {
+          json(res, 200, {
+            sessions: [...sessions.values()].map((s) => ({
+              id: s.id,
+              title: s.title,
+              shell: s.shell,
+              cwd: s.cwd,
+              exited: s.exited,
+              bornAt: s.bornAt,
+            })),
+          })
+          return
+        }
+
+        // POST /sessions — create
+        if (rest === '/sessions' && method === 'POST') {
+          const body = await readBody(req)
+          const record = createSession({
+            cols: clampInt(body.cols, 20, 500, 80),
+            rows: clampInt(body.rows, 5, 200, 24),
+            cwd: typeof body.cwd === 'string' ? body.cwd : undefined,
+            shell: typeof body.shell === 'string' ? body.shell : undefined,
+            /* owning DSH session: fallback key into the workspace registry
+             * when the client could not resolve a cwd itself */
+            sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+          })
+          json(res, 200, { id: record.id, title: record.title, shell: record.shell, cwd: record.cwd })
+          return
+        }
+
+        // GET /xterm.css — xterm stylesheet for the client bundle
+        if (rest === '/xterm.css' && method === 'GET') {
+          if (xtermCss === null) {
+            json(res, 404, { error: 'xterm.css not bundled' })
+            return
+          }
+          res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' })
+          res.end(xtermCss)
+          return
+        }
+
+        const match = rest.match(/^\/sessions\/([^/]+)(?:\/(.*))?$/)
+        if (match === null) {
+          json(res, 404, { error: 'not found' })
+          return
+        }
+        const id = match[1]
+        const action = match[2] ?? ''
+        const record = sessions.get(id)
+        if (record === undefined) {
+          json(res, 404, { error: 'no such session' })
+          return
+        }
+
+        // GET /sessions/:id/snapshot — raw buffer (xterm replay)
+        if (action === 'snapshot' && method === 'GET') {
+          json(res, 200, { buffer: record.buffer, exited: record.exited, exitCode: record.exitDetail })
+          return
+        }
+
+        // GET /sessions/:id/stream — SSE output stream (fallback transport)
+        if (action === 'stream' && method === 'GET') {
+          res.writeHead(200, {
+            'content-type': 'text/event-stream',
+            'cache-control': 'no-cache',
+            connection: 'keep-alive',
+          })
+          res.write(`event: snapshot\ndata: ${JSON.stringify({ buffer: record.buffer, exited: record.exited, exitCode: record.exitDetail, title: record.title, shell: record.shell })}\n\n`)
+          if (record.exited) {
+            res.write(`event: exit\ndata: ${JSON.stringify({ exitCode: record.exitDetail })}\n\n`)
+            res.end()
+            return
+          }
+          record.subscribers.add(res)
+          const kick = setInterval(() => res.write(':ka\n\n'), 20_000)
+          req.on('close', () => {
+            clearInterval(kick)
+            record.subscribers.delete(res)
+          })
+          return
+        }
+
+        // POST /sessions/:id/input — write to the pty
+        if (action === 'input' && method === 'POST') {
+          const body = await readBody(req)
+          if (record.exited) {
+            json(res, 409, { error: 'session exited' })
+            return
+          }
+          if (typeof body.data !== 'string') {
+            json(res, 400, { error: 'data must be a string' })
+            return
+          }
+          record.pty.write(body.data)
+          json(res, 200, { ok: true })
+          return
+        }
+
+        // POST /sessions/:id/restart — respawn in place, INHERITING scrollback
+        if (action === 'restart' && method === 'POST') {
+          const body = await readBody(req)
+          const old = record
+          const seed = old.buffer
+          const file = old.shell
+          const requestedCwd = typeof body.cwd === 'string' && body.cwd.length > 0 ? body.cwd : old.cwd
+          // detach old first: mark dead + clear pending so its async onExit /
+          // late onData frames cannot resurrect the log we are about to unlink
+          old.dead = true
+          if (old.flushTimer !== undefined && old.flushTimer !== null) {
+            clearTimeout(old.flushTimer)
+            old.flushTimer = null
+          }
+          old.pending = ''
+          try {
+            old.pty?.kill()
+          } catch {
+            /* already gone */
+          }
+          upgradeDisposers.get(id)?.()
+          upgradeDisposers.delete(id)
+          sessions.delete(id)
+          try {
+            unlinkSync(logPath(id))
+          } catch {
+            /* no log */
+          }
+          const fresh = createSession({ shell: file, cwd: requestedCwd, seed })
+          json(res, 200, { id: fresh.id, title: fresh.title, shell: fresh.shell, cwd: fresh.cwd })
+          return
+        }
+
+        // POST /sessions/:id/resize
+        if (action === 'resize' && method === 'POST') {
+          const body = await readBody(req)
+          const cols = clampInt(body.cols, 10, 500, 80)
+          const rows = clampInt(body.rows, 4, 200, 24)
+          if (!record.exited) record.pty.resize(cols, rows)
+          json(res, 200, { ok: true })
+          return
+        }
+
+        // DELETE /sessions/:id — kill and drop from disk (user closed it)
+        if (action === '' && method === 'DELETE') {
+          killSession(id)
+          forgetSession(id)
+          json(res, 200, { ok: true })
+          return
+        }
+
+        json(res, 404, { error: 'not found' })
+      } catch (err) {
+        json(res, 500, { error: String(err?.message ?? err) })
+      }
+    },
+  })
+
+  ctx.effect(() => {
+    return () => {
+      disposeRoute()
+      for (const [id, dispose] of upgradeDisposers) dispose()
+      upgradeDisposers.clear()
+      for (const id of [...sessions.keys()]) killSession(id, 'plugin dispose')
+    }
+  })
+
+  console.log('[dsh-plugin-terminal] host half active; routes under', PREFIX)
+}
+
+function clampInt(value, min, max, fallback) {
+  const n = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : fallback
+  return Math.min(max, Math.max(min, n))
+}

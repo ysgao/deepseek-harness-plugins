@@ -22,6 +22,7 @@ packages:
   - packages/workspace-git/*
   - packages/anthropic-subscription
   - packages/anthropic-subscription/*
+  - packages/terminal/*
 
 # Mirrors deepseek-ai/deepseek-harness's own allowBuilds policy (pnpm 10+
 # denies any dependency's install/build script until explicitly reviewed

@@ -14,7 +14,8 @@
     "packages/_vendor/deepseek-harness/native/landlock-run",
     "packages/_vendor/deepseek-harness/native/landlock-run/packages/*",
     "packages/workspace-git/*",
-    "packages/anthropic-subscription/*"
+    "packages/anthropic-subscription/*",
+    "packages/terminal/*"
   ],
   "scripts": {
     "build:vendor": "pnpm --dir packages/_vendor/deepseek-harness run build",
