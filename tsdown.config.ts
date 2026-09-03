@@ -20,6 +20,9 @@ const CLIENT_PACKAGES = [
   'packages/workspace-git/client-ui-conversation-files',
   'packages/workspace-git/client-ui-workspace-enhanced',
   'packages/workspace-git/client-ui-conversation-enhanced',
+  'packages/workspace-git/client-remotes-workspace-git',
+  'packages/anthropic-subscription/client-remotes-anthropic-subscription',
+  'packages/anthropic-subscription/client-ui-settings-anthropic-subscription',
 ]
 
 /**
