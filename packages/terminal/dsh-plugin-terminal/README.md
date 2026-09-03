@@ -105,16 +105,16 @@ config, `cordis.patch.yml`, or client-injection reference needs to change.
   bit in the published package itself — not local corruption. `npm pack
   node-pty@1.2.0-beta.15` confirmed that version ships it correctly
   (`-rwxr-xr-x`).
-- The fixed `src/index.js`'s auth logic was verified against a fake cordis
-  `ctx` (real `apply()`, stubbed `webServer`/`connection`): an unauthenticated
-  request (`ctx.connection.requestRejection` returning `401`) is rejected on
-  both the HTTP route and the WS upgrade route before any session lookup;
-  an authenticated request (`requestRejection` returning `undefined`) is
-  allowed through to the real route logic. Deliberately done without
-  restarting the user's actual `dsh web` server, since that would kill
-  their live terminal session.
-- Not yet verified: a live `dsh web` boot with this fork active end-to-end
-  — that the same unauthenticated `curl` calls used during the original
-  audit now return 401/403 against the real server, and that a real browser
-  session (with its own valid cookie) can still create/use a terminal
-  normally. Do that after the next `dsh web` restart.
+- The fixed `src/index.js`'s auth logic was first verified against a fake
+  cordis `ctx` (real `apply()`, stubbed `webServer`/`connection`) without
+  touching the user's then-live `dsh web` server: an unauthenticated request
+  (`ctx.connection.requestRejection` returning `401`) is rejected on both the
+  HTTP route and the WS upgrade route before any session lookup; an
+  authenticated request (`requestRejection` returning `undefined`) is
+  allowed through to the real route logic.
+- Then verified end-to-end against a real `dsh web` restart with this fork
+  active: the exact same unauthenticated `curl` calls that worked during the
+  original audit (`GET .../sessions`, `POST .../sessions`) now both return
+  `401 {"error":"authentication required"}`; a request carrying the real
+  signed session cookie (obtained via the normal token exchange on `/`) can
+  still list, create, and delete sessions normally.
