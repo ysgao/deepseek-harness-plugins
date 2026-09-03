@@ -199,6 +199,15 @@ function feedInteraction(feed: AuthorizationFeed, key: CredentialKey): Authoriza
  * flow among them.
  */
 export class AuthorizationController extends TypertRemoteService {
+  // Cordis refuses `ctx.authorization` reads from a fiber that did not declare
+  // the dependency, so without this every method below that delegates to the
+  // seam (`list`, `begin`, `cancel`) throws "cannot get property
+  // "authorization" without inject" at call time rather than at mount time.
+  // `list` is the one a sign-in surface calls first, so the whole panel
+  // silently renders nothing: its RPC resolves `ok: false`, the entry list
+  // stays empty, and no key ever matches a registered flow.
+  static inject = ['authorization']
+
   private readonly feed = new AuthorizationFeed()
 
   /** @param ctx - Host context where authorization flows may be registered. */
