@@ -9863,6 +9863,10 @@ importers:
       ws:
         specifier: ^8.21.3
         version: 8.21.3
+    devDependencies:
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
 
   packages/workspace-git: {}
 
@@ -16620,7 +16624,7 @@ snapshots:
       buffer-image-size: 0.6.4
       entities: 7.0.1
       whatwg-mimetype: 3.0.0
-      ws: 8.21.0
+      ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
