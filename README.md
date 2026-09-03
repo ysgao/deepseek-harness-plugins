@@ -4,7 +4,7 @@ Out-of-tree [`dsh`](https://github.com/deepseek-ai/deepseek-harness) plugin
 bundles, developed against a pinned `deepseek-ai/deepseek-harness` submodule
 instead of a fork.
 
-Two independent bundles live here — see [`ARCHITECTURE.md`](ARCHITECTURE.md)
+Three independent bundles live here — see [`ARCHITECTURE.md`](ARCHITECTURE.md)
 for the full package inventory, the seam each package registers into, and
 the design rationale:
 
@@ -13,6 +13,11 @@ the design rationale:
   -rebase/push actions.
 - **`packages/anthropic-subscription/`** — Anthropic subscription
   authorization, in the CLI and in Settings > Models.
+- **`packages/terminal/`** — Bottom terminal panel (`node-pty`-backed,
+  multi-tab). An in-repo fork of the third-party npm package
+  `dsh-plugin-terminal`, not of `deepseek-harness` itself — see its own
+  `README.md` for what was changed and why (an unauthenticated-shell-access
+  bug and a broken `node-pty` prebuild in the upstream version).
 
 ## Getting started
 
@@ -64,6 +69,7 @@ first `plugin add` against it is enough to bring the whole profile up:
 ```sh
 ./dsh plugin --profile web add "$(pwd)/packages/workspace-git/bundle-workspace-git"
 ./dsh plugin --profile web add "$(pwd)/packages/anthropic-subscription/bundle-anthropic-subscription"
+./dsh plugin --profile web add "$(pwd)/packages/terminal/dsh-plugin-terminal"
 ./dsh --profile web
 ```
 
