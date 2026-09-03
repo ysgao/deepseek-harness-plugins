@@ -1,21 +1,29 @@
 # Architecture
 
-This repo hosts two independent, **out-of-tree** `dsh` plugin bundles:
+This repo hosts three independent, **out-of-tree** `dsh` plugin bundles:
 
 1. **`packages/workspace-git/`** — the File manager sidebar (file tree,
    preview, in-app edit, side-by-side git diff) and its git status/commit
    /fetch/pull-rebase/push actions.
 2. **`packages/anthropic-subscription/`** — Anthropic subscription
    authorization, in the CLI and in the Models settings UI.
+3. **`packages/terminal/`** — the bottom terminal panel, an in-repo fork of
+   the third-party npm package `dsh-plugin-terminal` (not of
+   `deepseek-harness`) — see "Why fork instead of patching `node_modules`"
+   in its own `README.md`.
 
-Neither bundle patches, copies, or forks any file under
-`packages/_vendor/deepseek-harness/`. Every package here either *depends
+None of the first two bundles patch, copy, or fork any file under
+`packages/_vendor/deepseek-harness/`. Every package in them either *depends
 on* a seam the vendor already publishes (a Typert-registered Host
 controller auto-discovered by `dsh-typert-loader`, `dsh-cmdline`'s
 multi-plugin argument parsing, an existing `SlotMap` extension point), or —
 where no such seam exists — *replaces* one existing plugin registration
 wholesale with an enhanced out-of-tree one (see "Replace, don't patch").
-Installation is always `dsh plugin --profile <name> add <package>` (see
+`packages/terminal/` is a different shape: it forks a third-party plugin,
+not anything from the vendor, and *inserts* additively (no row it disables
+or replaces) — it depends on the same `ctx.webServer`/`ctx.connection`
+seams the vendor publishes, same as the other two. Installation is always
+`dsh plugin --profile <name> add <package>` (see
 `packages/_vendor/deepseek-harness/packages/bundle/README.md`).
 
 ## Core principles
@@ -383,6 +391,27 @@ session, or this package installed without the File-tab package
 (`dsh-plugins-client-ui-conversation-files`) — `FilesNode` falls back to its
 own in-app preview modal in both cases, so the two packages remain
 independently useful.
+
+### `packages/terminal/` — Bottom terminal panel
+
+| Package | Role |
+|---|---|
+| `dsh-plugin-terminal` | In-repo fork of the third-party npm package `dsh-plugin-terminal`: a `node-pty`-backed, multi-tab bottom terminal panel for the Web GUI. `cordis.patch.yml` only *inserts* (`terminal-panel`), unlike the other two bundles — it disables nothing, so it has no install-order dependency on `dsh-web-app` having already mounted anything. |
+
+Unlike the other two bundles, this one is not this repo's own design —
+it's an unmodified copy of the upstream `0.1.13` npm tarball except for
+`src/index.js` and `package.json`. The fork exists because a security
+review found the upstream plugin's own `ctx.webServer` routes (session
+list/create/input, plus the WS PTY stream) had no authentication of their
+own — a hand-rolled `Origin`-header check trusted any request with no
+`Origin` header at all, giving any local, unauthenticated caller full shell
+access as the logged-in user. Fixed by routing through
+`ctx.connection.requestRejection(req)`, the same Host/Origin fence and
+signed-cookie check every other route in a `dsh-web-app`-based composition
+already goes through — see `packages/terminal/dsh-plugin-terminal/README.md`
+for the full writeup, including the separate `node-pty` prebuild fix and
+the live-server verification. `packages/_vendor/deepseek-harness` was read
+to find the `ctx.connection` primitive to reuse, never edited.
 
 ## Testing procedures
 
