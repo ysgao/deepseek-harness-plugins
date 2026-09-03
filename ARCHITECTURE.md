@@ -451,6 +451,53 @@ package produces byte-identical output (`diff`) before considering the
 test clean — the built artifact must carry zero trace of the injected
 fault once done.
 
+### Check for colliding style-tag ids after touching a fork+fallback package
+
+The incident in "Replaced-plugin resilience" above (`ConversationRoot`'s own
+CSS silently losing its `<style data-plugin-css>` tag to vendor's same-named
+CSS Module) passed every other check in this file — clean `tsc -b`, clean
+`pnpm run build`, a well-formed `--dump-config` tree — because none of them
+inspect the *content* of the built stylesheet injectors, only whether the
+bundler and type checker are satisfied. `styleInjectionModule`'s tag id now
+incorporates a hash of the resolved source path specifically so this class
+of collision can't recur, but if that guard is ever touched again, or a new
+package adds another CSS Module with the same basename as one it forks,
+this is the check that catches it — a real boot and browser click-through
+would eventually surface it too (as broken layout, not a crash), but this
+is faster, needs no browser, and pinpoints the exact colliding basename
+instead of leaving you to reverse-engineer it from broken CSS:
+
+```sh
+grep -o '[a-zA-Z0-9_-]*/[a-f0-9]\{8\}-[A-Za-z]*\.module\.css' \
+  packages/<group>/<package>/lib/client.js | sort | uniq -c
+```
+
+Run against `client-ui-conversation-enhanced/lib/client.js` today, this
+lists one line per CSS Module the bundle carries, each with its own hash
+prefix — the healthy state, one row per distinct source file:
+
+```
+   1 dsh-plugins-client-ui-conversation-enhanced/166d3e53-InputBar.module.css
+   1 dsh-plugins-client-ui-conversation-enhanced/472b90bb-HeroShell.module.css
+   1 dsh-plugins-client-ui-conversation-enhanced/5d6d7126-ConversationRoot.module.css
+   1 dsh-plugins-client-ui-conversation-enhanced/ac4dac9d-ConversationRoot.module.css
+   ...
+```
+
+`ConversationRoot.module.css` legitimately appears **twice** here — once
+for this package's own fork (`ac4dac9d`), once for vendor's, pulled in
+through the lazy pristine-`apply` fallback (`5d6d7126`) — and that's
+correct: two different source files sharing a basename, two different
+hashes, two real tag ids, both stylesheets actually reach the DOM. The
+bug this check would have caught looked different: only **one** entry for
+`ConversationRoot.module.css` despite two source files owning that
+basename, because the pre-fix tag id was the basename alone (no hash),
+so the second file's injection saw a tag that already existed and
+silently no-opped. If you ever see a CSS Module basename you know two
+packages both own (a fork and the vendor file it forks) show up only
+once in this listing, one of them lost that race and its rules never
+reach the DOM.
+
 ### What each check catches
 
 | Check | Catches |
@@ -459,7 +506,8 @@ fault once done.
 | `pnpm run build` (host then client, per group) | Bundler-level failures — a cross-package import the purity gate rejects, a CSS Modules specifier the resolver can't follow, a Typert generator mismatch |
 | `--dump-config` | Whether the composed `cordis.yml` tree is well-formed. Does *not* by itself confirm a disable/insert row resolved against something real — a `disabled: true` targeting a row that doesn't exist yet prints a non-fatal "entry not found" instead of erroring loud; read the printed tree |
 | A real boot + `--dump-config` together | The install-order dependency between bundles (a `disabled: true` needs the row it targets already inserted by an earlier bundle) |
-| A real boot + real browser DOM interaction | Whether the feature actually renders and functions — a served bundle manifest is necessary but not sufficient |
+| A real boot + real browser DOM interaction | Whether the feature actually renders and functions — a served bundle manifest is necessary but not sufficient. Does *not* by itself explain a mis-styled-but-present feature: two packages' components can both render correctly while only one's CSS actually reaches the DOM (see "Check for colliding style-tag ids" above) — a rendering bug that presents as broken *layout*, not a crash, is easy to blame on the wrong file if you skip straight to reading component logic |
+| Colliding style-tag ids (above) | A fork's own CSS Module silently losing its injection race against a same-named vendor CSS Module reached through a fallback import — passes `tsc -b`, `pnpm run build`, and `--dump-config` alike, and requires reading the *built* bundle's content, not just its existence, to catch |
 | Fault injection | Whether a plugin failing takes the rest of `dsh` down with it — no other check exercises this |
 
 ## Explicitly out of scope
