@@ -96,7 +96,16 @@ export interface IAuthorization {
   notifySettled(key: CredentialKey): void
 }
 
-const IDLE_KEY_STATE: AuthorizationKeyState = { inFlight: false, notices: [], pendingPrompt: undefined }
+/**
+ * The state a key carries before any authorization attempt has ever run for
+ * it, matching {@link AuthorizationListState.byKey}'s own documented
+ * contract ("absent means idle/never attempted"). Exported so a consumer
+ * reading `byKey[key]` can supply this default itself instead of treating
+ * the key's absence from the live-push map as "no state to show" — the two
+ * are not the same thing, and a first-time key (one nothing has ever pushed
+ * a frame for) is exactly the case a sign-in surface most needs to render.
+ */
+export const IDLE_KEY_STATE: AuthorizationKeyState = { inFlight: false, notices: [], pendingPrompt: undefined }
 
 /** The generated `ctx.remote.authorization` namespace's Client method shapes this runtime drives. */
 export type AuthorizationRemote = TypertClientRemote['authorization']

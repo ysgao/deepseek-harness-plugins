@@ -35,6 +35,7 @@ import type {
   CredentialInfo, SettingsNamespaceView, SettingsPathOpView,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { IDLE_KEY_STATE } from './authorization-runtime.ts'
 import type { IAuthorization } from './authorization-runtime.ts'
 import {
   DeepSeekModelsEditor, modelDrafts, validateDeepSeekModels,
@@ -217,7 +218,14 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   // route) correctly shows none.
   const authEntry = authorizationList?.entries.find(
     candidate => String(candidate.key) === `${namespace.ns}/${props.provider}`)
-  const authKeyState = authEntry === undefined ? undefined : authorizationList?.byKey[authEntry.key]
+  // `byKey` carries live push state only once some frame has landed for the
+  // key (a running or settled attempt) — its own doc states a key's absence
+  // means idle/never attempted, not "nothing to show". Defaulting here is
+  // what lets the panel render its initial "sign in" button for a key that
+  // has never been attempted; without it a first-time key could never start
+  // an attempt at all, since no frame could ever arrive for one that never
+  // began.
+  const authKeyState = authEntry === undefined ? undefined : authorizationList?.byKey[authEntry.key] ?? IDLE_KEY_STATE
 
   useEffect(() => {
     let stale = false
