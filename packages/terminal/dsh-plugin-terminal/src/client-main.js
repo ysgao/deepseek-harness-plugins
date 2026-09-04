@@ -408,6 +408,11 @@ function TerminalPanel(props) {
   }, []);
 
   const active = tabs.find((tab) => tab.id === activeId) ?? null;
+  /* Exited tabs are replay-only history: their WS closes on connect without
+   * ever registering a message handler, so they can never take input. Only a
+   * live tab makes the panel usable, which is what the open effect below
+   * keys on. */
+  const hasLiveTab = tabs.some((tab) => !tab.exited);
 
   /* Restore live sessions on EVERY mount (page load, workspace switch):
    * the panel is injected per-conversation, so switching workspaces remounts
@@ -446,17 +451,24 @@ function TerminalPanel(props) {
     })();
   }, []);
 
-  /* first open with no restored tabs: create one session. openHandled guards
-   * so closing the last tab does NOT auto-create - only a fresh open does. */
+  /* first open with no LIVE restored tab: create one session. openHandled
+   * guards so closing the last tab does NOT auto-create - only a fresh open
+   * does. Keyed on `hasLiveTab`, not `tabs.length`: every persisted session
+   * comes back from a `dsh web` restart as exited history, so a restart with
+   * any terminal history left the panel opening onto a dead tab that silently
+   * refuses every keystroke - restored tabs are present, so nothing created a
+   * live session, and the only shell on screen was one whose PTY had already
+   * gone. Exited tabs stay listed (replayable, restartable); they just no
+   * longer stand in for a usable one. */
   useEffect(() => {
     if (!open) {
       openHandled.current = false;
       return;
     }
-    if (!bootReady || tabs.length > 0 || openHandled.current) return;
+    if (!bootReady || hasLiveTab || openHandled.current) return;
     openHandled.current = true;
     newTab();
-  }, [open, bootReady, tabs.length]);
+  }, [open, bootReady, hasLiveTab]);
 
   /* Ctrl+` toggles the panel (Cmd+` is taken by the OS on macOS) */
   useEffect(() => {
