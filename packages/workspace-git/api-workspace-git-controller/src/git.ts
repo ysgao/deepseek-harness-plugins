@@ -165,6 +165,16 @@ function parsePorcelain(stdout: string, repoRoot: string): Record<string, string
  * behind: 0 }` — not an error — when the branch has no upstream configured,
  * since "nothing to report" and "checked, found none" are the same outcome
  * for this display.
+ *
+ * Known imprecision: `rev-list` exits non-zero for both "no upstream
+ * configured" (the documented, expected case this function folds to zero
+ * counts) and any other unrelated failure (a corrupted ref, a permission
+ * error) — unlike {@link currentRemote}'s `git config --get`, `rev-list`
+ * has no single, stable exit code reserved for "no upstream" alone to
+ * disambiguate against, so this folds every non-abort failure the same way.
+ * The consequence is display-only (a stale ahead/behind badge), never a
+ * write-scope change, which is why this is disclosed rather than fixed with
+ * an unverified exit-code guess against zero test coverage for this path.
  * @param repoRoot - absolute repository root.
  * @param signal - caller lifetime; abort rejects with the abort reason.
  * @returns the upstream-relative commit counts.
@@ -187,9 +197,16 @@ async function aheadBehind(repoRoot: string, signal: AbortSignal | undefined): P
  * upstream-relative commit counts, scanned from the git repository enclosing
  * `path` (its own directory, or an ancestor of it). A directory outside any
  * working tree, or a host missing the `git` binary, reports `isRepo: false`.
+ * Once `path` is confirmed inside a working tree, a subsequent `git status`
+ * failure (permission error, corrupted index, a `status` hook, …) is a
+ * genuine breakage, not an ambiguous "can't tell" — misreporting it as
+ * `isRepo: false` would hide a real repository's problem behind "no
+ * repository here" — so it throws {@link GitCommandError} instead, the same
+ * taxonomy the write actions use.
  * @param path - workspace's own directory (absolute).
  * @param signal - caller lifetime; abort rejects with the abort reason.
  * @returns the workspace's git status.
+ * @throws {GitCommandError} when `git status` exits non-zero on a confirmed working tree.
  */
 export async function workspaceGitStatus(path: string, signal?: AbortSignal): Promise<WorkspaceGitStatus> {
   let repoRoot: string
@@ -201,9 +218,15 @@ export async function workspaceGitStatus(path: string, signal?: AbortSignal): Pr
     if (signal?.aborted) throw error
     return { isRepo: false, branch: null, files: {}, ahead: 0, behind: 0 }
   }
-  const [branch, { stdout: statusOut }, counts] = await Promise.all([
+  const [branch, statusOut, counts] = await Promise.all([
     currentBranch(repoRoot, signal),
-    runGit(['-C', repoRoot, 'status', '--porcelain=v1', '-z', '--untracked-files=all'], signal),
+    runGit(['-C', repoRoot, 'status', '--porcelain=v1', '-z', '--untracked-files=all'], signal).then(
+      (result) => result.stdout,
+      (error: unknown) => {
+        if (signal?.aborted) throw error
+        throw new GitCommandError('status', messageOf(error))
+      },
+    ),
     aheadBehind(repoRoot, signal),
   ])
   return { isRepo: true, branch, files: parsePorcelain(statusOut, repoRoot), ...counts }
@@ -382,6 +405,8 @@ export async function pullRebase(path: string, signal?: AbortSignal): Promise<vo
  * looks this up for a named branch).
  * @param signal - caller lifetime; abort rejects with the abort reason.
  * @returns the configured remote name, or undefined when none is set.
+ * @throws {GitCommandError} when `git config --get` fails for a reason other
+ * than the key being absent (a corrupted config file, a permission error).
  */
 async function currentRemote(repoRoot: string, branch: string, signal: AbortSignal | undefined): Promise<string | undefined> {
   try {
@@ -390,10 +415,15 @@ async function currentRemote(repoRoot: string, branch: string, signal: AbortSign
     return remote === '' ? undefined : remote
   } catch (error: unknown) {
     if (signal?.aborted) throw error
-    // No `branch.<name>.remote` entry: `git config --get` exits 1 rather
-    // than emitting an empty line, which lands here rather than the empty
-    // string above.
-    return undefined
+    // `git config --get`'s own documented exit-code contract: exactly 1
+    // means "the section or key is invalid" (here, no `branch.<name>.remote`
+    // entry) rather than emitting an empty line — every other exit code (a
+    // corrupted config file, a permission error) is a genuine failure that
+    // must not silently widen push()'s scope to a bare `git push` instead
+    // of surfacing as an error.
+    const code = error instanceof Error && 'code' in error ? (error as { code: unknown }).code : undefined
+    if (code === 1) return undefined
+    throw new GitCommandError('config', messageOf(error))
   }
 }
 
@@ -415,7 +445,10 @@ export async function push(path: string, signal?: AbortSignal): Promise<void> {
   const repoRoot = await repoRootOrThrow(path, signal)
   const branch = await currentBranch(repoRoot, signal)
   const remote = branch === 'HEAD' ? undefined : await currentRemote(repoRoot, branch, signal)
-  const gitArgs = remote === undefined ? ['push'] : ['push', remote, 'HEAD']
+  // `--` before the remote name: `branch.<name>.remote` is config-derived,
+  // and a remote name starting with `-` would otherwise risk being parsed as
+  // a git option instead of the positional remote.
+  const gitArgs = remote === undefined ? ['push'] : ['push', '--', remote, 'HEAD']
   try {
     await runGit(['-C', repoRoot, ...gitArgs], signal)
   } catch (error: unknown) {
@@ -477,6 +510,16 @@ async function repoRootOrThrow(path: string, signal: AbortSignal | undefined): P
  * because it has no commit to resolve. A detached HEAD (points at a commit,
  * not a ref) has no branch name — reported as the literal `"HEAD"`, git's
  * own convention.
+ *
+ * Known imprecision: a genuinely detached HEAD and any other
+ * `symbolic-ref` failure (a corrupted `.git` directory, a permission error)
+ * both fold to the same `"HEAD"` fallback — unlike {@link currentRemote}'s
+ * `git config --get`, `symbolic-ref` has no single, stable exit code
+ * reserved for "detached" alone to disambiguate against. {@link push}'s own
+ * `branch === 'HEAD' ? undefined : ...` check means an unrelated failure
+ * here also skips the {@link currentRemote} lookup, same as a real detached
+ * HEAD would — disclosed rather than fixed with an unverified exit-code
+ * guess against zero test coverage for this path.
  * @param repoRoot - absolute repository root.
  * @param signal - caller lifetime; abort rejects with the abort reason.
  * @returns the branch name, or `"HEAD"` when detached.

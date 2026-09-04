@@ -9,7 +9,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, opendir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, opendir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { Branded } from '@deepseek-ai/dsh-brand'
 
@@ -90,6 +90,47 @@ export function isWithinWorkspace(root: string, path: string): boolean {
   return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
 }
 
+/**
+ * Real (symlink-resolved) containment check, layered on {@link isWithinWorkspace}'s
+ * purely lexical one. Every read/write/list primitive in this module
+ * transparently follows symlinks — `listWorkspaceEntries` reports a symlinked
+ * directory as `type: 'directory'` by design — so a symlink placed inside the
+ * workspace pointing outside it (`<root>/link -> /etc`) would pass the
+ * lexical check alone and then have its real target read, written, or
+ * listed. This closes that gap by resolving both `root` and `path` to their
+ * real filesystem location — following every symlink along the ENTIRE chain,
+ * not just a leaf component — before comparing.
+ *
+ * `path` not (yet) existing (`ENOENT`) is the one failure reported as
+ * contained: a path with nothing on disk yet has nothing to escape through,
+ * and the caller's own `stat`/`readFile`/`mkdir` reports the missing target
+ * with its own, more specific error instead of this check masking it as
+ * `outside-workspace`. Every other `realpath` failure (permission denied,
+ * too many symlink hops, a non-directory component partway through the
+ * chain, or the workspace root itself failing to resolve) fails CLOSED —
+ * this check cannot verify safety, so it must not silently let the caller's
+ * own operation run unverified against whatever the path actually resolves to.
+ * @param root - the workspace's own canonical absolute path.
+ * @param path - the candidate absolute path, already passed through {@link isWithinWorkspace}.
+ * @returns whether `path`'s real location is inside `root`'s own real location.
+ */
+export async function isReallyWithinWorkspace(root: string, path: string): Promise<boolean> {
+  let realRoot: string
+  try {
+    realRoot = await realpath(root)
+  } catch {
+    return false
+  }
+  let realPath: string
+  try {
+    realPath = await realpath(path)
+  } catch (error: unknown) {
+    const code = error instanceof Error && 'code' in error ? error.code : undefined
+    return code === 'ENOENT'
+  }
+  return isWithinWorkspace(realRoot, realPath)
+}
+
 function messageOf(error: unknown): string {
   /* v8 ignore next -- every catch site rejects with a real node:fs Error; the String() fallback exists only for the `unknown` narrowing. */
   return error instanceof Error ? error.message : String(error)
@@ -150,8 +191,16 @@ export async function listWorkspaceEntries(
   } catch (error: unknown) {
     throw new WorkspaceFileError('directory-unreadable', path, `cannot list ${path}: ${messageOf(error)}`)
   }
-  signal?.throwIfAborted()
+  // `for await` auto-closes `dir` on every ordinary exit (loop completion, an
+  // error thrown inside the loop, or an abort mid-iteration via the
+  // `throwIfAborted()` inside it) through the async-iterator protocol's own
+  // `return()` call. The one exit this does NOT cover is an abort landing in
+  // the narrow window between `opendir` resolving and the loop's first
+  // iteration: throwing here would skip entering the loop entirely, leaking
+  // the open directory handle — so this check, and every path out of this
+  // function, goes through the `finally` below instead.
   try {
+    signal?.throwIfAborted()
     for await (const dirent of dir) {
       signal?.throwIfAborted()
       const childPath = join(path, dirent.name)
@@ -194,6 +243,12 @@ export async function listWorkspaceEntries(
   } catch (error: unknown) {
     signal?.throwIfAborted()
     throw new WorkspaceFileError('directory-unreadable', path, `cannot list ${path}: ${messageOf(error)}`)
+  } finally {
+    // Best-effort: every ordinary exit above already closed `dir` through
+    // the async-iterator protocol, so this rejects "already closed" on all
+    // but the narrow pre-loop-abort race the comment above names — either
+    // way, a second close attempt is not this function's concern.
+    await dir.close().catch(() => {})
   }
   directories.sort((a, b) => a.name.localeCompare(b.name))
   files.sort((a, b) => a.name.localeCompare(b.name))

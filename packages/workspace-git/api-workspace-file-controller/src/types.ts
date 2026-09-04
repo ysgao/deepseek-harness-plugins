@@ -23,6 +23,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace-files/already-exists': { readonly path: string }
     /** The create target's enclosing directory does not exist. */
     'workspace-files/parent-missing': { readonly path: string }
+    /** `gitFileDiff`'s workspace directory is outside any git working tree. */
+    'workspace-files/not-a-repository': { readonly path: string }
   }
 }
 

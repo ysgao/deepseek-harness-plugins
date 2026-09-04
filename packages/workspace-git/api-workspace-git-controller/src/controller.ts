@@ -81,7 +81,7 @@ export class WorkspaceGitController extends TypertRemoteService {
   @Remote('status')
   status(request: WorkspaceGitRequest, signal: AbortSignal): Promise<WorkspaceGitStatus> {
     const path = requireWorkspacePath(this.ctx, request.workspaceId)
-    return workspaceGitStatus(path, signal)
+    return workspaceGitStatus(path, signal).catch(mapGitError)
   }
 
   /**

@@ -263,14 +263,14 @@ row being replaced is genuinely absent, not merely out-shadowed.
 | Package | Role |
 |---|---|
 | `dsh-plugins-api-workspace-git-controller` | Typert Host controller: status, commit-all, fetch, pull --rebase, push, discard-all |
-| `dsh-plugins-api-workspace-file-controller` | Typert Host controller: list/read/write/create/delete/diff |
+| `dsh-plugins-api-workspace-file-controller` | Typert Host controller: list/read/write/create/diff (no delete) |
 | `dsh-plugins-client-ui-file-editing` | Standalone file editor/preview/side-by-side-diff components, no shared-package dependency |
 | `dsh-plugins-client-ui-workspace-files` | Sidebar Files tree; declares the optional `workspaceFilesNode` Context service — see "Files tree: why an optional service, not a slot" |
 | `dsh-plugins-client-remotes-workspace-git` | Mounts the two controllers' generated `/remote` Client contributions — see "Plugin isolation" |
 | `dsh-plugins-client-ui-workspace-enhanced` | Replaces `dsh-client-ui-workspace`'s own `sidebar.workspaces`/`conversation.hero.workspace` registrations; renders `workspaceFilesNode`'s `Component` as a Files sibling row — see "Replace, don't patch" |
 | `dsh-plugins-client-ui-conversation-files` | Registers a `'file'` entry into `dsh-client-ui-conversation`'s pristine `conversation.view` slot; populated through `conversationFileOpener` — see "File tab: a pristine slot, but a fork-only trigger" |
 | `dsh-plugins-client-ui-conversation-enhanced` | Replaces `dsh-client-ui-conversation`'s own conversation-shell registration; provides the `conversationFileOpener` cross-session bridge |
-| `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle: mounts `@deepseek-ai/dsh-workspace`; disables and replaces the `ui-workspace`/`ui-conversation` rows |
+| `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle: does NOT mount `@deepseek-ai/dsh-workspace` itself (relies on the target profile's own `web-app` bundle — see "Two findings worth knowing" in the bundle's own README); disables and replaces the `ui-workspace`/`ui-conversation` rows |
 
 ### `packages/anthropic-subscription/` — Anthropic subscription authorization
 

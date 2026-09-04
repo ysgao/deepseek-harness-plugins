@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugins-api-workspace-file-controller",
-  "description": "Host Typert controller for workspace file list/read/write/create/delete/diff, auto-discovered by dsh-typert-loader without editing dsh-api-workspace-controller",
+  "description": "Host Typert controller for workspace file list/read/write/create/diff, auto-discovered by dsh-typert-loader without editing dsh-api-workspace-controller",
   "version": "0.0.0",
   "type": "module",
   "main": "lib/index.js",

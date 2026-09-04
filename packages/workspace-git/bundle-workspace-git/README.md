@@ -21,7 +21,7 @@ dsh plugin --profile web-app add @deepseek-ai/dsh-web-app   # first
 dsh plugin --profile web-app add dsh-plugins-bundle-workspace-git   # second
 ```
 
-`cordis.patch.yml` disables two existing rows and inserts six over the
+`cordis.patch.yml` disables two existing rows and inserts seven over the
 target profile's existing composition — no edit to `packages/bundle/base`
 or `packages/bundle/web-app` in the vendored harness:
 
@@ -53,6 +53,14 @@ or `packages/bundle/web-app` in the vendored harness:
   `workspaceFilesNode` Context service.
 - `workspace-enhanced` — consumes that service and renders the Files row;
   the actual `sidebar.workspaces`/`conversation.hero.workspace` replacement.
+- `remotes-workspace-git` — mounts this bundle's own `workspace-files`/
+  `workspace-git` generated Remote contributions on the Client. Without this
+  row, `ctx.remote['workspace-files']`/`['workspace-git']` are never
+  populated in the browser even though the two Host controllers above boot
+  and register their namespaces correctly; `workspace-files-node`/
+  `conversation-files` simply stay pending on those two `inject` keys if it
+  never mounts, degrading only the Files/git-status feature. See
+  [`dsh-plugins-client-remotes-workspace-git`'s own README](../client-remotes-workspace-git/README.md).
 
 See [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) for the full package
 inventory and each package's own README for design detail.
