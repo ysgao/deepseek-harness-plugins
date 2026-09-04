@@ -12,6 +12,20 @@ packages:
   - packages/_vendor/deepseek-harness/packages/*/*
   - packages/_vendor/deepseek-harness/native/landlock-run
   - packages/_vendor/deepseek-harness/native/landlock-run/packages/*
+  # Two warnings on a fresh `pnpm install` come from the vendored harness and
+  # are expected — don't try to "fix" them here, and never by editing vendor:
+  #   * "Unsupported platform" for landlock-run's linux-arm64/linux-x64
+  #     packages when installing on macOS or Windows. They are Linux-only
+  #     prebuilt sandbox binaries, declared os/cpu-restricted and consumed as
+  #     optionalDependencies, so skipping them is the intended behaviour.
+  #     They still have to stay in this glob: the entry package depends on
+  #     them with `workspace:*`, which only resolves against a workspace
+  #     member, so dropping them here breaks the install outright.
+  #     (pnpm's supportedArchitectures does not silence this — that setting
+  #     only selects registry optional deps, not a workspace project's own
+  #     os/cpu self-check.)
+  #   * "There are cyclic workspace dependencies" among the vendored
+  #     dsh-* packages. Upstream's own graph; nothing in this repo creates it.
   - packages/_vendor/deepseek-harness/apps/*
 
   # This repo's own plugin bundles, grouped by feature. `workspace-git`'s
@@ -53,3 +67,10 @@ overrides:
 peerDependencyRules:
   allowedVersions:
     typescript: '>=5 <7'
+
+# `packageManager` in the root package.json pins pnpm to an exact version, so
+# pnpm's "Update available!" banner advertises an upgrade we can never take by
+# just running it — moving off the pin is a deliberate, separate change (it can
+# re-resolve the lockfile, which the overrides above exist to keep stable).
+# Silence the nag rather than let it train us to ignore install output.
+updateNotifier: false
