@@ -187,6 +187,20 @@ export function clientPluginBundle(id: string, entry: string, options: ClientPlu
           (process.env.NODE_ENV ?? 'production') === 'development' ? 'development' : 'production',
           'browser', 'import', 'module', 'default',
         ],
+        // rolldown's own platform-based defaults for these two
+        // (`[['browser']]` / `['browser', 'module', 'main']`) only apply
+        // when `resolve` is left untouched entirely; specifying
+        // `conditionNames` above silently drops them, so a legacy (no
+        // `exports` map) dependency's `browser` package.json field —
+        // xlsx's `{"fs": false, ...}` builtin stub map, mammoth's
+        // `./lib/unzip.js` → `./browser/unzip.js` file swap — never
+        // applies, and its real Node `require("fs")`/`require("os")` calls
+        // land in the closure-factory bundle verbatim, where the loader's
+        // synthetic `require` has no seed word or registered factory for
+        // them and throws at materialization. Restated explicitly here to
+        // keep it.
+        aliasFields: [['browser']],
+        mainFields: ['browser', 'module', 'main'],
       },
     },
     define: {

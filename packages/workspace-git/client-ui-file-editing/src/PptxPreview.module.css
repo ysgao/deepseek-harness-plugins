@@ -1,0 +1,39 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.notice {
+  margin: 0;
+  padding: 16px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.slide {
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.slideHeading {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.line {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.line:last-child {
+  margin-bottom: 0;
+}

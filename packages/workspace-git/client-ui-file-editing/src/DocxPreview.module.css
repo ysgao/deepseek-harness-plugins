@@ -1,0 +1,50 @@
+.notice {
+  margin: 0;
+  padding: 16px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.doc {
+  padding: 8px 4px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.doc :global(p) {
+  margin: 0 0 12px;
+}
+
+.doc :global(h1),
+.doc :global(h2),
+.doc :global(h3),
+.doc :global(h4),
+.doc :global(h5),
+.doc :global(h6) {
+  margin: 20px 0 10px;
+  line-height: 1.3;
+}
+
+.doc :global(ul),
+.doc :global(ol) {
+  margin: 0 0 12px;
+  padding-left: 24px;
+}
+
+.doc :global(table) {
+  border-collapse: collapse;
+  margin: 0 0 16px;
+  width: 100%;
+}
+
+.doc :global(td),
+.doc :global(th) {
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  padding: 4px 8px;
+  vertical-align: top;
+}
+
+.doc :global(img) {
+  max-width: 100%;
+}

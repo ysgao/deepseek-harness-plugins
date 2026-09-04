@@ -10,9 +10,10 @@
  *
  * A text-kind file with a pending git change (per `getGitStatus`) offers a
  * View/Diff toggle; Diff mode fetches `getFileDiff` lazily and renders
- * `SideBySideDiff` in place of the plain preview. Binary and image files
- * stay out of scope for the toggle — a text-only diff, same as
- * `FilePreview`'s own PDF-preview posture, is a deferred follow-up, not a gap.
+ * `SideBySideDiff` in place of the plain preview. Binary, image, PDF, and
+ * Office (`.docx`/`.xlsx`/`.xls`/`.pptx`) files stay out of scope for the
+ * toggle — a text-only diff over their rendered content, rather than their
+ * raw bytes, is a deferred follow-up, not a gap.
  *
  * Text and Markdown files also offer an Edit mode (`FileEditor`), passed the
  * same `langFromPath` grammar hint the View mode's `FilePreview` reads, so a
@@ -28,7 +29,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { InjectFace, PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import { FileEditor, FilePreview, SideBySideDiff } from 'dsh-plugins-client-ui-file-editing'
+import { FileEditor, FilePreview, isContentMismatch, SideBySideDiff } from 'dsh-plugins-client-ui-file-editing'
 import type {
   FileEditorResizeLabels, FilePreviewLabels, FilePreviewState, SideBySideDiffLabels,
 } from 'dsh-plugins-client-ui-file-editing'
@@ -142,6 +143,12 @@ function decodeBlobUrl(base64: string, mediaType: string): string {
   const binary = atob(base64)
   const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
   return URL.createObjectURL(new Blob([bytes], { type: mediaType }))
+}
+
+/** Decode base64 wire bytes to a raw `ArrayBuffer`, for `FilePreview`'s own in-browser Office parsers (no blob URL needed). */
+function decodeBytes(base64: string): ArrayBuffer {
+  const binary = atob(base64)
+  return Uint8Array.from(binary, char => char.charCodeAt(0)).buffer
 }
 
 /**
@@ -279,9 +286,11 @@ export function FileView({
     if (openedPath === null) return
     setState({ phase: 'loading' })
     setVersion(null)
-    // External-viewer files (PDF, unrecognized extensions) never fetch
-    // content at all: the tab's only action is the OS handoff.
-    if (viewerKindFor(openedPath) === 'external') return
+    // External-viewer files (unrecognized extensions, or a legacy binary
+    // .doc/.ppt with no client-side parser) never fetch content at all: the
+    // tab's only action is the OS handoff.
+    const openedKind = viewerKindFor(openedPath)
+    if (openedKind === 'external') return
     const controller = new AbortController()
     let createdUrl: string | null = null
     readFile(openedWorkspaceId, openedPath, controller.signal).then((content) => {
@@ -291,9 +300,11 @@ export function FileView({
         setVersion(content.version)
         return
       }
-      if (viewerKindFor(openedPath) === 'image') {
+      if (openedKind === 'image' || openedKind === 'pdf') {
         createdUrl = decodeBlobUrl(content.data, content.mediaType)
         setState({ phase: 'ready', content: { kind: 'binary', blobUrl: createdUrl } })
+      } else if (openedKind === 'docx' || openedKind === 'xlsx' || openedKind === 'pptx') {
+        setState({ phase: 'ready', content: { kind: 'bytes', data: decodeBytes(content.data) } })
       } else {
         setState({ phase: 'ready', content: { kind: 'binary', blobUrl: null } })
       }
@@ -352,13 +363,12 @@ export function FileView({
     return <div className={css.empty}>{tFiles('files.empty')}</div>
   }
 
-  // A binary read where the classified kind expected text (a mismatched
-  // extension on real binary content) offers the same external-open
-  // fallback as too-large/error/genuinely-external — mirrors FileViewer's
+  // A ready read whose content disagrees with what the classified kind
+  // expects (a mismatched extension) offers the same external-open fallback
+  // as too-large/error/genuinely-external — mirrors FileViewer's
   // showsExternalOnly (dsh-plugins-client-ui-workspace-files's own
   // Modal-based viewer).
-  const binaryMismatch = state.phase === 'ready' && state.content.kind === 'binary' && kind !== 'image'
-  const showsExternalOnly = kind === 'external' || state.phase === 'error' || state.phase === 'too-large' || binaryMismatch
+  const showsExternalOnly = kind === 'external' || state.phase === 'error' || state.phase === 'too-large' || isContentMismatch(kind, state)
 
   const showsDiffToggle = kind === 'text' && changed
   const readyText = state.phase === 'ready' && state.content.kind === 'text' ? state.content.text : null
@@ -455,6 +465,10 @@ export function FileView({
           loadErrorLabel={tFiles('files.viewer.loadError')}
           externalLabel={tFiles('files.viewer.openExternally')}
           tooLargeLabel={maxMB => tFiles('files.viewer.tooLarge', { maxMB })}
+          xlsxTruncatedLabel={(rows, cols) => tFiles('files.viewer.xlsxTruncated', { rows, cols })}
+          xlsxEmptyLabel={tFiles('files.viewer.xlsxEmpty')}
+          pptxSlideLabel={index => tFiles('files.viewer.pptxSlide', { index })}
+          pptxEmptyLabel={tFiles('files.viewer.pptxEmpty')}
         />
       )}
       {mode === 'view' && showsExternalOnly && (

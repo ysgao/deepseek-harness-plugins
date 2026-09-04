@@ -29,7 +29,11 @@
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.6",
     "clsx": "^2.0.0",
-    "diff": "^9.0.0"
+    "diff": "^9.0.0",
+    "dompurify": "^3.4.14",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.12.2",
+    "xlsx": "^0.18.5"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",

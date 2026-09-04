@@ -9,7 +9,7 @@
  */
 export { FileEditor } from './FileEditor.tsx'
 export type { FileEditorProps, FileEditorResizeLabels } from './FileEditor.tsx'
-export { FilePreview } from './FilePreview.tsx'
+export { FilePreview, isContentMismatch } from './FilePreview.tsx'
 export type { FilePreviewKind, FilePreviewLabels, FilePreviewProps, FilePreviewState } from './FilePreview.tsx'
 export { SideBySideDiff } from './SideBySideDiff.tsx'
 export type { SideBySideDiffLabels, SideBySideDiffProps } from './SideBySideDiff.tsx'

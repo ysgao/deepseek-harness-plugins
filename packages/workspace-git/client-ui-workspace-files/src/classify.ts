@@ -2,13 +2,14 @@
  * File-extension classification for the Workspace Files tree's in-app
  * preview: which viewer a file opens in, and (for text/code) which shiki
  * grammar hints its highlighting. Intentionally small — common source,
- * config, and markup extensions worth a dedicated in-app view — not an
- * exhaustive registry; unmatched extensions fall back to `openPath` (the
- * host's OS-default-application handoff).
+ * config, markup, PDF, and Office extensions worth a dedicated in-app view —
+ * not an exhaustive registry; unmatched extensions fall back to `openPath`
+ * (the host's OS-default-application handoff).
  */
+import type { FilePreviewKind } from 'dsh-plugins-client-ui-file-editing'
 
-/** Which in-app viewer a file extension opens (or none, meaning `openPath`). */
-export type FileViewerKind = 'markdown' | 'image' | 'text' | 'external'
+/** Which in-app viewer (`FileViewer`, itself a thin wrapper around the shared `FilePreview`) a file extension opens, or none, meaning `openPath`. */
+export type FileViewerKind = FilePreviewKind
 
 /**
  * shiki grammar hint by extension, duplicated in miniature from the `read`
@@ -48,6 +49,36 @@ const TEXT_EXTENSIONS = new Set([
   ...Object.keys(LANG_BY_EXTENSION),
 ])
 
+const PDF_EXTENSIONS = new Set(['pdf'])
+/** Open XML Word documents (`mammoth` requires a zip-based `.docx`; legacy binary `.doc` never classifies to this kind). */
+const DOCX_EXTENSIONS = new Set(['docx'])
+/** `.xlsx` (Open XML) and legacy BIFF8 `.xls` alike — `xlsx`/SheetJS reads both from the same raw bytes. */
+const XLSX_EXTENSIONS = new Set(['xlsx', 'xls'])
+/** Open XML PowerPoint decks (a text-only extraction; legacy binary `.ppt` never classifies to this kind). */
+const PPTX_EXTENSIONS = new Set(['pptx'])
+
+/**
+ * Full base-name matches (case-insensitive) for known-text files that carry
+ * no extension `extensionOf` can key off of: a dotfile (`.gitignore` — the
+ * whole name after its leading dot *is* the marker, so `extensionOf` sees no
+ * extension) or a conventional extension-less name (`LICENSE`, `Makefile`).
+ * Checked only when `extensionOf` answers `undefined`, so a file that
+ * additionally carries a real extension (`LICENSE.md`, `foo.env`) is already
+ * classified by {@link MARKDOWN_EXTENSIONS}/{@link TEXT_EXTENSIONS} above and
+ * never needs this set.
+ */
+const TEXT_FILENAMES = new Set([
+  // Dotfiles.
+  '.gitignore', '.gitattributes', '.gitmodules', '.gitkeep', '.editorconfig',
+  '.env', '.dockerignore', '.npmignore', '.npmrc', '.nvmrc', '.yarnrc',
+  '.prettierrc', '.eslintrc', '.babelrc', '.browserslistrc', '.stylelintrc',
+  // Extension-less conventional names.
+  'license', 'licence', 'unlicense', 'copying', 'notice', 'readme',
+  'authors', 'contributors', 'changelog', 'changes', 'history', 'news', 'todo',
+  'makefile', 'dockerfile', 'procfile', 'gemfile', 'rakefile', 'vagrantfile',
+  'jenkinsfile', 'brewfile',
+])
+
 /**
  * Lowercased extension of a path's base name, or `undefined` for a dotfile
  * (leading-dot-only name) or a name with no extension.
@@ -62,19 +93,32 @@ export function extensionOf(path: string): string | undefined {
 }
 
 /**
- * Which in-app viewer a file path's extension selects. `.pdf` and every
- * other unrecognized extension answer `'external'` (the `openPath` OS-default
- * handoff) — PDF in-app preview is a deferred follow-up, not a gap in this
- * classification.
+ * Lowercased base name of a path, for matching against {@link TEXT_FILENAMES}.
+ * @param path - absolute or display path.
+ * @returns the base name (file name with no directory components), lowercased.
+ */
+function baseNameOf(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1).toLowerCase()
+}
+
+/**
+ * Which in-app viewer a file path's extension selects. Legacy binary
+ * `.doc`/`.ppt` (pre-2007 OLE compound-file format — no client-side parser
+ * available for either) and every other unrecognized extension or base
+ * name answer `'external'` (the `openPath` OS-default handoff).
  * @param path - absolute or display path.
  * @returns the viewer kind to open the file in.
  */
 export function viewerKindFor(path: string): FileViewerKind {
   const ext = extensionOf(path)
-  if (ext === undefined) return 'external'
+  if (ext === undefined) return TEXT_FILENAMES.has(baseNameOf(path)) ? 'text' : 'external'
   if (MARKDOWN_EXTENSIONS.has(ext)) return 'markdown'
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
+  if (PDF_EXTENSIONS.has(ext)) return 'pdf'
+  if (DOCX_EXTENSIONS.has(ext)) return 'docx'
+  if (XLSX_EXTENSIONS.has(ext)) return 'xlsx'
+  if (PPTX_EXTENSIONS.has(ext)) return 'pptx'
   return 'external'
 }
 

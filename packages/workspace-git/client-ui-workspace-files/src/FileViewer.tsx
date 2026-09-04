@@ -1,21 +1,24 @@
 /**
- * In-app preview modal for one Workspace file: text/code (line-numbered,
- * syntax-highlighted through `ReadBlock`), Markdown (rendered through the
- * shared `MarkdownText`), or an image (decoded to a blob URL and shown
- * inline). Every other extension — PDF included, a deferred follow-up — a
- * file whose classified kind disagrees with the Host's own UTF-8 decode (a
- * mismatched extension on real binary content), and a file whose read fails
- * with `file-too-large` all fall back to a single "Open with default app"
+ * In-app preview modal for one Workspace file: a thin wrapper around the
+ * shared `FilePreview` body (text/code, Markdown, image, PDF, and the three
+ * supported Office formats — see `dsh-plugins-client-ui-file-editing`'s own
+ * doc comment) plus this dialog's own chrome (title, close, and the
+ * "Open with default app"/"Copy" footer action). A file whose classified
+ * kind disagrees with the Host's own UTF-8 decode (a mismatched extension
+ * on real binary content), and a file whose read fails with
+ * `file-too-large`, both fall back to the "Open with default app" footer
  * action wired to `openPath` (the Host OS-default handoff, the same
- * primitive the Files tree used before this viewer existed).
+ * primitive the Files tree used before this viewer existed) — same as a
+ * genuinely `external`-kind (unrecognized extension, or a legacy binary
+ * `.doc`/`.ppt`) file.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { Button, MarkdownText, Modal, ReadBlock, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ReadBlockLine } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceFileContent } from 'dsh-plugins-api-workspace-file-controller/types'
+import { FilePreview, isContentMismatch } from 'dsh-plugins-client-ui-file-editing'
+import type { FilePreviewLabels, FilePreviewState } from 'dsh-plugins-client-ui-file-editing'
 import { langFromPath, viewerKindFor } from './classify.ts'
 import css from './FileViewer.module.css'
 
@@ -39,16 +42,7 @@ function basename(path: string): string {
   return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1) || path
 }
 
-/** Split text into `ReadBlock` lines, 1-based file line numbers. */
-function toReadBlockLines(text: string): ReadBlockLine[] {
-  // A trailing newline must not manufacture a phantom empty final line: a
-  // file ending in "\n" splits to N lines of real content, not N+1.
-  const body = text.endsWith('\n') ? text.slice(0, -1) : text
-  if (body === '') return []
-  return body.split('\n').map((line, index) => ({ number: index + 1, text: line }))
-}
-
-/** Decode base64 wire bytes to a revocable blob URL for `<img>`; null input yields no URL. */
+/** Decode base64 wire bytes to a revocable blob URL (image/PDF bodies); null input yields no URL. */
 function useBlobUrl(base64: string | null, mediaType: string | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
@@ -65,7 +59,7 @@ function useBlobUrl(base64: string | null, mediaType: string | undefined): strin
   return url
 }
 
-/** Fetch state for the currently previewed path. */
+/** Fetch state for the currently previewed path (the Host's own two-way text/binary decode, undecoded further). */
 type FetchState =
   | { phase: 'loading' }
   | { phase: 'ready'; content: WorkspaceFileContent }
@@ -96,8 +90,9 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
   useEffect(() => {
     if (path === null) return
     setState({ phase: 'loading' })
-    // External-viewer files (PDF, unrecognized extensions) never fetch
-    // content at all: the dialog's only action is the OS handoff.
+    // External-viewer files (unrecognized extensions, or a legacy binary
+    // .doc/.ppt with no client-side parser) never fetch content at all: the
+    // dialog's only action is the OS handoff.
     if (viewerKindFor(path) === 'external') return
     const controller = new AbortController()
     readFile(path, controller.signal).then((content) => {
@@ -110,23 +105,51 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
     return () => { controller.abort() }
   }, [path, readFile])
 
-  const markdownLabels = useMemo(() => ({
-    code: { copyLabel: t('copy'), copiedLabel: t('copied') },
-    footnotes: t('files.viewer.footnotes'),
-  }), [t])
-  const readLabels = useMemo(() => ({
-    window: (shown: number, total: number) => t('files.viewer.read.window', { shown, total }),
-    copy: t('copy'),
-    copied: t('copied'),
-    collapseAria: t('files.viewer.read.collapseAria'),
-    expandAria: (count: number) => t('files.viewer.read.expandAria', { count }),
-    collapse: t('collapse'),
-    expand: (count: number) => t('files.viewer.read.expand', { count }),
+  const filePreviewLabels: FilePreviewLabels = useMemo(() => ({
+    markdown: { code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('files.viewer.footnotes') },
+    read: {
+      window: (shown, total) => t('files.viewer.read.window', { shown, total }),
+      copy: t('copy'),
+      copied: t('copied'),
+      collapseAria: t('files.viewer.read.collapseAria'),
+      expandAria: count => t('files.viewer.read.expandAria', { count }),
+      collapse: t('collapse'),
+      expand: count => t('files.viewer.read.expand', { count }),
+    },
   }), [t])
 
   const binaryBase64 = state.phase === 'ready' && state.content.kind === 'binary' ? state.content.data : null
   const binaryMediaType = state.phase === 'ready' && state.content.kind === 'binary' ? state.content.mediaType : undefined
-  const imageUrl = useBlobUrl(kind === 'image' ? binaryBase64 : null, binaryMediaType)
+  const blobUrl = useBlobUrl(kind === 'image' || kind === 'pdf' ? binaryBase64 : null, binaryMediaType)
+  // Pure decode, unlike the blob URL above: raw bytes create no browser
+  // resource needing an effect/cleanup lifecycle, so a plain `useMemo` is
+  // enough for the three Office kinds' own in-component parsers.
+  const bytes = useMemo(() => {
+    if (kind !== 'docx' && kind !== 'xlsx' && kind !== 'pptx') return null
+    if (binaryBase64 === null) return null
+    const binary = atob(binaryBase64)
+    return Uint8Array.from(binary, char => char.charCodeAt(0)).buffer
+  }, [kind, binaryBase64])
+
+  // Reshapes this dialog's own Host-shaped `FetchState` into the generic
+  // `FilePreviewState` the shared `FilePreview` body expects — a `text`
+  // read passes through as-is; a `binary` read resolves to whichever of
+  // `FilePreview`'s own three ready-content shapes `kind` expects (a blob
+  // URL for image/PDF, raw bytes for the Office kinds, or the `binary`
+  // shape itself as a deliberate mismatch fallback for every other kind).
+  const previewState: FilePreviewState = useMemo(() => {
+    if (state.phase === 'loading') return { phase: 'loading' }
+    if (state.phase === 'too-large') return { phase: 'too-large', maxBytes: state.maxBytes }
+    if (state.phase === 'error') return { phase: 'error' }
+    if (state.content.kind === 'text') return { phase: 'ready', content: { kind: 'text', text: state.content.content } }
+    if (kind === 'image' || kind === 'pdf') return { phase: 'ready', content: { kind: 'binary', blobUrl } }
+    if (kind === 'docx' || kind === 'xlsx' || kind === 'pptx') {
+      return bytes === null
+        ? { phase: 'loading' }
+        : { phase: 'ready', content: { kind: 'bytes', data: bytes } }
+    }
+    return { phase: 'ready', content: { kind: 'binary', blobUrl: null } }
+  }, [state, kind, blobUrl, bytes])
 
   const [copied, setCopied] = useState(false)
   const copiedTimerRef = useRef<number | undefined>(undefined)
@@ -151,36 +174,7 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
 
   if (path === null) return null
 
-  // A binary read where the classified kind expected text (a mismatched
-  // extension on real binary content) falls back the same way an
-  // over-the-bound file or a genuinely external kind does.
-  const binaryMismatch = state.phase === 'ready' && state.content.kind === 'binary' && kind !== 'image'
-  const showsExternalOnly = kind === 'external' || state.phase === 'error' || state.phase === 'too-large' || binaryMismatch
-
-  let body: ReactNode
-  if (kind === 'external') {
-    body = <p className={css.notice}>{t('files.viewer.openExternally')}</p>
-  } else if (state.phase === 'loading') {
-    body = <p className={css.notice}>{t('files.viewer.loading')}</p>
-  } else if (state.phase === 'error' || binaryMismatch) {
-    body = <p className={css.notice} role="alert">{t('files.viewer.loadError')}</p>
-  } else if (state.phase === 'too-large') {
-    body = <p className={css.notice} role="alert">{t('files.viewer.tooLarge', { maxMB: Math.round(state.maxBytes / (1024 * 1024)) })}</p>
-  } else if (kind === 'image') {
-    body = imageUrl === null
-      ? <p className={css.notice}>{t('files.viewer.loading')}</p>
-      : <img className={css.image} src={imageUrl} alt={basename(path)} />
-  } else if (kind === 'markdown' && state.content.kind === 'text') {
-    body = <MarkdownText text={state.content.content} labels={markdownLabels} />
-  } else {
-    // Reached only for kind === 'text' with a text read: a binary read here
-    // would already have taken the binaryMismatch branch above (kind !==
-    // 'image' covers 'markdown' and 'text' alike), so state.content.kind is
-    // guaranteed 'text'. TypeScript still requires the narrowing check.
-    /* v8 ignore next -- the false arm is unreachable per the comment above; only TypeScript's narrowing needs it. */
-    const lines = state.content.kind === 'text' ? toReadBlockLines(state.content.content) : []
-    body = <ReadBlock label={path} lines={lines} totalLines={lines.length} lang={langFromPath(path)} labels={readLabels} />
-  }
+  const showsExternalOnly = kind === 'external' || state.phase === 'error' || state.phase === 'too-large' || isContentMismatch(kind, previewState)
 
   const footer = showsExternalOnly
     ? (
@@ -204,7 +198,23 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
 
   return (
     <Modal open onClose={onClose} title={basename(path)} closeLabel={t('files.viewer.close')} footer={footer}>
-      <div className={css.body}>{body}</div>
+      <FilePreview
+        className={css.body}
+        path={path}
+        kind={kind}
+        state={previewState}
+        lang={langFromPath(path)}
+        imageAlt={basename(path)}
+        labels={filePreviewLabels}
+        loadingLabel={t('files.viewer.loading')}
+        loadErrorLabel={t('files.viewer.loadError')}
+        externalLabel={t('files.viewer.openExternally')}
+        tooLargeLabel={maxMB => t('files.viewer.tooLarge', { maxMB })}
+        xlsxTruncatedLabel={(rows, cols) => t('files.viewer.xlsxTruncated', { rows, cols })}
+        xlsxEmptyLabel={t('files.viewer.xlsxEmpty')}
+        pptxSlideLabel={index => t('files.viewer.pptxSlide', { index })}
+        pptxEmptyLabel={t('files.viewer.pptxEmpty')}
+      />
     </Modal>
   )
 }

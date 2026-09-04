@@ -1,0 +1,52 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice {
+  margin: 0;
+  padding: 16px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+  padding-bottom: 4px;
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.tabActive {
+  background: var(--dsw-alias-border-l1);
+  color: inherit;
+}
+
+.tableScroll {
+  overflow: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: pre;
+}
+
+.table td {
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  padding: 3px 8px;
+  min-width: 60px;
+}
