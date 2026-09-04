@@ -139,18 +139,44 @@ class AuthorizationFeed {
   }
 
   /**
-   * Register one attempt's pending prompt and wait for a connected page to answer it.
+   * Register one attempt's pending prompt and wait for a connected page to
+   * answer it, or for `signal` (the prompt's own — a flow retiring the
+   * losing side of a race) to withdraw it. Never throws synchronously: every
+   * failure — including the "already pending" guard — rejects the returned
+   * promise, matching {@link AuthorizationInteraction.prompt}'s own
+   * `Promise<string>` contract, since a caller that chains `.catch()`
+   * without `await`ing (as the seam itself does — see
+   * `@deepseek-ai/dsh-authorization`'s own `attempt()`) never sees a
+   * synchronous throw.
    * @param key - the credential record the attempt is authorizing.
    * @param prompt - the wire-safe prompt (the seam's own `signal` already stripped).
+   * @param signal - the prompt's own withdrawal signal (`AuthorizationPrompt.signal`,
+   * stripped before the wire type); rejects with `signal.reason`, never
+   * {@link AuthorizationDeclinedError} (the human did not decline — the flow retired the question).
    * @returns the typed text, or the chosen option's id.
    * @throws AuthorizationDeclinedError when `respond` is called with no answer.
    */
-  ask(key: CredentialKey, prompt: WireAuthorizationPrompt): Promise<string> {
+  ask(key: CredentialKey, prompt: WireAuthorizationPrompt, signal?: AbortSignal): Promise<string> {
     if (this.pending.has(key)) {
-      throw new Error(`authorization: a prompt for "${key}" is already pending — a flow prompts one at a time`)
+      return Promise.reject(
+        new Error(`authorization: a prompt for "${key}" is already pending — a flow prompts one at a time`),
+      )
     }
+    if (signal?.aborted === true) return Promise.reject(signal.reason)
     return new Promise<string>((resolve, reject) => {
-      this.pending.set(key, { prompt, resolve, reject })
+      const onAbort = (): void => { reject(signal?.reason) }
+      signal?.addEventListener('abort', onAbort, { once: true })
+      this.pending.set(key, {
+        prompt,
+        resolve: (answer) => {
+          signal?.removeEventListener('abort', onAbort)
+          resolve(answer)
+        },
+        reject: (error) => {
+          signal?.removeEventListener('abort', onAbort)
+          reject(error)
+        },
+      })
       this.publish({ type: 'prompt-requested', key, prompt })
     }).finally(() => {
       this.pending.delete(key)
@@ -175,6 +201,24 @@ class AuthorizationFeed {
     else entry.resolve(answer)
   }
 
+  /**
+   * Withdraw the prompt pending for a key, if any (idempotent no-op
+   * otherwise) — called when the whole attempt is cancelled. The seam's own
+   * `cancel()` settles `begin()` immediately without waiting for the
+   * orphaned flow to unwind (its own `attempt()` races the withdrawal signal
+   * against the flow's `run()`), so a flow blocked inside
+   * `interaction.prompt()` would otherwise never learn the attempt ended —
+   * leaving this key's `pending` entry, and thus `ask`'s "already pending"
+   * guard, stuck until the process restarts. Rejects with a plain `Error`,
+   * never {@link AuthorizationDeclinedError}: the human did not decline this
+   * prompt, the caller withdrew the whole attempt out from under it.
+   * @param key - the credential record whose pending prompt, if any, should be withdrawn.
+   */
+  withdrawPending(key: CredentialKey): void {
+    const entry = this.pending.get(key)
+    if (entry !== undefined) entry.reject(new Error(`authorization: the attempt for "${key}" was cancelled`))
+  }
+
   private publish(frame: AuthorizationStreamFrame): void {
     for (const follower of this.followers) follower.push(frame)
   }
@@ -185,8 +229,8 @@ function feedInteraction(feed: AuthorizationFeed, key: CredentialKey): Authoriza
   return {
     notify: (notice) => { feed.notify(key, notice) },
     prompt: (prompt) => {
-      const { signal: _signal, ...wire } = prompt
-      return feed.ask(key, wire)
+      const { signal, ...wire } = prompt
+      return feed.ask(key, wire, signal)
     },
   }
 }
@@ -258,6 +302,15 @@ export class AuthorizationController extends TypertRemoteService {
    */
   @Remote
   async begin(key: CredentialKey, method: string | undefined, signal: AbortSignal): Promise<AuthorizationOutcome> {
+    // Withdraws this key's pending prompt on ANY caller-lifetime withdrawal,
+    // not only the explicit `cancel()` RPC: the seam's own `begin()` aborts
+    // its internal attempt controller from this same `signal` (a disconnect,
+    // not just a Cancel click) and settles `cancelled` without waiting for
+    // the orphaned flow to unwind — the identical leak `cancel()` closes via
+    // `AuthorizationFeed.withdrawPending`, reachable here too since a
+    // disconnected caller can no longer answer a prompt either way.
+    const withdrawOnAbort = (): void => { this.feed.withdrawPending(key) }
+    signal.addEventListener('abort', withdrawOnAbort, { once: true })
     try {
       return await this.ctx.authorization.begin({
         key,
@@ -267,6 +320,8 @@ export class AuthorizationController extends TypertRemoteService {
       })
     } catch (error: unknown) {
       throw failure(error)
+    } finally {
+      signal.removeEventListener('abort', withdrawOnAbort)
     }
   }
 
@@ -274,12 +329,18 @@ export class AuthorizationController extends TypertRemoteService {
    * Withdraw the attempt running for a key, if any (idempotent) — the Cancel
    * button's path, distinct from `begin`'s own `signal` because a
    * request/response transport answers Cancel on a second call, with no
-   * handle on the first one's signal.
+   * handle on the first one's signal. Also withdraws this key's pending
+   * prompt, if any: the seam's own cancellation settles `begin()`
+   * immediately without waiting for the orphaned flow to unwind, so a flow
+   * still blocked inside `interaction.prompt()` would otherwise never learn
+   * the attempt ended, leaking `this.feed`'s pending entry forever (see
+   * {@link AuthorizationFeed.withdrawPending}).
    * @param key - the credential record whose attempt should stop.
    */
   @Remote
   cancel(key: CredentialKey): void {
     this.ctx.authorization.cancel(key)
+    this.feed.withdrawPending(key)
   }
 }
 
