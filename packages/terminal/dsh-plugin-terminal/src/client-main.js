@@ -346,19 +346,9 @@ function TerminalPanel(props) {
   const [activeId, setActiveId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [height, setHeight] = useState(() => {
-    /* Bound the restored height by the same cap the drag handler applies.
-       Dragging clamps to 78% of the viewport, but a height read back from
-       storage skipped that cap entirely, so one saved on a taller window (or
-       a larger display) returned bigger than the current viewport. That is
-       not merely a tall panel: measure() mirrors the panel's rendered height
-       onto the composer seat's margin-bottom, so an oversized panel inflates
-       the conversation column itself - the page outgrows the viewport, the
-       layout starts scrolling, and the bottom-docked panel drifts out of
-       view. */
-    const maxHeight = Math.round(window.innerHeight * 0.78);
     try {
       const saved = Number(localStorage.getItem(HEIGHT_KEY));
-      if (Number.isFinite(saved) && saved >= MIN_HEIGHT) return Math.min(saved, maxHeight);
+      if (Number.isFinite(saved) && saved >= MIN_HEIGHT) return saved;
     } catch { /* storage unavailable */ }
     return Math.round(window.innerHeight * 0.36);
   });
