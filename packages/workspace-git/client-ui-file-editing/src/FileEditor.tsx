@@ -10,8 +10,13 @@
  * nothing highlighting would add, so it keeps the single plain-monospace
  * pane. Deliberately uncontrolled after mount — `text`/`kind` seed the
  * initial buffer only; a caller wanting a fresh buffer for a different file
- * remounts by keying on the file's path (CodeMirror, not React, then owns
- * the buffer, undo history, and cursor/selection for that file's lifetime).
+ * remounts by keying on that file's own identity (CodeMirror, not React,
+ * then owns the buffer, undo history, and cursor/selection for that file's
+ * lifetime) — `path` alone when a caller only ever addresses one namespace
+ * of paths, or `path` combined with whatever else disambiguates two files
+ * that can otherwise share a path (e.g. `dsh-plugins-client-ui-conversation-
+ * files`'s `FileView` keys on `(workspaceId, path)`, since two different
+ * Workspace groups can each have their own same-named file).
  * Every change reports upward through `onChange`; save/dirty/error chrome
  * is the caller's concern.
  *
@@ -140,7 +145,8 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
     // Mount-once: `text`/`kind`/`lang`/`hasPreview` seed the initial buffer
     // and preview posture only (see the component doc comment) — CodeMirror
     // owns the document from here, and a caller wanting a different
-    // `lang`/`kind` remounts by keying on the file's path, same as `text`.
+    // `lang`/`kind` remounts by keying on the same file identity `text`
+    // itself remounts on (see the component doc comment — not always bare `path`).
   }, [])
 
   const previewLines = useMemo(

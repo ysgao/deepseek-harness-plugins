@@ -119,6 +119,24 @@ function parseOpenFileFocus(focus: string): OpenFileFocus | null {
   }
 }
 
+/**
+ * Draft-cache/effect/remount identity for one opened path. `path` alone
+ * conflates two different Workspace groups that happen to share a relative
+ * path (e.g. each has its own root `README.md`) into one draft cache entry
+ * and one `FileEditor` mount: opening one workspace's file, then the other's
+ * same-named file into this same tab, would otherwise show/edit/save the
+ * first workspace's draft under the second's identity. `workspaceId` is
+ * optional (a requester that never resolved one), so it is joined with a
+ * separator rather than merely concatenated, keeping `(undefined, "a:b")`
+ * distinct from `("a", "b")`.
+ * @param workspaceId - the opened path's own workspace, when known.
+ * @param path - the opened path.
+ * @returns a string key unique per `(workspaceId, path)` pair.
+ */
+function fileIdentityOf(workspaceId: WorkspaceId | undefined, path: string): string {
+  return `${workspaceId ?? ''}:${path}`
+}
+
 /** Decode base64 wire bytes to a revocable blob URL. */
 function decodeBlobUrl(base64: string, mediaType: string): string {
   const binary = atob(base64)
@@ -182,11 +200,14 @@ export function FileView({
   const [reloadToken, setReloadToken] = useState(0)
   const [refreshToken, setRefreshToken] = useState(0)
 
-  // Unsaved edits, keyed by path, so switching to another file (or to
-  // View/Diff) and back never silently loses a draft. Plain mutable state
-  // (not React state): every keystroke would otherwise re-render the whole
-  // tab. `hasDraft` is the reactive slice callers actually need to render
-  // from (the unsaved-changes indicator, whether Save is enabled).
+  // Unsaved edits, keyed by `fileIdentityOf(workspaceId, path)` (not `path`
+  // alone — two different workspaces can share a relative path), so
+  // switching to another file (or to View/Diff) and back never silently
+  // loses a draft, and never shows one workspace's draft under another's
+  // identity. Plain mutable state (not React state): every keystroke would
+  // otherwise re-render the whole tab. `hasDraft` is the reactive slice
+  // callers actually need to render from (the unsaved-changes indicator,
+  // whether Save is enabled).
   const draftsRef = useRef(new Map<string, FileDraft>())
   const [hasDraft, setHasDraft] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>({ phase: 'idle' })
@@ -202,16 +223,20 @@ export function FileView({
   }, [openFileFocus, completeViewRequest])
 
   const kind = openedPath === null ? 'external' : viewerKindFor(openedPath)
+  // See `fileIdentityOf`'s own doc comment: `path` alone conflates two
+  // different workspaces' same-named files into one draft/editor identity.
+  const openedFileId = openedPath === null ? null : fileIdentityOf(openedWorkspaceId, openedPath)
 
-  // A newly opened path always starts in plain-view mode with a clean save
-  // state — deliberately keyed on `openedPath` alone, not `refreshToken`: a
-  // post-save refresh (below) must re-fetch git status without kicking the
-  // tab back to View or clobbering the just-cleared save/draft state.
+  // A newly opened (path, workspaceId) pair always starts in plain-view mode
+  // with a clean save state — deliberately keyed on `openedFileId`, not
+  // `refreshToken`: a post-save refresh (below) must re-fetch git status
+  // without kicking the tab back to View or clobbering the just-cleared
+  // save/draft state.
   useEffect(() => {
     setMode('view')
     setSaveState({ phase: 'idle' })
-    setHasDraft(openedPath !== null && draftsRef.current.has(openedPath))
-  }, [openedPath])
+    setHasDraft(openedFileId !== null && draftsRef.current.has(openedFileId))
+  }, [openedFileId])
 
   // Whether the Diff toggle even shows depends on this fetch, one shot per
   // open (not a live subscription — the tree's own explicit-refresh control
@@ -282,24 +307,24 @@ export function FileView({
     }
   }, [openedPath, openedWorkspaceId, readFile, reloadToken])
 
-  // Records every keystroke into the current path's draft, forked from the
-  // version the buffer was seeded at (the read's version, or the prior
-  // draft's — never re-derived per keystroke, only at fork time).
+  // Records every keystroke into the current (path, workspaceId)'s draft,
+  // forked from the version the buffer was seeded at (the read's version, or
+  // the prior draft's — never re-derived per keystroke, only at fork time).
   const handleEditChange = useCallback((text: string) => {
-    if (openedPath === null) return
-    const baseVersion = draftsRef.current.get(openedPath)?.version ?? version
+    if (openedFileId === null) return
+    const baseVersion = draftsRef.current.get(openedFileId)?.version ?? version
     if (baseVersion === null) return
-    draftsRef.current.set(openedPath, { text, version: baseVersion })
+    draftsRef.current.set(openedFileId, { text, version: baseVersion })
     setHasDraft(true)
-  }, [openedPath, version])
+  }, [openedFileId, version])
 
   const handleSave = useCallback(() => {
-    if (openedPath === null) return
-    const draft = draftsRef.current.get(openedPath)
+    if (openedPath === null || openedFileId === null) return
+    const draft = draftsRef.current.get(openedFileId)
     if (draft === undefined) return
     setSaveState({ phase: 'saving' })
     writeFile(openedWorkspaceId, openedPath, draft.text, draft.version).then((nextVersion) => {
-      draftsRef.current.delete(openedPath)
+      draftsRef.current.delete(openedFileId)
       setHasDraft(false)
       setSaveState({ phase: 'idle' })
       setVersion(nextVersion)
@@ -309,19 +334,19 @@ export function FileView({
       const conflict = remoteErrorOf(error)?.code === 'workspace-files/file-changed'
       setSaveState({ phase: conflict ? 'conflict' : 'error' })
     })
-  }, [openedPath, openedWorkspaceId, writeFile])
+  }, [openedPath, openedFileId, openedWorkspaceId, writeFile])
 
   // Discards the current draft and re-fetches the path fresh — the
   // conflict notice's recovery action, since a version mismatch means the
   // draft's base is no longer valid to save over.
   const handleDiscardAndReload = useCallback(() => {
-    if (openedPath === null) return
-    draftsRef.current.delete(openedPath)
+    if (openedFileId === null) return
+    draftsRef.current.delete(openedFileId)
     setHasDraft(false)
     setSaveState({ phase: 'idle' })
     setMode('view')
     setReloadToken(token => token + 1)
-  }, [openedPath])
+  }, [openedFileId])
 
   if (openedPath === null) {
     return <div className={css.empty}>{tFiles('files.empty')}</div>
@@ -339,7 +364,7 @@ export function FileView({
   const readyText = state.phase === 'ready' && state.content.kind === 'text' ? state.content.text : null
   const showsEditToggle = (kind === 'text' || kind === 'markdown') && readyText !== null
   const sameText = diffState.phase === 'ready' && diffState.diff.oldText === diffState.diff.newText
-  const draft = draftsRef.current.get(openedPath)
+  const draft = openedFileId === null ? undefined : draftsRef.current.get(openedFileId)
   const editorText = draft?.text ?? readyText ?? ''
 
   return (
@@ -406,7 +431,7 @@ export function FileView({
       )}
       {mode === 'edit' && showsEditToggle && (
         <FileEditor
-          key={openedPath}
+          key={openedFileId}
           path={openedPath}
           text={editorText}
           kind={kind === 'markdown' ? 'markdown' : 'text'}

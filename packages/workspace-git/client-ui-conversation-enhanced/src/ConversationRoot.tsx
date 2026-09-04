@@ -107,6 +107,12 @@ function WidthHandle(props: {
   const cancelFrame = () => {
     if (frame.current !== null) { cancelAnimationFrame(frame.current); frame.current = null }
   }
+  // Every ordinary gesture end (pointerup/pointercancel) already cancels an
+  // in-flight frame; this only covers an unmount mid-drag (the handle's own
+  // Session unmounting while the pointer is still down), which would
+  // otherwise let the frame's callback fire once more against props captured
+  // before teardown.
+  useEffect(() => cancelFrame, [])
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)

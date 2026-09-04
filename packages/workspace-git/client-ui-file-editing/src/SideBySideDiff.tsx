@@ -8,7 +8,7 @@
 // reason: a diff's meaning-carrying color (removed/added) already competes
 // for the reader's attention. Colors resolve through --dsw-* tokens.
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import clsx from 'clsx'
 import { diffLines } from 'diff'
@@ -164,13 +164,19 @@ export function SideBySideDiff({ path, oldText, newText, className, labels }: Si
   const rows = useMemo(() => buildRows(oldText, newText), [oldText, newText])
   const [copied, setCopied] = useState(false)
   const { ratio, dividerProps } = useSplitRatio()
+  const copiedTimerRef = useRef<number | undefined>(undefined)
+
+  // A fast unmount right after a copy (switching files, closing the tab)
+  // must not let the pending timer call setState on an unmounted component.
+  useEffect(() => () => { window.clearTimeout(copiedTimerRef.current) }, [])
 
   const onCopy = useCallback(() => {
     if (copied) return
     void writeClipboard(copyText(rows)).then((ok) => {
       if (!ok) return
       setCopied(true)
-      window.setTimeout(() => { setCopied(false) }, 1000)
+      window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => { setCopied(false) }, 1000)
     })
   }, [copied, rows])
 

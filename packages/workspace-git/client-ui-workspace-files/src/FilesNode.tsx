@@ -639,7 +639,12 @@ export function FilesNode({
   // fetch is deliberately absent here (see GitStatusSummary's own doc): it
   // never touches the working tree or index, so it may run alongside any of
   // these, and is guarded only by its own `fetchPending` self-disable.
-  const busy = discardPending || discardConfirming || pullPending || pushPending || createPending
+  // `commitPending` is included explicitly rather than left to the commit
+  // UI's own render-structure exclusivity (the button group this feeds is
+  // entirely replaced by `GitCommitInput` while `commitMode` is true): that
+  // structural argument is a second, independent invariant this value
+  // should not have to depend on to stay correct.
+  const busy = discardPending || discardConfirming || pullPending || pushPending || createPending || commitPending
   // Pull/Push each hold the AbortController for their own in-flight call, so
   // the Cancel button (GitStatusSummary) can abort a hung network request —
   // both use the RPC's 'caller-signal-only' timeout policy, which never

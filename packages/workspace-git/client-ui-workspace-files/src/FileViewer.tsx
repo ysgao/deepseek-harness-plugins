@@ -9,7 +9,7 @@
  * action wired to `openPath` (the Host OS-default handoff, the same
  * primitive the Files tree used before this viewer existed).
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button, MarkdownText, Modal, ReadBlock, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ReadBlockLine } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -129,12 +129,23 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
   const imageUrl = useBlobUrl(kind === 'image' ? binaryBase64 : null, binaryMediaType)
 
   const [copied, setCopied] = useState(false)
+  const copiedTimerRef = useRef<number | undefined>(undefined)
+
+  // A fast unmount right after a copy must not let the pending timer call
+  // setState on an unmounted component. Closing the modal itself does NOT
+  // unmount this component — `FilesNode` renders it unconditionally and
+  // only clears `path` (see this file's own early `path === null` return)
+  // — the real trigger is `FilesNode` itself unmounting (its owning
+  // Workspace group collapsing or being removed from the sidebar).
+  useEffect(() => () => { window.clearTimeout(copiedTimerRef.current) }, [])
+
   const onCopy = (text: string): void => {
     if (copied) return
     void writeClipboard(text).then((ok) => {
       if (!ok) return
       setCopied(true)
-      window.setTimeout(() => { setCopied(false) }, 1000)
+      window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => { setCopied(false) }, 1000)
     })
   }
 
