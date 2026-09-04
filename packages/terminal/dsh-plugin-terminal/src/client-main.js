@@ -82,7 +82,14 @@ const post = (path, body) =>
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body ?? {}),
   });
-const del = (path) => api(path, { method: "DELETE" }).catch(() => {});
+/* Logged, not swallowed: closeTab() already removed the tab optimistically
+ * from UI state before this call, so a failure here leaves an orphaned
+ * live session on the host with nothing else pointing at it — worth a
+ * trace even though there is no good UI recovery (the tab reappears on the
+ * next full remount, which refetches /sessions and lists it again). */
+const del = (path) => api(path, { method: "DELETE" }).catch((err) => {
+  console.error("[dsh-plugin-terminal] delete failed:", err);
+});
 const prettyShell = (s) => (s ?? "shell").replace(/\.exe$/i, "");
 /* server titles look like "pwsh.exe #3" - show "pwsh 3" */
 function tabLabel(tab) {
@@ -199,34 +206,70 @@ function TermPane({ tab, active, onExit }) {
     termRef.current = term;
     fitRef.current = fit;
 
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(proto + "//" + location.host + PREFIX + "/ws/" + tab.id);
-    ws.onopen = () => {
-      /* The mount effect's fit() runs in a rAF that can fire BEFORE the socket
-       * opens, so its onResize would be dropped (readyState !== OPEN) and the
-       * PTY would stay at the spawn default (80x24). Replay the current
-       * dimensions on connect so the shell repaints at the pane's real size -
-       * otherwise PSReadLine's "clear rows below the prompt" sequence overflows
-       * a short panel and leaves the cursor stranded on the bottom row. */
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-      }
-    };
-    ws.onmessage = (ev) => term.write(ev.data);
-    ws.onclose = () => {
-      if (wsRef.current === ws) {
+    /* WS lifetime: connect() is called once on mount and again on every
+     * reconnect attempt, always assigning the result to wsRef.current so
+     * term.onData/onResize below (registered once, outside connect()) always
+     * write to whichever socket is current. disposed/reconnectTimer guard
+     * against a reconnect firing after unmount. */
+    let disposed = false;
+    let reconnectAttempt = 0;
+    let reconnectTimer = null;
+    const MAX_RECONNECT_ATTEMPTS = 5;
+
+    const connect = () => {
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(proto + "//" + location.host + PREFIX + "/ws/" + tab.id);
+      ws.onopen = () => {
+        reconnectAttempt = 0;
+        /* The mount effect's fit() runs in a rAF that can fire BEFORE the socket
+         * opens, so its onResize would be dropped (readyState !== OPEN) and the
+         * PTY would stay at the spawn default (80x24). Replay the current
+         * dimensions on connect so the shell repaints at the pane's real size -
+         * otherwise PSReadLine's "clear rows below the prompt" sequence overflows
+         * a short panel and leaves the cursor stranded on the bottom row. */
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+        }
+      };
+      ws.onmessage = (ev) => term.write(ev.data);
+      ws.onclose = (event) => {
+        if (wsRef.current !== ws) return;
         wsRef.current = null;
-        onExit(tab.id);
-      }
+        if (disposed) return;
+        /* The host closes with EXACTLY 1000 + this reason when the PTY
+         * itself exited (both the live-exit and the exited-history-replay
+         * paths use it) - every other closure (a network blip, a `dsh web`
+         * restart mid-connection, an auth rejection destroying the raw
+         * socket before the WS handshake completes) is NOT the session
+         * exiting. Treating every close as "exited" used to steer a merely
+         * disconnected tab into Restart, which really does kill and respawn
+         * a shell that may still be alive server-side. Reconnecting is safe
+         * even across a host restart: a persisted session replays its
+         * history and closes 1000 "session exited" for real, which the next
+         * onclose then correctly reports. */
+        const genuinelyExited = event.code === 1000 && event.reason === "session exited";
+        if (genuinelyExited || reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+          onExit(tab.id);
+          return;
+        }
+        const delay = Math.min(1000 * 2 ** reconnectAttempt, 10000);
+        reconnectAttempt += 1;
+        reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = null;
+          if (!disposed) connect();
+        }, delay);
+      };
+      ws.onerror = () => ws.close();
+      wsRef.current = ws;
     };
-    ws.onerror = () => ws.close();
-    wsRef.current = ws;
+    connect();
+
     term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(data);
+      if (wsRef.current !== null && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.send(data);
     });
     term.onResize(({ cols, rows }) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "resize", cols, rows }));
+      if (wsRef.current !== null && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
       }
     });
 
@@ -259,10 +302,14 @@ function TermPane({ tab, active, onExit }) {
     term.element.addEventListener("contextmenu", pasteClipboard);
 
     return () => {
+      disposed = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       term.element.removeEventListener("mouseup", copySelection);
       term.element.removeEventListener("contextmenu", pasteClipboard);
-      ws.onclose = null;
-      ws.close();
+      if (wsRef.current !== null) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
       term.dispose();
       termRef.current = null;
       wsRef.current = null;

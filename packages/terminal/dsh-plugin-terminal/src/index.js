@@ -194,9 +194,13 @@ export function apply(ctx) {
   /** drop a session from disk (explicit user close) */
   function forgetSession(id) {
     const record = sessions.get(id)
-    // Clear any pending log chunks FIRST: pty.kill() above fires onExit
-    // asynchronously, whose flushLog() would recreate the file we unlink.
+    // Mark dead and clear any pending log chunks FIRST, mirroring restart's
+    // own cleanup: pty.kill() above fires onExit asynchronously, and a late
+    // onData frame arriving before the process actually exits would
+    // otherwise still run queueLog() (record.dead unset) and recreate the
+    // log file this function is about to unlink.
     if (record !== undefined) {
+      record.dead = true
       if (record.flushTimer !== undefined && record.flushTimer !== null) {
         clearTimeout(record.flushTimer)
         record.flushTimer = null
@@ -209,6 +213,13 @@ export function apply(ctx) {
       /* no log */
     }
     sessions.delete(id)
+    // Drop the per-session WS upgrade route too: left registered, it would
+    // sit forever in ctx.webServer as a dead route (every future upgrade to
+    // it already 404s via the sessions.get(id) check inside, since the
+    // session is gone, but the registration itself — and this Map's own
+    // entry — would otherwise never be freed for the life of the process).
+    upgradeDisposers.get(id)?.()
+    upgradeDisposers.delete(id)
     persistMeta()
   }
 
