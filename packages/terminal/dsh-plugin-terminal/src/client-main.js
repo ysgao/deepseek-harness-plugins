@@ -408,6 +408,11 @@ function TerminalPanel(props) {
   }, []);
 
   const active = tabs.find((tab) => tab.id === activeId) ?? null;
+  /* Exited tabs are replay-only history: their WS closes on connect without
+   * ever registering a message handler, so they can never take input. Only a
+   * live tab makes the panel usable, which is what the open effect below
+   * keys on. */
+  const hasLiveTab = tabs.some((tab) => !tab.exited);
 
   /* Restore live sessions on EVERY mount (page load, workspace switch):
    * the panel is injected per-conversation, so switching workspaces remounts
@@ -446,17 +451,31 @@ function TerminalPanel(props) {
     })();
   }, []);
 
-  /* first open with no restored tabs: create one session. openHandled guards
-   * so closing the last tab does NOT auto-create - only a fresh open does. */
+  /* first open with no LIVE tab: make one session usable. openHandled guards
+   * so closing the last tab does NOT auto-create - only a fresh open does.
+   *
+   * Keyed on `hasLiveTab`, not `tabs.length`: every persisted session returns
+   * from a `dsh web` restart as exited history, so a restart with any terminal
+   * history left the panel opening onto a dead tab that silently refused every
+   * keystroke - restored tabs were present, so nothing created a live session.
+   *
+   * Restart the active dead tab IN PLACE instead of appending a new one.
+   * `newTab()` is the + button's job (see restartActive's note), and appending
+   * would leave a dead tab sitting beside a fresh live one - a shape the panel
+   * is never otherwise in, and the one it was in when a layout fault showed up
+   * in the conversation views. Restarting keeps the tab strip exactly as the
+   * user left it and lands on one live tab, the same shape a healthy panel
+   * already has. A panel with no tabs at all still creates one. */
   useEffect(() => {
     if (!open) {
       openHandled.current = false;
       return;
     }
-    if (!bootReady || tabs.length > 0 || openHandled.current) return;
+    if (!bootReady || hasLiveTab || openHandled.current) return;
     openHandled.current = true;
-    newTab();
-  }, [open, bootReady, tabs.length]);
+    if (tabs.length === 0) newTab();
+    else restartActive();
+  }, [open, bootReady, hasLiveTab, tabs.length]);
 
   /* Ctrl+` toggles the panel (Cmd+` is taken by the OS on macOS) */
   useEffect(() => {
