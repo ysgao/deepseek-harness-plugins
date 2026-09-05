@@ -42,20 +42,26 @@ function basename(path: string): string {
   return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1) || path
 }
 
-/** Decode base64 wire bytes to a revocable blob URL (image/PDF bodies); null input yields no URL. */
-function useBlobUrl(base64: string | null, mediaType: string | undefined): string | null {
+/**
+ * Decode base64 wire bytes to a revocable blob URL (image/PDF bodies); null
+ * input yields no URL. Named via a `File` (not a bare `Blob`) so the
+ * browser's own built-in PDF viewer shows/downloads the file's real name —
+ * a bare Blob URL's path is an opaque UUID, which is all that viewer
+ * otherwise has to go on.
+ */
+function useBlobUrl(base64: string | null, mediaType: string | undefined, path: string | null): string | null {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
-    if (base64 === null || mediaType === undefined) {
+    if (base64 === null || mediaType === undefined || path === null) {
       setUrl(null)
       return
     }
     const binary = atob(base64)
     const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
-    const created = URL.createObjectURL(new Blob([bytes], { type: mediaType }))
+    const created = URL.createObjectURL(new File([bytes], basename(path), { type: mediaType }))
     setUrl(created)
     return () => { URL.revokeObjectURL(created) }
-  }, [base64, mediaType])
+  }, [base64, mediaType, path])
   return url
 }
 
@@ -120,7 +126,7 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
 
   const binaryBase64 = state.phase === 'ready' && state.content.kind === 'binary' ? state.content.data : null
   const binaryMediaType = state.phase === 'ready' && state.content.kind === 'binary' ? state.content.mediaType : undefined
-  const blobUrl = useBlobUrl(kind === 'image' || kind === 'pdf' ? binaryBase64 : null, binaryMediaType)
+  const blobUrl = useBlobUrl(kind === 'image' || kind === 'pdf' ? binaryBase64 : null, binaryMediaType, path)
   // Pure decode, unlike the blob URL above: raw bytes create no browser
   // resource needing an effect/cleanup lifecycle, so a plain `useMemo` is
   // enough for the three Office kinds' own in-component parsers.

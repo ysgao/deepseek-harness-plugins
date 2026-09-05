@@ -138,11 +138,21 @@ function fileIdentityOf(workspaceId: WorkspaceId | undefined, path: string): str
   return `${workspaceId ?? ''}:${path}`
 }
 
-/** Decode base64 wire bytes to a revocable blob URL. */
-function decodeBlobUrl(base64: string, mediaType: string): string {
+/** Basename of a path, both separators accepted. */
+function basename(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1) || path
+}
+
+/**
+ * Decode base64 wire bytes to a revocable blob URL. Named via a `File` (not
+ * a bare `Blob`) so the browser's own built-in PDF viewer shows/downloads
+ * the file's real name — a bare Blob URL's path is an opaque UUID, which is
+ * all that viewer otherwise has to go on.
+ */
+function decodeBlobUrl(base64: string, mediaType: string, path: string): string {
   const binary = atob(base64)
   const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
-  return URL.createObjectURL(new Blob([bytes], { type: mediaType }))
+  return URL.createObjectURL(new File([bytes], basename(path), { type: mediaType }))
 }
 
 /** Decode base64 wire bytes to a raw `ArrayBuffer`, for `FilePreview`'s own in-browser Office parsers (no blob URL needed). */
@@ -301,7 +311,7 @@ export function FileView({
         return
       }
       if (openedKind === 'image' || openedKind === 'pdf') {
-        createdUrl = decodeBlobUrl(content.data, content.mediaType)
+        createdUrl = decodeBlobUrl(content.data, content.mediaType, openedPath)
         setState({ phase: 'ready', content: { kind: 'binary', blobUrl: createdUrl } })
       } else if (openedKind === 'docx' || openedKind === 'xlsx' || openedKind === 'pptx') {
         setState({ phase: 'ready', content: { kind: 'bytes', data: decodeBytes(content.data) } })
