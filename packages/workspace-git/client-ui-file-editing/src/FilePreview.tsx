@@ -1,34 +1,35 @@
 /**
  * Shared file-content preview body: text/code (line-numbered, syntax-
  * highlighted through `ReadBlock`), Markdown (rendered through
- * `MarkdownText`), an image (a caller-supplied blob URL shown inline), a
- * PDF (the same blob URL handed to the browser's own built-in viewer
- * through an `<iframe>` — no bundled PDF renderer), or one of three Office
- * formats read from the caller-supplied raw bytes: `.docx` (`DocxPreview`,
- * via `mammoth`), `.xlsx`/legacy `.xls` (`XlsxPreview`, via `xlsx`/SheetJS),
- * and `.pptx` text-only extraction (`PptxPreview`, via `jszip`). Legacy
- * binary `.doc`/`.ppt` (pre-2007 OLE compound-file format) have no
- * client-side parser available and never classify to one of these kinds in
- * the first place — see the consuming packages' own `classify.ts`. Every
- * other kind — external (unrecognized extension), too-large, error, or a
- * ready read whose content disagrees with what the classified kind expects
- * (a mismatched extension, e.g. real binary content behind a `.txt`
- * extension, or the reverse) — renders a one-line notice via
- * {@link isContentMismatch}. Pure presentation: the caller resolves its own
- * fetch/classify concepts (workspace file read, tool read result, or any
- * other file source) into {@link FilePreviewState} and
- * {@link FilePreviewKind} before rendering this component, so it carries no
- * host- or domain-specific vocabulary (no wire error types, no workspace
- * RPC shapes) — the Office parsers above are the one exception, reading the
- * caller's raw bytes directly, since that parsing is itself presentation
- * (the same role `ReadBlock`'s own shiki highlighting or `MarkdownText`'s
- * own rendering already play for the other kinds).
+ * `MarkdownText`), an image (a caller-supplied blob URL shown inline), or one
+ * of four formats read from the caller-supplied raw bytes: PDF (`PdfPreview`,
+ * via `pdfjs-dist` — deliberately not the browser's own built-in PDF viewer;
+ * see that component's own doc comment for why), `.docx` (`DocxPreview`, via
+ * `mammoth`), `.xlsx`/legacy `.xls` (`XlsxPreview`, via `xlsx`/SheetJS), and
+ * `.pptx` text-only extraction (`PptxPreview`, via `jszip`). Legacy binary
+ * `.doc`/`.ppt` (pre-2007 OLE compound-file format) have no client-side
+ * parser available and never classify to one of these kinds in the first
+ * place — see the consuming packages' own `classify.ts`. Every other kind —
+ * external (unrecognized extension), too-large, error, or a ready read whose
+ * content disagrees with what the classified kind expects (a mismatched
+ * extension, e.g. real binary content behind a `.txt` extension, or the
+ * reverse) — renders a one-line notice via {@link isContentMismatch}. Pure
+ * presentation: the caller resolves its own fetch/classify concepts
+ * (workspace file read, tool read result, or any other file source) into
+ * {@link FilePreviewState} and {@link FilePreviewKind} before rendering this
+ * component, so it carries no host- or domain-specific vocabulary (no wire
+ * error types, no workspace RPC shapes) — the PDF/Office parsers above are
+ * the one exception, reading the caller's raw bytes directly, since that
+ * parsing is itself presentation (the same role `ReadBlock`'s own shiki
+ * highlighting or `MarkdownText`'s own rendering already play for the other
+ * kinds).
  */
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { MarkdownText, ReadBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownLabels, ReadBlockLabels, ReadBlockLine } from '@deepseek-ai/dsh-client-ui-primitives'
 import { DocxPreview } from './DocxPreview.tsx'
+import { PdfPreview } from './PdfPreview.tsx'
 import { PptxPreview } from './PptxPreview.tsx'
 import { XlsxPreview } from './XlsxPreview.tsx'
 import css from './FilePreview.module.css'
@@ -41,8 +42,7 @@ export interface FilePreviewLabels {
 
 /**
  * Which body a file path selects (mirrors the caller's own extension
- * classification). `'pdf'` renders the browser's own built-in PDF viewer
- * over a caller-supplied blob URL; `'docx'`/`'xlsx'`/`'pptx'` parse the
+ * classification). `'pdf'`/`'docx'`/`'xlsx'`/`'pptx'` all parse the
  * caller-supplied raw bytes in-component (see this module's own doc comment).
  */
 export type FilePreviewKind = 'markdown' | 'image' | 'text' | 'external' | 'pdf' | 'docx' | 'xlsx' | 'pptx'
@@ -60,11 +60,11 @@ export type FilePreviewState =
   | { phase: 'too-large'; maxBytes: number }
   | { phase: 'error' }
 
-/** Kinds whose ready content is expected as a caller-decoded blob URL (`image`, or the browser's own PDF viewer). */
-const BLOB_KINDS: ReadonlySet<FilePreviewKind> = new Set(['image', 'pdf'])
+/** Kinds whose ready content is expected as a caller-decoded blob URL (`image` only). */
+const BLOB_KINDS: ReadonlySet<FilePreviewKind> = new Set(['image'])
 
-/** Kinds whose ready content is expected as caller-decoded raw bytes, for this component's own in-browser Office parsers. */
-const BYTES_KINDS: ReadonlySet<FilePreviewKind> = new Set(['docx', 'xlsx', 'pptx'])
+/** Kinds whose ready content is expected as caller-decoded raw bytes, for this component's own in-browser PDF/Office parsers. */
+const BYTES_KINDS: ReadonlySet<FilePreviewKind> = new Set(['pdf', 'docx', 'xlsx', 'pptx'])
 
 /**
  * Whether a ready state's actual content kind disagrees with what the
@@ -96,7 +96,7 @@ export interface FilePreviewProps {
   state: FilePreviewState
   /** shiki grammar hint for the text body; unknown or absent renders plain monospace. */
   lang?: string | undefined
-  /** Image `alt` text; defaults to `path` (a caller wanting just the basename passes it explicitly). Also the PDF `<iframe>` title. */
+  /** Image `alt` text; defaults to `path` (a caller wanting just the basename passes it explicitly). */
   imageAlt?: string | undefined
   /** Localized chrome for the Markdown and text/code bodies; unused for the other kinds. */
   labels: FilePreviewLabels
@@ -158,11 +158,8 @@ export function FilePreview({
     body = blobUrl === null
       ? <p className={css.notice}>{loadingLabel}</p>
       : <img className={css.image} src={blobUrl} alt={imageAlt ?? path} />
-  } else if (kind === 'pdf') {
-    const blobUrl = state.content.kind === 'binary' ? state.content.blobUrl : null
-    body = blobUrl === null
-      ? <p className={css.notice}>{loadingLabel}</p>
-      : <iframe className={css.pdf} src={blobUrl} title={imageAlt ?? path} />
+  } else if (kind === 'pdf' && state.content.kind === 'bytes') {
+    body = <PdfPreview data={state.content.data} loadingLabel={loadingLabel} loadErrorLabel={loadErrorLabel} />
   } else if (kind === 'docx' && state.content.kind === 'bytes') {
     body = <DocxPreview data={state.content.data} loadingLabel={loadingLabel} loadErrorLabel={loadErrorLabel} />
   } else if (kind === 'xlsx' && state.content.kind === 'bytes') {

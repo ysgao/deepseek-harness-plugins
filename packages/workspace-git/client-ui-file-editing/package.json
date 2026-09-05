@@ -33,6 +33,7 @@
     "dompurify": "^3.4.14",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.2",
+    "pdfjs-dist": "^6.3.289",
     "xlsx": "^0.18.5"
   },
   "peerDependencies": {

@@ -43,11 +43,11 @@ function basename(path: string): string {
 }
 
 /**
- * Decode base64 wire bytes to a revocable blob URL (image/PDF bodies); null
- * input yields no URL. Named via a `File` (not a bare `Blob`) so the
- * browser's own built-in PDF viewer shows/downloads the file's real name —
- * a bare Blob URL's path is an opaque UUID, which is all that viewer
- * otherwise has to go on.
+ * Decode base64 wire bytes to a revocable blob URL, for the `image` body's
+ * inline `<img>`; null input yields no URL. Named via a `File` (not a bare
+ * `Blob`) so a right-click "Save Image As" (or any other consumer of the URL
+ * that looks past its own opaque `blob:...` path) offers the file's real
+ * name.
  */
 function useBlobUrl(base64: string | null, mediaType: string | undefined, path: string | null): string | null {
   const [url, setUrl] = useState<string | null>(null)
@@ -126,12 +126,12 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
 
   const binaryBase64 = state.phase === 'ready' && state.content.kind === 'binary' ? state.content.data : null
   const binaryMediaType = state.phase === 'ready' && state.content.kind === 'binary' ? state.content.mediaType : undefined
-  const blobUrl = useBlobUrl(kind === 'image' || kind === 'pdf' ? binaryBase64 : null, binaryMediaType, path)
+  const blobUrl = useBlobUrl(kind === 'image' ? binaryBase64 : null, binaryMediaType, path)
   // Pure decode, unlike the blob URL above: raw bytes create no browser
   // resource needing an effect/cleanup lifecycle, so a plain `useMemo` is
-  // enough for the three Office kinds' own in-component parsers.
+  // enough for the PDF/Office kinds' own in-component parsers.
   const bytes = useMemo(() => {
-    if (kind !== 'docx' && kind !== 'xlsx' && kind !== 'pptx') return null
+    if (kind !== 'pdf' && kind !== 'docx' && kind !== 'xlsx' && kind !== 'pptx') return null
     if (binaryBase64 === null) return null
     const binary = atob(binaryBase64)
     return Uint8Array.from(binary, char => char.charCodeAt(0)).buffer
@@ -141,15 +141,15 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
   // `FilePreviewState` the shared `FilePreview` body expects — a `text`
   // read passes through as-is; a `binary` read resolves to whichever of
   // `FilePreview`'s own three ready-content shapes `kind` expects (a blob
-  // URL for image/PDF, raw bytes for the Office kinds, or the `binary`
+  // URL for `image`, raw bytes for the PDF/Office kinds, or the `binary`
   // shape itself as a deliberate mismatch fallback for every other kind).
   const previewState: FilePreviewState = useMemo(() => {
     if (state.phase === 'loading') return { phase: 'loading' }
     if (state.phase === 'too-large') return { phase: 'too-large', maxBytes: state.maxBytes }
     if (state.phase === 'error') return { phase: 'error' }
     if (state.content.kind === 'text') return { phase: 'ready', content: { kind: 'text', text: state.content.content } }
-    if (kind === 'image' || kind === 'pdf') return { phase: 'ready', content: { kind: 'binary', blobUrl } }
-    if (kind === 'docx' || kind === 'xlsx' || kind === 'pptx') {
+    if (kind === 'image') return { phase: 'ready', content: { kind: 'binary', blobUrl } }
+    if (kind === 'pdf' || kind === 'docx' || kind === 'xlsx' || kind === 'pptx') {
       return bytes === null
         ? { phase: 'loading' }
         : { phase: 'ready', content: { kind: 'bytes', data: bytes } }

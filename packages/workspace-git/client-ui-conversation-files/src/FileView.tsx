@@ -144,10 +144,10 @@ function basename(path: string): string {
 }
 
 /**
- * Decode base64 wire bytes to a revocable blob URL. Named via a `File` (not
- * a bare `Blob`) so the browser's own built-in PDF viewer shows/downloads
- * the file's real name — a bare Blob URL's path is an opaque UUID, which is
- * all that viewer otherwise has to go on.
+ * Decode base64 wire bytes to a revocable blob URL, for the `image` kind's
+ * inline `<img>`. Named via a `File` (not a bare `Blob`) so a right-click
+ * "Save Image As" (or any other consumer of the URL that looks past its own
+ * opaque `blob:...` path) offers the file's real name.
  */
 function decodeBlobUrl(base64: string, mediaType: string, path: string): string {
   const binary = atob(base64)
@@ -155,7 +155,7 @@ function decodeBlobUrl(base64: string, mediaType: string, path: string): string 
   return URL.createObjectURL(new File([bytes], basename(path), { type: mediaType }))
 }
 
-/** Decode base64 wire bytes to a raw `ArrayBuffer`, for `FilePreview`'s own in-browser Office parsers (no blob URL needed). */
+/** Decode base64 wire bytes to a raw `ArrayBuffer`, for `FilePreview`'s own in-browser PDF/Office parsers (no blob URL needed). */
 function decodeBytes(base64: string): ArrayBuffer {
   const binary = atob(base64)
   return Uint8Array.from(binary, char => char.charCodeAt(0)).buffer
@@ -310,10 +310,10 @@ export function FileView({
         setVersion(content.version)
         return
       }
-      if (openedKind === 'image' || openedKind === 'pdf') {
+      if (openedKind === 'image') {
         createdUrl = decodeBlobUrl(content.data, content.mediaType, openedPath)
         setState({ phase: 'ready', content: { kind: 'binary', blobUrl: createdUrl } })
-      } else if (openedKind === 'docx' || openedKind === 'xlsx' || openedKind === 'pptx') {
+      } else if (openedKind === 'pdf' || openedKind === 'docx' || openedKind === 'xlsx' || openedKind === 'pptx') {
         setState({ phase: 'ready', content: { kind: 'bytes', data: decodeBytes(content.data) } })
       } else {
         setState({ phase: 'ready', content: { kind: 'binary', blobUrl: null } })
