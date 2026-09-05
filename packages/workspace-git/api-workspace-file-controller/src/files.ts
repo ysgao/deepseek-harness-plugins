@@ -74,7 +74,7 @@ export class WorkspaceFileError extends Error {
 export const DEFAULT_MAX_ENTRIES = 1000
 
 /** Byte bound of one `readFile` call; a larger file fails with `file-too-large` before any content leaves the host. */
-export const DEFAULT_MAX_READ_BYTES = 20 * 1024 * 1024
+export const DEFAULT_MAX_READ_BYTES = 100 * 1024 * 1024
 
 /**
  * True when `path` is the workspace root itself or a filesystem descendant of
