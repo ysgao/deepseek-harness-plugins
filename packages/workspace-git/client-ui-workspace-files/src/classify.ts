@@ -2,9 +2,9 @@
  * File-extension classification for the Workspace Files tree's in-app
  * preview: which viewer a file opens in, and (for text/code) which shiki
  * grammar hints its highlighting. Intentionally small — common source,
- * config, markup, PDF, and Office extensions worth a dedicated in-app view —
- * not an exhaustive registry; unmatched extensions fall back to `openPath`
- * (the host's OS-default-application handoff).
+ * config, markup, ontology, PDF, and Office extensions worth a dedicated
+ * in-app view — not an exhaustive registry; unmatched extensions fall back to
+ * `openPath` (the host's OS-default-application handoff).
  */
 import type { FilePreviewKind } from 'dsh-plugins-client-ui-file-editing'
 
@@ -47,6 +47,33 @@ const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown'])
 const TEXT_EXTENSIONS = new Set([
   'txt', 'log', 'env', 'gitignore', 'gitattributes', 'editorconfig',
   ...Object.keys(LANG_BY_EXTENSION),
+])
+
+/**
+ * OWL/RDF ontology extensions, opened in the dedicated ontology viewer
+ * (`FilePreviewKind: 'ontology'`) rather than as plain text. Every one of them
+ * *is* plain text — the viewer kind exists because their highlighting cannot
+ * be resolved from the extension: `.owl` in particular is used for RDF/XML,
+ * OWL 2 Functional Syntax, Manchester Syntax, and Turtle interchangeably, so
+ * the viewer detects the serialization from the file's own content instead
+ * (see `dsh-plugins-client-ui-file-editing`'s `OntologyPreview`). This is why
+ * they carry no {@link LANG_BY_EXTENSION} entry: a `lang` hint keyed off the
+ * extension would be a guess, and the wrong guess for a third of these files.
+ * The serialization-specific extensions are listed alongside `.owl`/`.rdf`
+ * because they are the same content under a name that happens to say which
+ * serialization it holds.
+ */
+const ONTOLOGY_EXTENSIONS = new Set([
+  // Extension names no serialization: any of the OWL 2 ones.
+  'owl',
+  // RDF/XML and OWL/XML.
+  'rdf', 'rdfs', 'owx',
+  // The OWL 2 text syntaxes.
+  'ofn', 'omn',
+  // The Turtle family.
+  'ttl', 'trig', 'n3', 'nt', 'nq',
+  // JSON-LD.
+  'jsonld',
 ])
 
 const PDF_EXTENSIONS = new Set(['pdf'])
@@ -115,6 +142,7 @@ export function viewerKindFor(path: string): FileViewerKind {
   if (MARKDOWN_EXTENSIONS.has(ext)) return 'markdown'
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
+  if (ONTOLOGY_EXTENSIONS.has(ext)) return 'ontology'
   if (PDF_EXTENSIONS.has(ext)) return 'pdf'
   if (DOCX_EXTENSIONS.has(ext)) return 'docx'
   if (XLSX_EXTENSIONS.has(ext)) return 'xlsx'

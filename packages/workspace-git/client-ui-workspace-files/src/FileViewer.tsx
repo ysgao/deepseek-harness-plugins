@@ -1,8 +1,9 @@
 /**
  * In-app preview modal for one Workspace file: a thin wrapper around the
- * shared `FilePreview` body (text/code, Markdown, image, PDF, and the three
- * supported Office formats — see `dsh-plugins-client-ui-file-editing`'s own
- * doc comment) plus this dialog's own chrome (title, close, and the
+ * shared `FilePreview` body (text/code, Markdown, OWL/RDF ontology, image,
+ * PDF, and the three supported Office formats — see
+ * `dsh-plugins-client-ui-file-editing`'s own doc comment) plus this dialog's
+ * own chrome (title, close, and the
  * "Open with default app"/"Copy" footer action). A file whose classified
  * kind disagrees with the Host's own UTF-8 decode (a mismatched extension
  * on real binary content), and a file whose read fails with
@@ -188,7 +189,7 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
         {t('files.viewer.openExternally')}
       </Button>
     )
-    : state.phase === 'ready' && state.content.kind === 'text' && kind === 'text'
+    : state.phase === 'ready' && state.content.kind === 'text' && (kind === 'text' || kind === 'ontology')
       ? (
         <Button
           variant="outline"

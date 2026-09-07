@@ -2,9 +2,11 @@
  * In-app text editor for a File tab: a CodeMirror 6 buffer, with a live
  * read-only preview pane alongside it whenever one adds reader-facing value
  * over the plain editing surface — Markdown (`kind: 'markdown'`, rendered
- * through `MarkdownText`) and any `kind: 'text'` file whose extension
- * resolves a shiki grammar hint (`lang`, rendered through the app's one
- * syntax highlighter, `ReadBlock` — the same component `FilePreview`'s own
+ * through `MarkdownText`), an OWL/RDF ontology (`kind: 'ontology'`, rendered
+ * through `OntologyPreview`, which needs no `lang` since it reads its own
+ * highlighting off the buffer's content), and any `kind: 'text'` file whose
+ * extension resolves a shiki grammar hint (`lang`, rendered through the app's
+ * one syntax highlighter, `ReadBlock` — the same component `FilePreview`'s own
  * View mode already uses, so Edit and View highlight identically). A
  * `kind: 'text'` file with no resolved `lang` (e.g. `.txt`, `.log`) has
  * nothing highlighting would add, so it keeps the single plain-monospace
@@ -21,11 +23,12 @@
  * is the caller's concern.
  *
  * The editing surface itself stays undecorated monospace regardless of
- * `lang` — no per-language CodeMirror grammar — since the preview pane
- * already covers highlighting; only Markdown additionally gets
- * structure-aware editing (`@codemirror/lang-markdown`, for list/blockquote
- * continuation), a genuinely editing-time behavior a read-only preview pane
- * can't substitute for.
+ * `lang` or `kind` — no per-language CodeMirror grammar, ontology
+ * serializations included (CodeMirror publishes no grammar for any of them
+ * either) — since the preview pane already covers highlighting; only Markdown
+ * additionally gets structure-aware editing (`@codemirror/lang-markdown`, for
+ * list/blockquote continuation), a genuinely editing-time behavior a read-only
+ * preview pane can't substitute for.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -37,8 +40,9 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { markdown } from '@codemirror/lang-markdown'
 import { MarkdownText, ReadBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import { editorTheme } from './codemirror/theme.ts'
-import { toReadBlockLines } from './FilePreview.tsx'
 import type { FilePreviewLabels } from './FilePreview.tsx'
+import { toReadBlockLines } from './lines.ts'
+import { OntologyPreview } from './OntologyPreview.tsx'
 import { useSplitRatio } from './useSplitRatio.ts'
 import css from './FileEditor.module.css'
 
@@ -72,11 +76,11 @@ export interface FileEditorProps {
   path: string
   /** Initial buffer content — read once, at mount, then owned by CodeMirror. */
   text: string
-  /** `'markdown'` adds Markdown-aware editing; both kinds may additionally show a live preview pane — see `lang`. */
-  kind: 'text' | 'markdown'
-  /** shiki grammar hint for a `kind: 'text'` file's preview pane; unused for `kind: 'markdown'`. Absent (unrecognized extension) skips the split view — a single plain-monospace pane, as `kind: 'text'` always was before this hint existed. */
+  /** `'markdown'` adds Markdown-aware editing; `'ontology'` always previews (its highlighting comes from the content, not `lang`); a `'text'` file previews only when `lang` resolves — see `lang`. */
+  kind: 'text' | 'markdown' | 'ontology'
+  /** shiki grammar hint for a `kind: 'text'` file's preview pane; unused for `kind: 'markdown'`/`'ontology'`. Absent (unrecognized extension) skips the split view — a single plain-monospace pane, as `kind: 'text'` always was before this hint existed. */
   lang?: string | undefined
-  /** Localized chrome for whichever preview pane renders (Markdown or syntax-highlighted text). */
+  /** Localized chrome for whichever preview pane renders (Markdown, ontology, or syntax-highlighted text). */
   labels: FilePreviewLabels
   /** The preview-pane resize divider's accessible name and hint; unused when no preview pane renders. */
   resizeLabels: FileEditorResizeLabels
@@ -103,10 +107,12 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
   onChangeRef.current = onChange
   const onSaveRequestedRef = useRef(onSaveRequested)
   onSaveRequestedRef.current = onSaveRequested
-  // Markdown always gets a live preview; a 'text' file only when its
-  // extension resolved a grammar hint — an unrecognized extension has
-  // nothing highlighting would add over the plain editing pane itself.
-  const hasPreview = kind === 'markdown' || lang !== undefined
+  // Markdown and ontology files always get a live preview (an ontology file
+  // resolves its own highlighting from its content, so it needs no `lang`); a
+  // 'text' file only when its extension resolved a grammar hint — an
+  // unrecognized extension has nothing highlighting would add over the plain
+  // editing pane itself.
+  const hasPreview = kind === 'markdown' || kind === 'ontology' || lang !== undefined
   const [previewText, setPreviewText] = useState(hasPreview ? text : '')
   const { ratio, dividerProps } = useSplitRatio()
 
@@ -176,18 +182,20 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
             {...dividerProps}
           />
           <div className={css.previewPane}>
-            {kind === 'markdown'
-              ? <MarkdownText text={previewText} labels={labels.markdown} />
-              : (
-                <ReadBlock
-                  label={path}
-                  lines={previewLines}
-                  totalLines={previewLines.length}
-                  lang={lang}
-                  labels={labels.read}
-                  maxLines={NO_MAX_LINES}
-                />
-              )}
+            {kind === 'markdown' && <MarkdownText text={previewText} labels={labels.markdown} />}
+            {kind === 'ontology' && (
+              <OntologyPreview path={path} text={previewText} labels={labels.read} maxLines={NO_MAX_LINES} />
+            )}
+            {kind === 'text' && (
+              <ReadBlock
+                label={path}
+                lines={previewLines}
+                totalLines={previewLines.length}
+                lang={lang}
+                labels={labels.read}
+                maxLines={NO_MAX_LINES}
+              />
+            )}
           </div>
         </>
       )}

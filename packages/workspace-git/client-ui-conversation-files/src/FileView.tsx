@@ -8,17 +8,20 @@
  * rather than hiding itself. Mounted only when this package is installed,
  * like every other `conversation.view` entry.
  *
- * A text-kind file with a pending git change (per `getGitStatus`) offers a
- * View/Diff toggle; Diff mode fetches `getFileDiff` lazily and renders
- * `SideBySideDiff` in place of the plain preview. Binary, image, PDF, and
- * Office (`.docx`/`.xlsx`/`.xls`/`.pptx`) files stay out of scope for the
- * toggle — a text-only diff over their rendered content, rather than their
- * raw bytes, is a deferred follow-up, not a gap.
+ * A text-kind file (`text`, or an OWL/RDF `ontology` — both are plain text on
+ * disk) with a pending git change (per `getGitStatus`) offers a View/Diff
+ * toggle; Diff mode fetches `getFileDiff` lazily and renders `SideBySideDiff`
+ * in place of the plain preview. Binary, image, PDF, and Office
+ * (`.docx`/`.xlsx`/`.xls`/`.pptx`) files stay out of scope for the toggle — a
+ * text-only diff over their rendered content, rather than their raw bytes, is
+ * a deferred follow-up, not a gap.
  *
- * Text and Markdown files also offer an Edit mode (`FileEditor`), passed the
- * same `langFromPath` grammar hint the View mode's `FilePreview` reads, so a
- * recognized language (or Markdown) shows the same live syntax-highlighted
- * preview alongside the plain editing buffer that View mode shows alone.
+ * Text, Markdown, and ontology files also offer an Edit mode (`FileEditor`),
+ * passed the same `langFromPath` grammar hint the View mode's `FilePreview`
+ * reads, so a recognized language (or Markdown, or an ontology serialization
+ * the editor's own preview pane detects from the buffer) shows the same live
+ * syntax-highlighted preview alongside the plain editing buffer that View mode
+ * shows alone.
  * Unsaved edits live in an in-memory per-path draft cache (`draftsRef`), not
  * React state, so switching to another file (or to View/Diff) and back
  * never silently loses a draft — no native `beforeunload`/`confirm` dialog
@@ -380,9 +383,13 @@ export function FileView({
   // Modal-based viewer).
   const showsExternalOnly = kind === 'external' || state.phase === 'error' || state.phase === 'too-large' || isContentMismatch(kind, state)
 
-  const showsDiffToggle = kind === 'text' && changed
+  // An ontology file is a text file with its own preview body, so it belongs
+  // in both toggles exactly where 'text' does — the diff is `SideBySideDiff`'s
+  // own uncolored two-column text diff either way, and the editor is the same
+  // CodeMirror buffer.
+  const showsDiffToggle = (kind === 'text' || kind === 'ontology') && changed
   const readyText = state.phase === 'ready' && state.content.kind === 'text' ? state.content.text : null
-  const showsEditToggle = (kind === 'text' || kind === 'markdown') && readyText !== null
+  const showsEditToggle = (kind === 'text' || kind === 'markdown' || kind === 'ontology') && readyText !== null
   const sameText = diffState.phase === 'ready' && diffState.diff.oldText === diffState.diff.newText
   const draft = openedFileId === null ? undefined : draftsRef.current.get(openedFileId)
   const editorText = draft?.text ?? readyText ?? ''
@@ -454,7 +461,7 @@ export function FileView({
           key={openedFileId}
           path={openedPath}
           text={editorText}
-          kind={kind === 'markdown' ? 'markdown' : 'text'}
+          kind={kind === 'markdown' || kind === 'ontology' ? kind : 'text'}
           lang={langFromPath(openedPath)}
           labels={filePreviewLabels}
           resizeLabels={editorResizeLabels}

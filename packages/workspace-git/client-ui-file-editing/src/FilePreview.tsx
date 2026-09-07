@@ -1,7 +1,9 @@
 /**
  * Shared file-content preview body: text/code (line-numbered, syntax-
  * highlighted through `ReadBlock`), Markdown (rendered through
- * `MarkdownText`), an image (a caller-supplied blob URL shown inline), or one
+ * `MarkdownText`), an OWL/RDF ontology (`OntologyPreview`, which picks its own
+ * highlighting from the file's own serialization — see that component's doc
+ * comment), an image (a caller-supplied blob URL shown inline), or one
  * of four formats read from the caller-supplied raw bytes: PDF (`PdfPreview`,
  * via `pdfjs-dist` — deliberately not the browser's own built-in PDF viewer;
  * see that component's own doc comment for why), `.docx` (`DocxPreview`, via
@@ -27,8 +29,10 @@
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { MarkdownText, ReadBlock } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { MarkdownLabels, ReadBlockLabels, ReadBlockLine } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MarkdownLabels, ReadBlockLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import { DocxPreview } from './DocxPreview.tsx'
+import { toReadBlockLines } from './lines.ts'
+import { OntologyPreview } from './OntologyPreview.tsx'
 import { PdfPreview } from './PdfPreview.tsx'
 import { PptxPreview } from './PptxPreview.tsx'
 import { XlsxPreview } from './XlsxPreview.tsx'
@@ -43,9 +47,13 @@ export interface FilePreviewLabels {
 /**
  * Which body a file path selects (mirrors the caller's own extension
  * classification). `'pdf'`/`'docx'`/`'xlsx'`/`'pptx'` all parse the
- * caller-supplied raw bytes in-component (see this module's own doc comment).
+ * caller-supplied raw bytes in-component (see this module's own doc comment);
+ * `'ontology'` is a text kind like `'text'` and `'markdown'` (so a caller
+ * gating Edit/Diff/Copy on "is this text" must accept it alongside those two),
+ * differing only in reading its highlighting from its own content rather than
+ * from a caller-supplied `lang`.
  */
-export type FilePreviewKind = 'markdown' | 'image' | 'text' | 'external' | 'pdf' | 'docx' | 'xlsx' | 'pptx'
+export type FilePreviewKind = 'markdown' | 'image' | 'text' | 'ontology' | 'external' | 'pdf' | 'docx' | 'xlsx' | 'pptx'
 
 /** Fetch/decode outcome for the currently previewed path, caller-resolved. */
 export type FilePreviewState =
@@ -84,7 +92,7 @@ export function isContentMismatch(kind: FilePreviewKind, state: FilePreviewState
   const actual = state.content.kind
   if (BLOB_KINDS.has(kind)) return actual !== 'binary'
   if (BYTES_KINDS.has(kind)) return actual !== 'bytes'
-  return actual !== 'text' // 'text' | 'markdown'
+  return actual !== 'text' // 'text' | 'markdown' | 'ontology'
 }
 
 export interface FilePreviewProps {
@@ -114,15 +122,6 @@ export interface FilePreviewProps {
   pptxEmptyLabel: string
   /** Extra class merged onto the scrolling body wrapper. */
   className?: string | undefined
-}
-
-/** Split text into `ReadBlock` lines, 1-based file line numbers. Shared with `FileEditor`'s own live syntax-highlighted preview pane. */
-export function toReadBlockLines(text: string): ReadBlockLine[] {
-  // A trailing newline must not manufacture a phantom empty final line: a
-  // file ending in "\n" splits to N lines of real content, not N+1.
-  const body = text.endsWith('\n') ? text.slice(0, -1) : text
-  if (body === '') return []
-  return body.split('\n').map((line, index) => ({ number: index + 1, text: line }))
 }
 
 /**
@@ -182,6 +181,8 @@ export function FilePreview({
         emptyLabel={pptxEmptyLabel}
       />
     )
+  } else if (kind === 'ontology' && state.content.kind === 'text') {
+    body = <OntologyPreview path={path} text={state.content.text} labels={labels.read} />
   } else if (kind === 'markdown' && state.content.kind === 'text') {
     body = <MarkdownText text={state.content.text} labels={labels.markdown} />
   } else {

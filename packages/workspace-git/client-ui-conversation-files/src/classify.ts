@@ -29,6 +29,23 @@ const TEXT_EXTENSIONS = new Set([
   'txt', 'log', 'env', 'gitignore', 'gitattributes', 'editorconfig',
   ...Object.keys(LANG_BY_EXTENSION),
 ])
+/**
+ * OWL/RDF ontology extensions, opened as `FilePreviewKind: 'ontology'` rather
+ * than as plain text. They *are* plain text; the separate kind exists because
+ * their highlighting cannot be resolved from the extension — `.owl` alone is
+ * used for RDF/XML, OWL 2 Functional Syntax, Manchester Syntax, and Turtle
+ * interchangeably, so the preview detects the serialization from the file's own
+ * content instead (see `dsh-plugins-client-ui-file-editing`'s
+ * `OntologyPreview`), which is also why none of these carries a
+ * `LANG_BY_EXTENSION` entry.
+ */
+const ONTOLOGY_EXTENSIONS = new Set([
+  'owl',
+  'rdf', 'rdfs', 'owx',
+  'ofn', 'omn',
+  'ttl', 'trig', 'n3', 'nt', 'nq',
+  'jsonld',
+])
 const PDF_EXTENSIONS = new Set(['pdf'])
 /** Open XML Word documents (`mammoth` requires a zip-based `.docx`; legacy binary `.doc` never classifies to this kind). */
 const DOCX_EXTENSIONS = new Set(['docx'])
@@ -97,6 +114,7 @@ export function viewerKindFor(path: string): FilePreviewKind {
   if (MARKDOWN_EXTENSIONS.has(ext)) return 'markdown'
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
+  if (ONTOLOGY_EXTENSIONS.has(ext)) return 'ontology'
   if (PDF_EXTENSIONS.has(ext)) return 'pdf'
   if (DOCX_EXTENSIONS.has(ext)) return 'docx'
   if (XLSX_EXTENSIONS.has(ext)) return 'xlsx'
