@@ -384,7 +384,24 @@ that `FileOpenRegistry` sets the moment `conversationFileOpener.openFile`
 is first called for that session. Once true, the session gets the same
 active-phase layout (ordinary header, docked composer, width handles, all
 tabs visible) an engaged session already has — a File preview opened before
-any turn behaves exactly like one opened after. `dsh-plugins-client-ui-
+any turn behaves exactly like one opened after.
+
+A second consequence of the File tab holding its own opened path in
+component state (the store carries only the one-shot `viewRequest`
+handoff, which the tab acknowledges immediately) is that the tab cannot
+restore itself. The renderer remounts a Session's whole session-scope
+subtree per session id, so clicking a conversation in the sidebar
+rehydrates that Session's persisted store — View selection included — and a
+persisted `view: 'file'` would land on the tab's "no file opened yet"
+resting notice rather than on the file that had been showing. So the fork's
+`ConversationSession` resets the selection to Chat once per mount, and
+`apply.ts` activates that landing View instead of the persisted preference
+it can no longer honour: entering a conversation always shows Chat. The one
+exception is a `conversationFileOpener` request already queued for the
+session being mounted — the drain effect is about to open the File view for
+it, so its selection is left alone.
+
+`dsh-plugins-client-ui-
 workspace-files`'s `openFileInSession` still degrades correctly whenever
 this bridge declines a request outright — no binding for the target
 session, or this package installed without the File-tab package
