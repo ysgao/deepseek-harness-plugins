@@ -198,10 +198,10 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
       </Button>
     )
     // Copy hands over the file's own raw text, so it applies to every text
-    // kind whatever its body renders — 'markdown' excepted, and only because
-    // it always has been: MarkdownText's own per-block copy controls were the
-    // reason, and revisiting that is a separate decision from adding kinds.
-    : state.phase === 'ready' && state.content.kind === 'text' && isTextKind(kind) && kind !== 'markdown'
+    // kind whatever its body renders — Markdown included: `MarkdownText`'s own
+    // per-block copy controls only cover the code fences inside a rendered
+    // document, never the document's own source, which is what this offers.
+    : state.phase === 'ready' && state.content.kind === 'text' && isTextKind(kind)
       ? (
         <Button
           variant="outline"

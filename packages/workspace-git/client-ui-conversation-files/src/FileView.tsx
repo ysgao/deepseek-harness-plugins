@@ -8,13 +8,13 @@
  * rather than hiding itself. Mounted only when this package is installed,
  * like every other `conversation.view` entry.
  *
- * A file whose kind is one of the {@link DIFFABLE_KINDS} (all plain text on
- * disk, whatever their View-mode body renders) with a pending git change (per
- * `getGitStatus`) offers a View/Diff toggle; Diff mode fetches `getFileDiff`
- * lazily and renders `SideBySideDiff` in place of the plain preview. Binary,
- * image, PDF, and Office (`.docx`/`.xlsx`/`.xls`/`.pptx`) files stay out of
- * scope for the toggle — a text-only diff over their rendered content, rather
- * than their raw bytes, is a deferred follow-up, not a gap.
+ * A text-kind file (`isTextKind` — all plain text on disk, whatever their
+ * View-mode body renders) with a pending git change (per `getGitStatus`)
+ * offers a View/Diff toggle; Diff mode fetches `getFileDiff` lazily and
+ * renders `SideBySideDiff` in place of the plain preview. Binary, image, PDF,
+ * and Office (`.docx`/`.xlsx`/`.xls`/`.pptx`) files stay out of scope for the
+ * toggle — a text-only diff over their rendered content, rather than their raw
+ * bytes, is a deferred follow-up, not a gap.
  *
  * Every text kind (`isTextKind`) also offers an Edit mode (`FileEditor`) over
  * the file's raw text, passed the same `langFromPath` grammar hint the View
@@ -34,7 +34,7 @@ import type { InjectFace, PropsLocale, TranslateNS } from '@deepseek-ai/dsh-clie
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { FileEditor, FilePreview, isContentMismatch, isTextKind, SideBySideDiff } from 'dsh-plugins-client-ui-file-editing'
 import type {
-  FileEditorResizeLabels, FilePreviewKind, FilePreviewLabels, FilePreviewState, SideBySideDiffLabels,
+  FileEditorResizeLabels, FilePreviewLabels, FilePreviewState, SideBySideDiffLabels,
 } from 'dsh-plugins-client-ui-file-editing'
 import type { WorkspaceFileContent, WorkspaceFileVersion } from 'dsh-plugins-api-workspace-file-controller/types'
 import type { WorkspaceFileDiff } from 'dsh-plugins-api-workspace-file-controller/types'
@@ -82,18 +82,6 @@ interface OpenFileFocus {
 
 /** Which body the tab shows for the opened path: the plain preview, the in-app editor, or the git diff. */
 type FileViewMode = 'view' | 'edit' | 'diff'
-
-/**
- * Kinds the View/Diff toggle covers. Every one of them is a text kind (see
- * `isTextKind`) — `SideBySideDiff` diffs text and nothing else, which is why
- * image/PDF/Office files stay out of scope (see this module's doc comment).
- * `'markdown'` is deliberately absent, and only because it always has been:
- * the toggle has never offered a diff for Markdown, and widening that is a
- * separate decision from adding the newer text kinds, not a consequence of it.
- */
-const DIFFABLE_KINDS: ReadonlySet<FilePreviewKind> = new Set<FilePreviewKind>([
-  'text', 'ontology', 'delimited', 'rtf',
-])
 
 /** Fetch state for the currently diffed path. */
 type DiffFetchState =
@@ -403,12 +391,13 @@ export function FileView({
   // Modal-based viewer).
   const showsExternalOnly = kind === 'external' || state.phase === 'error' || state.phase === 'too-large' || isContentMismatch(kind, state)
 
-  // Every text kind edits the same way: one CodeMirror buffer over the file's
-  // raw text, whatever its View-mode body makes of that text.
+  // Every text kind edits and diffs the same way, whatever its View-mode body
+  // makes of that text: one CodeMirror buffer over the file's raw text, and
+  // `SideBySideDiff`'s two-column diff of that same text.
   const textKind = isTextKind(kind) ? kind : null
   const readyText = state.phase === 'ready' && state.content.kind === 'text' ? state.content.text : null
   const showsEditToggle = textKind !== null && readyText !== null
-  const showsDiffToggle = DIFFABLE_KINDS.has(kind) && changed
+  const showsDiffToggle = textKind !== null && changed
   const sameText = diffState.phase === 'ready' && diffState.diff.oldText === diffState.diff.newText
   const draft = openedFileId === null ? undefined : draftsRef.current.get(openedFileId)
   const editorText = draft?.text ?? readyText ?? ''
