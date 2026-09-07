@@ -2,8 +2,11 @@
  * Fork of `dsh-client-ui-conversation`'s own `skeleton/ConversationSession.tsx`
  * — both its exports, `ConversationSession` (the Session body) and
  * `ConversationSessionHeader` (the title/tabs header). `ConversationSession`
- * gains one effect that drains a pending `conversationFileOpener` request
- * into the Session's own `openView` action. Both gain the same widened
+ * gains two effects: one drains a pending `conversationFileOpener` request
+ * into the Session's own `openView` action, the other lands every mount of
+ * the Session on the Chat View rather than on the persisted View preference
+ * the pristine store rehydrates (the File View cannot restore what it was
+ * showing — see that effect's own comment). Both gain the same widened
  * blank/Hero gate: `dsh-client-ui-conversation`'s pristine
  * `session.blank && conversationPhase(...) === 'blank'` check (which hides
  * header tabs and the view body alike, in favor of the centered Hero
