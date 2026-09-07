@@ -1,0 +1,51 @@
+/* The table shape, cell borders, and notice styling deliberately match
+   XlsxPreview.module.css: a `.csv` and an `.xlsx` holding the same data are
+   the same content to a reader, so they must not look like two different
+   features. What this sheet adds over that one is the header row — a CSV's
+   first line, which a spreadsheet's own preview has no equivalent of. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice {
+  margin: 0;
+  padding: 16px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.tableScroll {
+  overflow: auto;
+  /* Bounds the sticky header's own scroll context; without a height the
+     header has nothing to stick within. */
+  max-height: 70vh;
+}
+
+.table {
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: pre;
+}
+
+.table td,
+.table th {
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  padding: 3px 8px;
+  min-width: 60px;
+}
+
+/* The header stays visible while a long file scrolls under it — the one
+   affordance a table view has that a line-numbered text view cannot. */
+.table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dsw-alias-markdown-code-block-banner);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  text-align: left;
+}

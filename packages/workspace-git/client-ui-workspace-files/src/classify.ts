@@ -2,9 +2,10 @@
  * File-extension classification for the Workspace Files tree's in-app
  * preview: which viewer a file opens in, and (for text/code) which shiki
  * grammar hints its highlighting. Intentionally small — common source,
- * config, markup, ontology, PDF, and Office extensions worth a dedicated
- * in-app view — not an exhaustive registry; unmatched extensions fall back to
- * `openPath` (the host's OS-default-application handoff).
+ * config, markup, ontology, tabular, document, PDF, and Office extensions
+ * worth a dedicated in-app view — not an exhaustive registry; unmatched
+ * extensions fall back to `openPath` (the host's OS-default-application
+ * handoff).
  */
 import type { FilePreviewKind } from 'dsh-plugins-client-ui-file-editing'
 
@@ -46,8 +47,35 @@ const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown'])
  */
 const TEXT_EXTENSIONS = new Set([
   'txt', 'log', 'env', 'gitignore', 'gitattributes', 'editorconfig',
+  // Keys and certificates: PEM/OpenSSH material is plain text, and there is
+  // no highlighting to add over a line-numbered monospace view of it, so it
+  // wants the plain text body rather than a kind of its own. `pub` is what
+  // `extensionOf` answers for the conventional `<name>.key.pub` double
+  // extension (it reads the last one), and covers a bare `id_ed25519.pub`
+  // alike. A `.key` that is really an Apple Keynote deck (the other, binary
+  // meaning of that extension) never renders as text regardless: the Host's
+  // own read answers `kind: 'binary'` for it, which `isContentMismatch`
+  // turns into the "Open with default app" fallback.
+  'key', 'pub',
   ...Object.keys(LANG_BY_EXTENSION),
 ])
+
+/**
+ * Delimiter-separated text, previewed as a table (`FilePreviewKind:
+ * 'delimited'`). Plain text like any other — the kind exists only because a
+ * table is what a reader wants from a CSV, exactly as `xlsx` is what they want
+ * from a spreadsheet. `.tab` is listed with `.tsv` as its long-standing
+ * synonym; the delimiter itself is settled per-file (a `.csv` may really be
+ * semicolon-separated), see `DelimitedPreview`.
+ */
+const DELIMITED_EXTENSIONS = new Set(['csv', 'tsv', 'tab'])
+
+/**
+ * Rich Text Format, previewed as its extracted text (`FilePreviewKind:
+ * 'rtf'`). Unlike `.docx`, RTF is plain-text markup, so it is editable and
+ * diffable as text and needs no binary parser — see `RtfPreview`.
+ */
+const RTF_EXTENSIONS = new Set(['rtf'])
 
 /**
  * OWL/RDF ontology extensions, opened in the dedicated ontology viewer
@@ -143,6 +171,8 @@ export function viewerKindFor(path: string): FileViewerKind {
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
   if (ONTOLOGY_EXTENSIONS.has(ext)) return 'ontology'
+  if (DELIMITED_EXTENSIONS.has(ext)) return 'delimited'
+  if (RTF_EXTENSIONS.has(ext)) return 'rtf'
   if (PDF_EXTENSIONS.has(ext)) return 'pdf'
   if (DOCX_EXTENSIONS.has(ext)) return 'docx'
   if (XLSX_EXTENSIONS.has(ext)) return 'xlsx'

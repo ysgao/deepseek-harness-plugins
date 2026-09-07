@@ -1,9 +1,9 @@
 /**
  * In-app preview modal for one Workspace file: a thin wrapper around the
- * shared `FilePreview` body (text/code, Markdown, OWL/RDF ontology, image,
- * PDF, and the three supported Office formats — see
- * `dsh-plugins-client-ui-file-editing`'s own doc comment) plus this dialog's
- * own chrome (title, close, and the
+ * shared `FilePreview` body (text/code, Markdown, OWL/RDF ontology,
+ * `.csv`/`.tsv` table, `.rtf` document, image, PDF, and the three supported
+ * Office formats — see `dsh-plugins-client-ui-file-editing`'s own doc comment)
+ * plus this dialog's own chrome (title, close, and the
  * "Open with default app"/"Copy" footer action). A file whose classified
  * kind disagrees with the Host's own UTF-8 decode (a mismatched extension
  * on real binary content), and a file whose read fails with
@@ -18,7 +18,7 @@ import { Button, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primit
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceFileContent } from 'dsh-plugins-api-workspace-file-controller/types'
-import { FilePreview, isContentMismatch } from 'dsh-plugins-client-ui-file-editing'
+import { FilePreview, isContentMismatch, isTextKind } from 'dsh-plugins-client-ui-file-editing'
 import type { FilePreviewLabels, FilePreviewState } from 'dsh-plugins-client-ui-file-editing'
 import { langFromPath, viewerKindFor } from './classify.ts'
 import css from './FileViewer.module.css'
@@ -123,6 +123,14 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
       collapse: t('collapse'),
       expand: count => t('files.viewer.read.expand', { count }),
     },
+    delimited: {
+      truncated: (rows, cols) => t('files.viewer.delimitedTruncated', { rows, cols }),
+      empty: t('files.viewer.delimitedEmpty'),
+    },
+    rtf: {
+      truncated: (shown, total) => t('files.viewer.rtfTruncated', { shown, total }),
+      empty: t('files.viewer.rtfEmpty'),
+    },
   }), [t])
 
   const binaryBase64 = state.phase === 'ready' && state.content.kind === 'binary' ? state.content.data : null
@@ -189,7 +197,11 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
         {t('files.viewer.openExternally')}
       </Button>
     )
-    : state.phase === 'ready' && state.content.kind === 'text' && (kind === 'text' || kind === 'ontology')
+    // Copy hands over the file's own raw text, so it applies to every text
+    // kind whatever its body renders — 'markdown' excepted, and only because
+    // it always has been: MarkdownText's own per-block copy controls were the
+    // reason, and revisiting that is a separate decision from adding kinds.
+    : state.phase === 'ready' && state.content.kind === 'text' && isTextKind(kind) && kind !== 'markdown'
       ? (
         <Button
           variant="outline"

@@ -1,0 +1,37 @@
+/* Body text sizing and paragraph rhythm match DocxPreview.module.css's own
+   `.doc` rules: a `.rtf` and a `.docx` of the same document are the same
+   content to a reader, so the two previews must not read as two features.
+   Nothing here styles runs (bold, italic, size, color) — the extraction has
+   none to style; see ./rtf/extract.ts. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice {
+  margin: 0;
+  padding: 16px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.doc {
+  padding: 8px 4px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* `pre-wrap`, not the default: an extracted paragraph keeps the document's own
+   tabs (a \tab, and the cell separators a table row extracts to), which
+   collapse away under normal white-space handling. */
+.paragraph {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+
+.paragraph:last-child {
+  margin-bottom: 0;
+}

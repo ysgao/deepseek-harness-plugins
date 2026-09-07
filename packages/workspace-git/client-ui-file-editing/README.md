@@ -1,10 +1,17 @@
 # dsh-plugins-client-ui-file-editing
 
-`FileEditor`, `FilePreview`, `OntologyPreview`, `SideBySideDiff`, a
-CodeMirror theme, and `useSplitRatio` — the generic file-editing primitives
+`FileEditor`, `FilePreview` (with its per-format bodies — `OntologyPreview`,
+`DelimitedPreview`, `RtfPreview`, and the PDF/Office ones), `SideBySideDiff`,
+a CodeMirror theme, and `useSplitRatio` — the generic file-editing primitives
 the File manager feature needs, kept in their own package instead of the
 shared `@deepseek-ai/dsh-client-ui-primitives`, which every other UI plugin
 depends on.
+
+Every *text* kind (`isTextKind`: `text`, `markdown`, `ontology`, `delimited`,
+`rtf`) is edited and diffed identically — one CodeMirror buffer over the
+file's raw text, and `SideBySideDiff`'s two-column text diff — whatever its
+read-only preview body makes of that text. In Edit mode that body renders
+live in the pane beside the buffer.
 
 Ports `packages/client/ui-primitives/src/{FileEditor,FilePreview,
 SideBySideDiff}.tsx` (+ `.module.css`, `codemirror/theme.ts`,
@@ -56,3 +63,52 @@ because a large ontology is the normal case rather than the exception.
 Known limitation: the tokenizer is per-line and stateless, so a Turtle
 multi-line long literal (`"""…"""` spanning lines) is not carried across
 its lines as one string run.
+
+## Tabular files (`.csv`, `.tsv`, `.tab`)
+
+`FilePreviewKind: 'delimited'` — previewed as a table (`DelimitedPreview`),
+because that is what a reader wants from a CSV, exactly as `.xlsx` is
+previewed as one. Cell borders, scroll container, and truncation notice match
+`XlsxPreview`, so the same data reads alike whichever format it arrived in.
+
+- Quoting is RFC 4180 (`src/delimited/parse.ts`): a quoted field may contain
+  the delimiter, doubled quotes, and line breaks — which is exactly why a CSV
+  cannot be previewed by splitting on newlines.
+- The delimiter is per file, not per extension: `.tsv`/`.tab` is settled by
+  name, while a `.csv` is counted off its own content (outside quotes), since
+  Excel writes semicolon-separated files under that extension in comma-decimal
+  locales. Tab and `|` are recognized too.
+- The first row renders as the header. RFC 4180 makes the header line
+  optional, so this is an assumption — but it is purely presentational; no
+  cell value is altered, hidden, or reordered.
+- Bounded at 500 rows × 100 columns with a notice stating the file's true
+  size; the parse itself stops materializing rows past that bound.
+
+## Key and certificate files (`.key`, `.key.pub`, `.pub`)
+
+Plain `text` kind: PEM/OpenSSH material is text, and there is no highlighting
+to add over a line-numbered monospace view, so it needs no kind of its own.
+`.key.pub` is matched by its last extension (`pub`), which also covers a bare
+`id_ed25519.pub`. A `.key` that is really an Apple Keynote deck — the other
+meaning of that extension — is not forced through UTF-8: the Host's own read
+answers `binary` for it, which `isContentMismatch` turns into the "Open with
+default app" fallback.
+
+## RTF documents (`.rtf`)
+
+`FilePreviewKind: 'rtf'` — previewed as the document's extracted text
+(`RtfPreview`), one element per paragraph, the same posture `PptxPreview`
+takes for a deck. RTF is plain-text markup, so unlike `.docx` there is nothing
+to unzip and no binary parser to depend on, and the file stays editable and
+diffable as text.
+
+`src/rtf/extract.ts` handles what would otherwise produce visibly *wrong*
+text rather than merely unformatted text: group nesting, destination groups
+that hold no document text (font/color tables, stylesheet, metadata, embedded
+picture and object data, and any `\*`-flagged group), `\uN` Unicode with the
+`\ucN` fallback-length rule (ignoring it doubles every non-ASCII character),
+`\'hh` hex escapes through Windows-1252, and the break/whitespace/punctuation
+control words. Formatting (bold, italic, size, color, alignment, images) is
+deliberately out of scope for a preview — recovering it would mean
+implementing a real RTF reader, and the raw markup is one click away in Edit
+mode.

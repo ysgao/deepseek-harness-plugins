@@ -1,6 +1,7 @@
 /**
- * File-editing primitives: FileEditor, FilePreview, OntologyPreview, and
- * SideBySideDiff. Pure
+ * File-editing primitives: FileEditor, FilePreview and its per-format bodies
+ * (OntologyPreview, DelimitedPreview, RtfPreview, and the Office/PDF ones),
+ * and SideBySideDiff. Pure
  * React components with no Cordis registration, kept out of the shared
  * `@deepseek-ai/dsh-client-ui-primitives` package (which every other UI
  * plugin depends on) so this feature's own components don't widen that
@@ -10,8 +11,17 @@
  */
 export { FileEditor } from './FileEditor.tsx'
 export type { FileEditorProps, FileEditorResizeLabels } from './FileEditor.tsx'
-export { FilePreview, isContentMismatch } from './FilePreview.tsx'
-export type { FilePreviewKind, FilePreviewLabels, FilePreviewProps, FilePreviewState } from './FilePreview.tsx'
+export { FilePreview, isContentMismatch, isTextKind } from './FilePreview.tsx'
+export type {
+  DelimitedLabels, FilePreviewKind, FilePreviewLabels, FilePreviewProps, FilePreviewState, FileTextKind, RtfLabels,
+} from './FilePreview.tsx'
+export { DelimitedPreview } from './DelimitedPreview.tsx'
+export type { DelimitedPreviewProps } from './DelimitedPreview.tsx'
+export { detectDelimiter, parseDelimited } from './delimited/parse.ts'
+export type { Delimiter, DelimitedBounds, DelimitedTable } from './delimited/parse.ts'
+export { RtfPreview } from './RtfPreview.tsx'
+export type { RtfPreviewProps } from './RtfPreview.tsx'
+export { extractRtfText } from './rtf/extract.ts'
 export { OntologyPreview } from './OntologyPreview.tsx'
 export type { OntologyPreviewProps } from './OntologyPreview.tsx'
 export { detectOntologySyntax } from './ontology/syntax.ts'

@@ -1,16 +1,19 @@
 /**
  * In-app text editor for a File tab: a CodeMirror 6 buffer, with a live
  * read-only preview pane alongside it whenever one adds reader-facing value
- * over the plain editing surface — Markdown (`kind: 'markdown'`, rendered
- * through `MarkdownText`), an OWL/RDF ontology (`kind: 'ontology'`, rendered
- * through `OntologyPreview`, which needs no `lang` since it reads its own
- * highlighting off the buffer's content), and any `kind: 'text'` file whose
- * extension resolves a shiki grammar hint (`lang`, rendered through the app's
- * one syntax highlighter, `ReadBlock` — the same component `FilePreview`'s own
- * View mode already uses, so Edit and View highlight identically). A
- * `kind: 'text'` file with no resolved `lang` (e.g. `.txt`, `.log`) has
- * nothing highlighting would add, so it keeps the single plain-monospace
- * pane. Deliberately uncontrolled after mount — `text`/`kind` seed the
+ * over the plain editing surface. Every {@link FileTextKind} but `'text'`
+ * always shows one, each deriving its body from the buffer itself with no
+ * `lang` involved — Markdown through `MarkdownText`, an OWL/RDF ontology
+ * through `OntologyPreview`, a `.csv`/`.tsv` as a live table through
+ * `DelimitedPreview`, an `.rtf`'s extracted text through `RtfPreview` — so an
+ * edit to the raw text is reflected in the rendered view a keystroke later.
+ * A `kind: 'text'` file shows one only when its extension resolves a shiki
+ * grammar hint (`lang`, rendered through the app's one syntax highlighter,
+ * `ReadBlock` — the same component `FilePreview`'s own View mode already uses,
+ * so Edit and View highlight identically); with no resolved `lang` (e.g.
+ * `.txt`, `.log`, a `.key`) there is nothing highlighting would add, so it
+ * keeps the single plain-monospace pane.
+ * Deliberately uncontrolled after mount — `text`/`kind` seed the
  * initial buffer only; a caller wanting a fresh buffer for a different file
  * remounts by keying on that file's own identity (CodeMirror, not React,
  * then owns the buffer, undo history, and cursor/selection for that file's
@@ -24,9 +27,9 @@
  *
  * The editing surface itself stays undecorated monospace regardless of
  * `lang` or `kind` — no per-language CodeMirror grammar, ontology
- * serializations included (CodeMirror publishes no grammar for any of them
- * either) — since the preview pane already covers highlighting; only Markdown
- * additionally gets structure-aware editing (`@codemirror/lang-markdown`, for
+ * serializations and RTF markup included (CodeMirror publishes no grammar for
+ * any of them either) — since the preview pane already covers highlighting;
+ * only Markdown additionally gets structure-aware editing (`@codemirror/lang-markdown`, for
  * list/blockquote continuation), a genuinely editing-time behavior a read-only
  * preview pane can't substitute for.
  */
@@ -40,9 +43,11 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { markdown } from '@codemirror/lang-markdown'
 import { MarkdownText, ReadBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import { editorTheme } from './codemirror/theme.ts'
-import type { FilePreviewLabels } from './FilePreview.tsx'
+import { DelimitedPreview } from './DelimitedPreview.tsx'
+import type { FilePreviewLabels, FileTextKind } from './FilePreview.tsx'
 import { toReadBlockLines } from './lines.ts'
 import { OntologyPreview } from './OntologyPreview.tsx'
+import { RtfPreview } from './RtfPreview.tsx'
 import { useSplitRatio } from './useSplitRatio.ts'
 import css from './FileEditor.module.css'
 
@@ -76,11 +81,11 @@ export interface FileEditorProps {
   path: string
   /** Initial buffer content — read once, at mount, then owned by CodeMirror. */
   text: string
-  /** `'markdown'` adds Markdown-aware editing; `'ontology'` always previews (its highlighting comes from the content, not `lang`); a `'text'` file previews only when `lang` resolves — see `lang`. */
-  kind: 'text' | 'markdown' | 'ontology'
-  /** shiki grammar hint for a `kind: 'text'` file's preview pane; unused for `kind: 'markdown'`/`'ontology'`. Absent (unrecognized extension) skips the split view — a single plain-monospace pane, as `kind: 'text'` always was before this hint existed. */
+  /** `'markdown'` adds Markdown-aware editing; every kind but `'text'` always previews (each derives its own body from the buffer, with no `lang` involved); a `'text'` file previews only when `lang` resolves — see `lang`. */
+  kind: FileTextKind
+  /** shiki grammar hint for a `kind: 'text'` file's preview pane; unused by every other kind, which derives its own body from the buffer. Absent (unrecognized extension) skips the split view — a single plain-monospace pane, as `kind: 'text'` always was before this hint existed. */
   lang?: string | undefined
-  /** Localized chrome for whichever preview pane renders (Markdown, ontology, or syntax-highlighted text). */
+  /** Localized chrome for whichever preview pane renders. */
   labels: FilePreviewLabels
   /** The preview-pane resize divider's accessible name and hint; unused when no preview pane renders. */
   resizeLabels: FileEditorResizeLabels
@@ -107,12 +112,13 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
   onChangeRef.current = onChange
   const onSaveRequestedRef = useRef(onSaveRequested)
   onSaveRequestedRef.current = onSaveRequested
-  // Markdown and ontology files always get a live preview (an ontology file
-  // resolves its own highlighting from its content, so it needs no `lang`); a
-  // 'text' file only when its extension resolved a grammar hint — an
-  // unrecognized extension has nothing highlighting would add over the plain
-  // editing pane itself.
-  const hasPreview = kind === 'markdown' || kind === 'ontology' || lang !== undefined
+  // Every kind but 'text' always gets a live preview: each derives its own
+  // body from the buffer itself (Markdown structure, a detected ontology
+  // serialization, a delimited file's columns, an RTF document's text), so
+  // none of them needs a `lang`. A 'text' file previews only when its
+  // extension resolved a grammar hint — an unrecognized extension has nothing
+  // highlighting would add over the plain editing pane itself.
+  const hasPreview = kind !== 'text' || lang !== undefined
   const [previewText, setPreviewText] = useState(hasPreview ? text : '')
   const { ratio, dividerProps } = useSplitRatio()
 
@@ -185,6 +191,21 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
             {kind === 'markdown' && <MarkdownText text={previewText} labels={labels.markdown} />}
             {kind === 'ontology' && (
               <OntologyPreview path={path} text={previewText} labels={labels.read} maxLines={NO_MAX_LINES} />
+            )}
+            {kind === 'delimited' && (
+              <DelimitedPreview
+                path={path}
+                text={previewText}
+                truncatedLabel={labels.delimited.truncated}
+                emptyLabel={labels.delimited.empty}
+              />
+            )}
+            {kind === 'rtf' && (
+              <RtfPreview
+                text={previewText}
+                truncatedLabel={labels.rtf.truncated}
+                emptyLabel={labels.rtf.empty}
+              />
             )}
             {kind === 'text' && (
               <ReadBlock

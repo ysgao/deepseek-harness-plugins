@@ -3,7 +3,9 @@
  * highlighted through `ReadBlock`), Markdown (rendered through
  * `MarkdownText`), an OWL/RDF ontology (`OntologyPreview`, which picks its own
  * highlighting from the file's own serialization — see that component's doc
- * comment), an image (a caller-supplied blob URL shown inline), or one
+ * comment), delimiter-separated text as a table (`DelimitedPreview`, for
+ * `.csv`/`.tsv`), an `.rtf` document's extracted text (`RtfPreview`), an
+ * image (a caller-supplied blob URL shown inline), or one
  * of four formats read from the caller-supplied raw bytes: PDF (`PdfPreview`,
  * via `pdfjs-dist` — deliberately not the browser's own built-in PDF viewer;
  * see that component's own doc comment for why), `.docx` (`DocxPreview`, via
@@ -30,30 +32,83 @@ import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { MarkdownText, ReadBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownLabels, ReadBlockLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import { DelimitedPreview } from './DelimitedPreview.tsx'
 import { DocxPreview } from './DocxPreview.tsx'
 import { toReadBlockLines } from './lines.ts'
 import { OntologyPreview } from './OntologyPreview.tsx'
 import { PdfPreview } from './PdfPreview.tsx'
 import { PptxPreview } from './PptxPreview.tsx'
+import { RtfPreview } from './RtfPreview.tsx'
 import { XlsxPreview } from './XlsxPreview.tsx'
 import css from './FilePreview.module.css'
 
-/** Localized chrome for whichever body {@link FilePreview} renders. */
+/**
+ * Localized chrome for the text-kind bodies — the ones both this component
+ * and `FileEditor`'s live preview pane render, which is why both take exactly
+ * this one object. The byte-kind bodies' own labels (`xlsx*`, `pptx*`) are
+ * flat props on {@link FilePreviewProps} instead: a `.xlsx` or `.pptx` is
+ * never editable, so those labels never reach the editor and would only be
+ * dead weight in its signature.
+ */
 export interface FilePreviewLabels {
   markdown: MarkdownLabels
   read: ReadBlockLabels
+  /** `DelimitedPreview`'s notices; unused by every other kind. */
+  delimited: DelimitedLabels
+  /** `RtfPreview`'s notices; unused by every other kind. */
+  rtf: RtfLabels
+}
+
+/** `DelimitedPreview`'s own two notices. */
+export interface DelimitedLabels {
+  /** Truncation notice, given the file's own full (pre-bound) row and column counts. */
+  truncated: (rows: number, cols: number) => string
+  /** Empty-file notice (no rows at all). */
+  empty: string
+}
+
+/** `RtfPreview`'s own two notices. */
+export interface RtfLabels {
+  /** Truncation notice, given the shown and total paragraph counts. */
+  truncated: (shown: number, total: number) => string
+  /** Empty-document notice (no extractable text). */
+  empty: string
 }
 
 /**
  * Which body a file path selects (mirrors the caller's own extension
  * classification). `'pdf'`/`'docx'`/`'xlsx'`/`'pptx'` all parse the
  * caller-supplied raw bytes in-component (see this module's own doc comment);
- * `'ontology'` is a text kind like `'text'` and `'markdown'` (so a caller
- * gating Edit/Diff/Copy on "is this text" must accept it alongside those two),
- * differing only in reading its highlighting from its own content rather than
- * from a caller-supplied `lang`.
+ * the {@link FileTextKind} members are all plain text on disk and differ only
+ * in what their body makes of that text.
  */
-export type FilePreviewKind = 'markdown' | 'image' | 'text' | 'ontology' | 'external' | 'pdf' | 'docx' | 'xlsx' | 'pptx'
+export type FilePreviewKind = FileTextKind | 'image' | 'external' | 'pdf' | 'docx' | 'xlsx' | 'pptx'
+
+/**
+ * Kinds whose content is text, and which a caller may therefore edit
+ * (`FileEditor`), diff (`SideBySideDiff`), and copy as-is. They differ only in
+ * what their *preview* makes of that text: a line-numbered highlighted view
+ * (`'text'`), rendered Markdown, a serialization-detected ontology view
+ * (`'ontology'`), a table (`'delimited'`, for `.csv`/`.tsv`), or an RTF
+ * document's extracted text (`'rtf'`). A caller gating an affordance on "is
+ * this text" should test {@link isTextKind} rather than enumerate, so that a
+ * kind added here is not silently left out of Edit.
+ */
+export type FileTextKind = 'text' | 'markdown' | 'ontology' | 'delimited' | 'rtf'
+
+/** The {@link FileTextKind} members, behind {@link isTextKind}. */
+const TEXT_KINDS: ReadonlySet<FilePreviewKind> = new Set<FileTextKind>([
+  'text', 'markdown', 'ontology', 'delimited', 'rtf',
+])
+
+/**
+ * Whether a kind's content is text — see {@link FileTextKind}.
+ * @param kind - the classified viewer kind.
+ * @returns whether the kind is one of the text kinds.
+ */
+export function isTextKind(kind: FilePreviewKind): kind is FileTextKind {
+  return TEXT_KINDS.has(kind)
+}
 
 /** Fetch/decode outcome for the currently previewed path, caller-resolved. */
 export type FilePreviewState =
@@ -92,7 +147,7 @@ export function isContentMismatch(kind: FilePreviewKind, state: FilePreviewState
   const actual = state.content.kind
   if (BLOB_KINDS.has(kind)) return actual !== 'binary'
   if (BYTES_KINDS.has(kind)) return actual !== 'bytes'
-  return actual !== 'text' // 'text' | 'markdown' | 'ontology'
+  return actual !== 'text' // every FileTextKind
 }
 
 export interface FilePreviewProps {
@@ -106,7 +161,7 @@ export interface FilePreviewProps {
   lang?: string | undefined
   /** Image `alt` text; defaults to `path` (a caller wanting just the basename passes it explicitly). */
   imageAlt?: string | undefined
-  /** Localized chrome for the Markdown and text/code bodies; unused for the other kinds. */
+  /** Localized chrome for the text-kind bodies; unused for the image and byte kinds. */
   labels: FilePreviewLabels
   loadingLabel: string
   loadErrorLabel: string
@@ -183,6 +238,23 @@ export function FilePreview({
     )
   } else if (kind === 'ontology' && state.content.kind === 'text') {
     body = <OntologyPreview path={path} text={state.content.text} labels={labels.read} />
+  } else if (kind === 'delimited' && state.content.kind === 'text') {
+    body = (
+      <DelimitedPreview
+        path={path}
+        text={state.content.text}
+        truncatedLabel={labels.delimited.truncated}
+        emptyLabel={labels.delimited.empty}
+      />
+    )
+  } else if (kind === 'rtf' && state.content.kind === 'text') {
+    body = (
+      <RtfPreview
+        text={state.content.text}
+        truncatedLabel={labels.rtf.truncated}
+        emptyLabel={labels.rtf.empty}
+      />
+    )
   } else if (kind === 'markdown' && state.content.kind === 'text') {
     body = <MarkdownText text={state.content.text} labels={labels.markdown} />
   } else {

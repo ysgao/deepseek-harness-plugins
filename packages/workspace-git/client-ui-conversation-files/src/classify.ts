@@ -27,8 +27,20 @@ const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'])
 const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown'])
 const TEXT_EXTENSIONS = new Set([
   'txt', 'log', 'env', 'gitignore', 'gitattributes', 'editorconfig',
+  // Keys/certificates: plain text with no highlighting to add. `pub` is the
+  // extension `extensionOf` answers for the `<name>.key.pub` convention (it
+  // reads the last one). A `.key` that is really an Apple Keynote deck falls
+  // back to "Open with default app" through `isContentMismatch`, since the
+  // Host's own read answers `kind: 'binary'` for it.
+  'key', 'pub',
   ...Object.keys(LANG_BY_EXTENSION),
 ])
+
+/** Delimiter-separated text, previewed as a table (`.tab` is `.tsv`'s synonym) — see `DelimitedPreview`. */
+const DELIMITED_EXTENSIONS = new Set(['csv', 'tsv', 'tab'])
+
+/** Rich Text Format: plain-text markup, previewed as its extracted text — see `RtfPreview`. */
+const RTF_EXTENSIONS = new Set(['rtf'])
 /**
  * OWL/RDF ontology extensions, opened as `FilePreviewKind: 'ontology'` rather
  * than as plain text. They *are* plain text; the separate kind exists because
@@ -115,6 +127,8 @@ export function viewerKindFor(path: string): FilePreviewKind {
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
   if (ONTOLOGY_EXTENSIONS.has(ext)) return 'ontology'
+  if (DELIMITED_EXTENSIONS.has(ext)) return 'delimited'
+  if (RTF_EXTENSIONS.has(ext)) return 'rtf'
   if (PDF_EXTENSIONS.has(ext)) return 'pdf'
   if (DOCX_EXTENSIONS.has(ext)) return 'docx'
   if (XLSX_EXTENSIONS.has(ext)) return 'xlsx'
