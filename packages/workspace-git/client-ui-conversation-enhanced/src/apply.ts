@@ -69,7 +69,7 @@ import type {
   ConversationSessionInjected,
 } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/slots.ts'
 import type { InputNotice } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/input.ts'
-import { createConversationStore, readConversationViewPreference } from '@deepseek-ai/dsh-client-ui-conversation/src/client/stores.ts'
+import { createConversationStore } from '@deepseek-ai/dsh-client-ui-conversation/src/client/stores.ts'
 import {
   ConversationController, UnsupportedImageMediaTypeError,
 } from '@deepseek-ai/dsh-client-ui-conversation/src/client/service.ts'
@@ -262,13 +262,22 @@ export async function apply(ctx: Context): Promise<void> {
     const active = resolveActiveView(viewTabs(), preferred)
     if (active !== undefined) uiConversation.binding(sessionId).activate(active.id)
   }
-  const restoreView = (sessionId: SessionId): void => {
-    activateView(sessionId, readConversationViewPreference(sessionId))
+  // Pristine `dsh-client-ui-conversation` seeds this from the Session's own
+  // persisted View preference (`readConversationViewPreference`). This fork
+  // deliberately ignores that preference and activates the landing View
+  // (`null` -> `resolveActiveView`'s Chat default) instead, because every
+  // mount of a Session's subtree now lands on Chat regardless of what was
+  // persisted — see `./ConversationSession.tsx`'s own landing effect for why
+  // (the File view cannot restore what it was showing). Activation is
+  // monotonic per Session, so a View the user then selects by hand
+  // (`selectView`/`openView` below) still activates on its own.
+  const activateLandingView = (sessionId: SessionId): void => {
+    activateView(sessionId, null)
   }
-  const restoreCurrentView = (): void => {
+  const activateCurrentLandingView = (): void => {
     const sessionId = sessions.list.getSnapshot().current
     if (sessionId !== undefined && sessions.binding(sessionId) !== undefined) {
-      restoreView(sessionId)
+      activateLandingView(sessionId)
     }
   }
   const conversationViews = createSnapshotStore<readonly ViewTab[]>(viewTabs())
@@ -281,7 +290,7 @@ export async function apply(ctx: Context): Promise<void> {
         return candidate !== undefined && tab.id === candidate.id && tab.label === candidate.label
       })
     if (!unchanged) conversationViews.set(next)
-    restoreCurrentView()
+    activateCurrentLandingView()
   }
   ctx.effect(() => {
     let currentSessionId = sessions.list.getSnapshot().current
@@ -291,7 +300,7 @@ export async function apply(ctx: Context): Promise<void> {
       const nextSessionId = sessions.list.getSnapshot().current
       if (nextSessionId === currentSessionId) return
       currentSessionId = nextSessionId
-      restoreCurrentView()
+      activateCurrentLandingView()
     })
     return () => {
       disposeCurrent()
@@ -327,7 +336,7 @@ export async function apply(ctx: Context): Promise<void> {
     resolve: (binding) => {
       const shell = inputHub.shellFor(binding)
       const conversation = uiConversation.binding(binding)
-      restoreView(binding.sessionId)
+      activateLandingView(binding.sessionId)
       return {
         hooks: {
           conversation: conversation.snapshot,

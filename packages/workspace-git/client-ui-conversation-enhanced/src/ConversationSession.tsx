@@ -235,6 +235,28 @@ export function ConversationSession({
     // the machine mirror, not this seed effect.
   }, [inputActions])
 
+  // A Session's persisted store — its View selection included — is
+  // rehydrated on every mount of its own session-scope subtree, and clicking
+  // a conversation in the sidebar remounts exactly that (the renderer keys
+  // strict session entries by session id). Only Chat and Trajectory actually
+  // survive that round trip: the File view's opened path lives in that tab
+  // component's own state, never in this store (the one-shot `viewRequest`
+  // handoff merely passes through it, and the tab acknowledges it
+  // immediately), so a rehydrated `view: 'file'` lands on the tab's "no file
+  // opened yet" resting notice instead of the file that was showing there.
+  // Every entry into a Session therefore lands on Chat — 'chat' being
+  // dsh-client-ui-chat's own registered `conversation.view` id, and the same
+  // id as `view-selection.ts`'s own (unexported) `DEFAULT_VIEW_ID`. A file
+  // request already queued when this Session mounted is the one exception:
+  // the drain below is about to open the File view for it, so that selection
+  // is left alone rather than fought over.
+  useEffect(() => {
+    if (pendingFileOpen === undefined) actions.setView('chat')
+    // Mount-only (empty deps): this is the landing decision for this mount of
+    // the Session, not a rule to re-apply on later renders — the user's own
+    // tab clicks (ConversationSessionHeader's `selectView`) have to stick.
+  }, [])
+
   // 'file' is dsh-plugins-client-ui-conversation-files's own registered
   // conversation.view id — the only consumer of this focus payload shape
   // (see that package's FileView.tsx `OpenFileFocus`/`parseOpenFileFocus`).
