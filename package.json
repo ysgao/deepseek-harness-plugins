@@ -11,8 +11,12 @@
   "workspaces": [
     "packages/_vendor/deepseek-harness/vendor/*",
     "packages/_vendor/deepseek-harness/packages/*/*",
-    "packages/_vendor/deepseek-harness/native/landlock-run",
-    "packages/_vendor/deepseek-harness/native/landlock-run/packages/*",
+    "packages/_vendor/deepseek-harness/native/system",
+    "packages/_vendor/deepseek-harness/native/system/packages/*",
+    "packages/_vendor/deepseek-harness/apps/*",
+    "packages/_vendor/deepseek-harness/benchmarks",
+    "packages/_vendor/deepseek-harness/website",
+    "packages/_vendor/deepseek-harness/python/sdk-runtime",
     "packages/workspace-git/*",
     "packages/anthropic-subscription/*",
     "packages/terminal/*"

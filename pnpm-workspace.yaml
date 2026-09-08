@@ -10,23 +10,34 @@ packages:
   # into dsh-typert-protocol recognition (see ARCHITECTURE.md).
   - packages/_vendor/deepseek-harness/vendor/*
   - packages/_vendor/deepseek-harness/packages/*/*
-  - packages/_vendor/deepseek-harness/native/landlock-run
-  - packages/_vendor/deepseek-harness/native/landlock-run/packages/*
+  - packages/_vendor/deepseek-harness/native/system
+  - packages/_vendor/deepseek-harness/native/system/packages/*
   # Two warnings on a fresh `pnpm install` come from the vendored harness and
   # are expected — don't try to "fix" them here, and never by editing vendor:
-  #   * "Unsupported platform" for landlock-run's linux-arm64/linux-x64
-  #     packages when installing on macOS or Windows. They are Linux-only
-  #     prebuilt sandbox binaries, declared os/cpu-restricted and consumed as
-  #     optionalDependencies, so skipping them is the intended behaviour.
+  #   * "Unsupported platform" for the @deepseek-ai/node-addon-system-*
+  #     prebuild packages that don't match the host. Each is declared
+  #     os/cpu-restricted and consumed as an optionalDependency, so skipping
+  #     the non-host ones is the intended behaviour.
   #     They still have to stay in this glob: the entry package depends on
   #     them with `workspace:*`, which only resolves against a workspace
   #     member, so dropping them here breaks the install outright.
   #     (pnpm's supportedArchitectures does not silence this — that setting
   #     only selects registry optional deps, not a workspace project's own
   #     os/cpu self-check.)
+  #     This tier was `native/landlock-run` until upstream renamed it to
+  #     `native/system` and broadened it past the Landlock launcher into the
+  #     node-addon-system native addon (darwin prebuilds now ship too); mirror
+  #     the vendored pnpm-workspace.yaml's own globs when it moves again.
   #   * "There are cyclic workspace dependencies" among the vendored
   #     dsh-* packages. Upstream's own graph; nothing in this repo creates it.
   - packages/_vendor/deepseek-harness/apps/*
+  # Not consumed by this repo's plugins, but the vendored tsconfig.host.json
+  # typechecks benchmarks/** and website/** as part of its own build aggregate,
+  # so `build:vendor` fails on their unresolved imports (e.g. playwright) unless
+  # their dependencies install. Present purely to keep the vendor buildable.
+  - packages/_vendor/deepseek-harness/benchmarks
+  - packages/_vendor/deepseek-harness/website
+  - packages/_vendor/deepseek-harness/python/sdk-runtime
 
   # This repo's own plugin bundles, grouped by feature. `workspace-git`'s
   # bare group root (no dependencies of its own) carries only a `build`
@@ -49,6 +60,13 @@ allowBuilds:
   koffi: true
   '@google/genai': false
   protobufjs: false
+  # Both mirror upstream's own denial. electron-builder pulls in the optional
+  # Squirrel.Windows helper, whose install script only selects its bundled
+  # 7-Zip executable; Desktop ships Windows through NSIS, so that mutation is
+  # not part of our build. msgpackr-extract's native accelerator is unneeded —
+  # store-index rewriting only uses msgpackr's portable JavaScript codec.
+  electron-winstaller: false
+  msgpackr-extract: false
 
 linkWorkspacePackages: true
 
@@ -62,7 +80,7 @@ overrides:
   # was written and tested against (e.g. 0.84.4 adds catalog.ts fields the
   # pinned commit's drift gates don't classify yet) — never fix that by
   # editing vendor source; re-pin here to match the vendor's own lockfile.
-  '@earendil-works/pi-ai': '0.84.2'
+  '@earendil-works/pi-ai': '0.85.1'
 
 peerDependencyRules:
   allowedVersions:

@@ -46,6 +46,7 @@
  * whatever already succeeded.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import { createSnapshotStore, type BoundActions, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
@@ -66,7 +67,7 @@ import { UiConversation } from '@deepseek-ai/dsh-client-ui-conversation/src/clie
 import type { ViewTab } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/views.ts'
 import type {
   ComposerBarInjected, ConversationInjected, ConversationSessionHeaderInjected,
-  ConversationSessionInjected,
+  ConversationSessionInjected, DraftFileUploads,
 } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/slots.ts'
 import type { InputNotice } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/input.ts'
 import { createConversationStore } from '@deepseek-ai/dsh-client-ui-conversation/src/client/stores.ts'
@@ -104,8 +105,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Services required by the Conversation plugin. */
 export const inject = [
-  'slots', 'sessions', 'uiSession', 'uiWorkspace', 'locale', 'settingsScope',
+  'slots', 'sessions', 'fileUpload', 'uiSession', 'uiWorkspace', 'locale', 'settingsScope',
 ]
+
+/** Conversation runtime configuration, mirrored from the replaced plugin so a
+ * `maxConcurrentFileUploads` set against `ui-conversation` keeps working when
+ * this fork stands in for it. */
+export interface Config {
+  /** Maximum generic-file uploads allowed to run concurrently in browser Workers. */
+  maxConcurrentFileUploads?: number
+}
+
+/** Validated Conversation runtime configuration. */
+export const Config: z<Config> = z.object({
+  maxConcurrentFileUploads: z.natural().min(1).default(2),
+})
 
 // Stable no-session sources keep the renderer's observable-hook cache and
 // hook order unchanged across current-Session transitions.
@@ -124,6 +138,11 @@ const ABSENT_LEXICON = {
 }
 const ABSENT_MENU_LAUNCHER = {
   getSnapshot: (): string | null => null,
+  subscribe: () => () => {},
+}
+const EMPTY_FILE_UPLOADS: DraftFileUploads = {}
+const ABSENT_FILE_UPLOADS = {
+  getSnapshot: () => EMPTY_FILE_UPLOADS,
   subscribe: () => () => {},
 }
 // No-session root render: never true for a real session (FileOpenRegistry
@@ -190,9 +209,11 @@ function concreteConversation(ctx: Context): ConversationController {
  * Mount the Conversation core and target-neutral presentation.
  * @param ctx - Client root context.
  */
-export async function apply(ctx: Context): Promise<void> {
+export async function apply(ctx: Context, config: Config = Config({})): Promise<void> {
   const sessions = ctx.sessions
   const slots = ctx.slots
+  // Schemastery's field default is materialized before Cordis calls apply.
+  const maxConcurrentFileUploads = config.maxConcurrentFileUploads as number
   let workspaceNavigation: WorkspaceNavigation
   let uiConversation: UiConversation
   let fileOpenRegistry: FileOpenRegistry
@@ -217,7 +238,7 @@ export async function apply(ctx: Context): Promise<void> {
     // only here means the fallback's own CSS injection wins the race
     // whenever it is the one that actually runs.
     const { apply: pristineApply } = await import('@deepseek-ai/dsh-client-ui-conversation/src/client/apply.ts')
-    pristineApply(ctx)
+    pristineApply(ctx, config)
     return
   }
   const t = ctx.locale.bind(NS)
@@ -371,15 +392,19 @@ export async function apply(ctx: Context): Promise<void> {
         if (sessionId !== undefined && nextId !== sessionId) {
           const from = inputHub.shell(sessionId)
           const draft = from.snapshot.draft
-          const imageIds = from.snapshot.imageIds
+          const attachmentIds = from.snapshot.attachmentIds
           const next = inputHub.shell(nextId)
-          if (imageIds.length === 0 || next.addImages(imageIds)) {
+          if (attachmentIds.length === 0 || next.addAttachments(attachmentIds)) {
+            if (sessions.binding(nextId) === undefined) {
+              throw new Error(`ui-conversation: session "${nextId}" resolved no binding`)
+            }
+            concreteConversation(ctx).rebindDraftFiles(nextId, attachmentIds)
             if (draft !== '') {
               next.setDraft(draft)
               from.setDraft('')
             }
-            if (imageIds.length > 0) {
-              for (const id of imageIds) from.removeImage(id)
+            if (attachmentIds.length > 0) {
+              for (const id of attachmentIds) from.removeAttachment(id)
             }
           }
         }
@@ -451,15 +476,16 @@ export async function apply(ctx: Context): Promise<void> {
       if (sessionId === undefined) {
         return {
           keyboard: undefined,
-          addImages: undefined,
-          removeImage: undefined,
-          draftImages: undefined,
-          resolveSubmitMode: (running, gesture, steeringAvailable) =>
-            submissionPolicy.resolve(running, gesture, steeringAvailable),
+          addFiles: undefined,
+          removeAttachment: undefined,
+          resolveDraftAttachments: undefined,
+          retryFileUpload: undefined,
           toggleCommandMenu: undefined,
           stop: undefined,
           command: undefined,
           hooks: {
+            busyEnter: submissionPolicy.busyEnter,
+            fileUploads: ABSENT_FILE_UPLOADS,
             notices: ABSENT_NOTICES,
             lexicon: ABSENT_LEXICON,
             menuLauncher: ABSENT_MENU_LAUNCHER,
@@ -471,11 +497,12 @@ export async function apply(ctx: Context): Promise<void> {
       const inputTriggers = inputHub.inputTriggers(sessionId)
       return {
         keyboard: shell,
-        addImages: (files) => {
+        addFiles: (files) => {
+          if (sessions.binding(sessionId) === undefined) return t('file.sessionUnavailable')
           try {
-            const images = conversation.createDraftImages(files)
-            if (!shell.addImages(images.map(image => image.id))) {
-              conversation.releaseDraftImages(images)
+            const drafts = conversation.createDrafts(sessionId, files)
+            if (!shell.addAttachments(drafts.map(draft => draft.id))) {
+              conversation.releaseDraftAttachments(drafts)
             }
             return null
           } catch (error: unknown) {
@@ -483,13 +510,13 @@ export async function apply(ctx: Context): Promise<void> {
             return error instanceof Error ? error.message : String(error)
           }
         },
-        removeImage: (id) => {
-          conversation.releaseDraftImage(id)
-          shell.removeImage(id)
+        removeAttachment: (id) => {
+          if (shell.removeAttachment(id)) conversation.releaseDraftAttachment(id)
         },
-        draftImages: ids => conversation.draftImages(ids),
-        resolveSubmitMode: (running, gesture, steeringAvailable) =>
-          submissionPolicy.resolve(running, gesture, steeringAvailable),
+        resolveDraftAttachments: ids => conversation.resolveDraftAttachments(ids),
+        retryFileUpload: (id) => {
+          if (sessions.binding(sessionId) !== undefined) conversation.retryFileUpload(sessionId, id)
+        },
         toggleCommandMenu: inputTriggers === undefined
           ? undefined
           : (selection) => {
@@ -515,6 +542,8 @@ export async function apply(ctx: Context): Promise<void> {
           return result.ok && result.value.matched
         },
         hooks: {
+          busyEnter: submissionPolicy.busyEnter,
+          fileUploads: conversation.fileUploads,
           notices: shell.notices,
           lexicon: shell.lexicon,
           menuLauncher: inputTriggers?.launcher ?? ABSENT_MENU_LAUNCHER,
@@ -546,7 +575,7 @@ export async function apply(ctx: Context): Promise<void> {
     }
   })
 
-  ctx.plugin(ConversationController, { input: inputHub, blocks: composerBlocks })
+  ctx.plugin(ConversationController, { input: inputHub, blocks: composerBlocks, maxConcurrentFileUploads })
   ctx.plugin(todoDockEntry)
   ctx.plugin(queueDockEntry)
 
