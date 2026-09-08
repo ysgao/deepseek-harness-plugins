@@ -58,9 +58,13 @@ seams the vendor publishes, same as the other two. Installation is always
 `@deepseek-ai/cordis` is). `packages/_vendor/deepseek-harness/` is a git
 submodule pinned to a `deepseek-ai/deepseek-harness` commit;
 `pnpm-workspace.yaml` folds its `packages/*/*`, `vendor/*` (Cordis,
-cosmokit, schemastery, …), `apps/*`, and `native/landlock-run` into this
-workspace so `workspace:^` dependencies resolve against real upstream
-sources.
+cosmokit, schemastery, …), `apps/*`, and `native/system` (the
+node-addon-system tier, named `native/landlock-run` before upstream
+broadened it past the Landlock launcher) into this workspace so
+`workspace:^` dependencies resolve against real upstream sources. It also
+folds in `benchmarks`, `website`, and `python/sdk-runtime` — unused here,
+but the vendored `tsconfig.host.json` typechecks the first two, so
+`build:vendor` fails without their dependencies installed.
 
 **Nested under `packages/`, not a sibling `vendor/` directory.** This one
 is load-bearing, not cosmetic: `dsh-typert-generator`'s workspace-mode
