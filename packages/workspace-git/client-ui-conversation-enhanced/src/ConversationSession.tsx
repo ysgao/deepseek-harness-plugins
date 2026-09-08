@@ -58,6 +58,7 @@ export type EnhancedConversationSessionHeaderProps =
     'conversation.session.header.lineage'
     | 'conversation.session.header.actions'
     | 'conversation.session.header.utilities'
+    | 'conversation.session.header.corner'
   >
   & PropsStore<ConversationStore>
   & InjectFace<EnhancedConversationSessionHeaderInjected>
@@ -180,6 +181,9 @@ export function ConversationSessionHeader({
             </div>
             <div className={css.headerUtilities}>
               {renderSlot('conversation.session.header.utilities', {})}
+            </div>
+            <div className={css.headerCorner} data-conversation-header-corner="">
+              {renderSlot('conversation.session.header.corner', {})}
             </div>
           </div>
           {tabs.length > 1 && (
