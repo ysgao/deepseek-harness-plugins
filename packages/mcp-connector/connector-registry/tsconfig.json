@@ -1,0 +1,18 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../mcp-client-oauth" },
+    { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
+    { "path": "../../_vendor/deepseek-harness/vendor/schemastery" },
+    { "path": "../../_vendor/deepseek-harness/packages/credentials/credentials" },
+    { "path": "../../_vendor/deepseek-harness/packages/settings/settings" },
+    { "path": "../../_vendor/deepseek-harness/packages/core/tools" }
+  ]
+}

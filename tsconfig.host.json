@@ -8,6 +8,8 @@
   "references": [
     { "path": "packages/anthropic-subscription/api-authorization-controller" },
     { "path": "packages/anthropic-subscription/cli-login-app" },
+    { "path": "packages/mcp-connector/api-mcp-connector-controller" },
+    { "path": "packages/mcp-connector/cli-mcp-connector" },
     { "path": "packages/workspace-git/api-workspace-git-controller" },
     { "path": "packages/workspace-git/api-workspace-file-controller" },
     { "path": "packages/_vendor/deepseek-harness/packages/typert/protocol" }

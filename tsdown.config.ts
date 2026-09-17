@@ -10,6 +10,10 @@ function isBuildFaceClient(value) {
 const HOST_PACKAGES = [
   'packages/anthropic-subscription/api-authorization-controller',
   'packages/anthropic-subscription/cli-login-app',
+  'packages/mcp-connector/mcp-client-oauth',
+  'packages/mcp-connector/connector-registry',
+  'packages/mcp-connector/api-mcp-connector-controller',
+  'packages/mcp-connector/cli-mcp-connector',
   'packages/workspace-git/api-workspace-git-controller',
   'packages/workspace-git/api-workspace-file-controller',
 ]
@@ -23,6 +27,8 @@ const CLIENT_PACKAGES = [
   'packages/workspace-git/client-remotes-workspace-git',
   'packages/anthropic-subscription/client-remotes-anthropic-subscription',
   'packages/anthropic-subscription/client-ui-settings-anthropic-subscription',
+  'packages/mcp-connector/client-remotes-mcp-connector',
+  'packages/mcp-connector/client-ui-settings-mcp-connector',
 ]
 
 /**

@@ -1,0 +1,30 @@
+# A standalone application layer over dsh-base — `dsh --profile <name>` owns
+# no task-positional parser (unlike dsh-headless), so this CLI's own argument
+# grammar cannot race one. See README.md for why, and
+# ../../anthropic-subscription/cli-login-app/cordis.patch.yml for the same
+# reasoning applied to the credential-login CLI.
+#
+# Mounts @deepseek-ai/dsh-authorization itself: confirmed against a pristine
+# deepseek-ai/deepseek-harness checkout that no shipped bundle mounts this
+# seam by default. Without it, `login` has no flow to run. The disable
+# immediately before it is what makes this layer safe to stack on a profile
+# where another bundle in this repo already inserted the same row — a
+# duplicate mount of one service name is a hard Cordis conflict, while a
+# disable that matches nothing is a logged no-op. If a future dsh-base ships
+# this row itself, drop both lines.
+#
+# The connector registry itself needs a settings provider and a credential
+# provider, both of which dsh-base already mounts.
+
+- id: authorization-seam
+  disabled: true
+
+- insert:
+    - id: authorization-seam
+      name: '@deepseek-ai/dsh-authorization'
+
+    - id: mcp-connector-registry
+      name: 'dsh-plugins-mcp-connector-registry'
+
+    - id: mcp-connector-cli
+      name: 'dsh-plugins-cli-mcp-connector'

@@ -12494,6 +12494,225 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  packages/mcp-connector: {}
+
+  packages/mcp-connector/api-mcp-connector-controller:
+    dependencies:
+      dsh-plugins-mcp-connector-registry:
+        specifier: workspace:^
+        version: link:../connector-registry
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-authorization':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/authorization
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/credentials
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/typert/protocol
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/mcp-connector/bundle-mcp-connector:
+    dependencies:
+      dsh-plugins-api-mcp-connector-controller:
+        specifier: workspace:^
+        version: link:../api-mcp-connector-controller
+      dsh-plugins-client-remotes-mcp-connector:
+        specifier: workspace:^
+        version: link:../client-remotes-mcp-connector
+      dsh-plugins-client-ui-settings-mcp-connector:
+        specifier: workspace:^
+        version: link:../client-ui-settings-mcp-connector
+      dsh-plugins-mcp-client-oauth:
+        specifier: workspace:^
+        version: link:../mcp-client-oauth
+      dsh-plugins-mcp-connector-registry:
+        specifier: workspace:^
+        version: link:../connector-registry
+    devDependencies:
+      '@deepseek-ai/dsh-authorization':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/authorization
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/mcp-connector/cli-mcp-connector:
+    dependencies:
+      commander:
+        specifier: ^15.0.0
+        version: 15.0.0
+      dsh-plugins-mcp-connector-registry:
+        specifier: workspace:^
+        version: link:../connector-registry
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-authorization':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/authorization
+      '@deepseek-ai/dsh-cmdline':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/boot/cmdline
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/credentials
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/mcp-connector/client-remotes-mcp-connector:
+    dependencies:
+      dsh-plugins-api-mcp-connector-controller:
+        specifier: workspace:^
+        version: link:../api-mcp-connector-controller
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-api-gateway':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/api/gateway
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/typert/protocol
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/mcp-connector/client-ui-settings-mcp-connector:
+    dependencies:
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-primitives
+      dsh-plugins-api-mcp-connector-controller:
+        specifier: workspace:^
+        version: link:../api-mcp-connector-controller
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/api/remotes
+      '@deepseek-ai/dsh-authorization':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/authorization
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/locale
+      '@deepseek-ai/dsh-client-store':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/store
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-settings
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-slots
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/typert/protocol
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ~18.3.0
+        version: 18.3.7(@types/react@18.3.31)
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/mcp-connector/connector-registry:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../_vendor/deepseek-harness/vendor/schemastery
+        version: link:../../_vendor/deepseek-harness/vendor/schemastery
+      dsh-plugins-mcp-client-oauth:
+        specifier: workspace:^
+        version: link:../mcp-client-oauth
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/credentials
+      '@deepseek-ai/dsh-settings':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/settings/settings
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/core/tools
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/mcp-connector/mcp-client-oauth:
+    dependencies:
+      '@deepseek-ai/dsh-util-values':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/util/values
+      '@deepseek-ai/schemastery':
+        specifier: link:../../_vendor/deepseek-harness/vendor/schemastery
+        version: link:../../_vendor/deepseek-harness/vendor/schemastery
+      '@modelcontextprotocol/client':
+        specifier: 2.0.0
+        version: 2.0.0
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-authorization':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/authorization
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/credentials/credentials
+      '@deepseek-ai/dsh-mcp-client':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/mcp/mcp-client
+      '@deepseek-ai/dsh-mcp-resources':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/mcp/mcp-resources
+      '@deepseek-ai/dsh-scope':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/core/scope
+      '@deepseek-ai/dsh-subprocess':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/subprocess/subprocess
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/core/system-prompt
+      '@deepseek-ai/dsh-timeout':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/util/timeout
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/core/tools
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/terminal/dsh-plugin-terminal:
     dependencies:
       '@xterm/addon-fit':

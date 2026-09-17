@@ -1,0 +1,24 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
+    { "path": "../../_vendor/deepseek-harness/vendor/schemastery" },
+    { "path": "../../_vendor/deepseek-harness/packages/credentials/authorization" },
+    { "path": "../../_vendor/deepseek-harness/packages/credentials/credentials" },
+    { "path": "../../_vendor/deepseek-harness/packages/mcp/mcp-client" },
+    { "path": "../../_vendor/deepseek-harness/packages/mcp/mcp-resources" },
+    { "path": "../../_vendor/deepseek-harness/packages/core/system-prompt" },
+    { "path": "../../_vendor/deepseek-harness/packages/core/scope" },
+    { "path": "../../_vendor/deepseek-harness/packages/subprocess/subprocess" },
+    { "path": "../../_vendor/deepseek-harness/packages/util/timeout" },
+    { "path": "../../_vendor/deepseek-harness/packages/core/tools" },
+    { "path": "../../_vendor/deepseek-harness/packages/util/values" }
+  ]
+}

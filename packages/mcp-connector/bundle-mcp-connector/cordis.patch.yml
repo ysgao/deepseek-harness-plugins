@@ -1,0 +1,62 @@
+# Adds MCP connectors — including remote servers behind OAuth 2.0 — to a
+# web-app-derived profile.
+#
+# Nothing here disables a vendor row. `settings.section` is a pristine
+# `kind: 'list'` slot that @deepseek-ai/dsh-client-ui-settings declares for
+# exactly this purpose, so the Settings page below is an additive
+# registration, not a replacement — unlike this repo's ui-workspace,
+# ui-conversation, and ui-settings-models rows, this bundle has no
+# replacement-parity obligation at all (see ../../../ARCHITECTURE.md's
+# "Replacement parity").
+#
+# authorization-seam (disabled, then re-inserted): confirmed against a
+# pristine deepseek-ai/deepseek-harness checkout that no shipped bundle
+# mounts @deepseek-ai/dsh-authorization by default. Without it, an OAuth
+# connector's sign-in flow has nothing to register against — already-stored
+# tokens keep working and keep refreshing, but signing in afresh is
+# impossible. The disable immediately before the insert is what makes this
+# layer safe to stack on a profile where bundle-anthropic-subscription (or
+# cli-login-app) already inserted the same row id: a duplicate mount of one
+# service name is a hard Cordis conflict, while a disable matching nothing is
+# a logged no-op. Because cordis.patch.yml layers apply in the profile's own
+# bundle-list order, this only holds when this bundle is installed AFTER any
+# other layer that inserts the row — the same install-order requirement this
+# repo's other bundles already document. If a future dsh-base ships this row
+# itself, drop both operations.
+#
+# mcp-connector-registry: owns the `mcp-connector` settings section and mounts
+# one dsh-plugins-mcp-client-oauth instance per enabled connector. Connectors
+# are reconciled live, so one added from the Settings page or the CLI is
+# mounted without a restart.
+#
+# mcp-connector-controller: the `mcpConnectors` Remote namespace, discovered
+# by @deepseek-ai/dsh-typert-loader (part of every dsh-base-derived profile:
+# web, headless, acp, sdk — install this layer into one of those, not
+# sdk-minimal).
+#
+# remotes-mcp-connector mounts that namespace's generated Client contribution
+# — the role @deepseek-ai/dsh-api-remotes fills for every in-tree namespace
+# but cannot for an out-of-tree one. Kept as its own dedicated plugin, not
+# folded into the Settings UI row below: a $mount failure there would throw
+# that plugin's whole apply() and take down everything else it renders.
+#
+# ui-settings-mcp-connector: the Settings > MCP connectors page.
+
+- id: authorization-seam
+  disabled: true
+
+- insert:
+    - id: authorization-seam
+      name: '@deepseek-ai/dsh-authorization'
+
+    - id: mcp-connector-registry
+      name: 'dsh-plugins-mcp-connector-registry'
+
+    - id: mcp-connector-controller
+      name: 'dsh-plugins-api-mcp-connector-controller'
+
+    - id: remotes-mcp-connector
+      name: 'dsh-plugins-client-remotes-mcp-connector'
+
+    - id: ui-settings-mcp-connector
+      name: 'dsh-plugins-client-ui-settings-mcp-connector'

@@ -1,0 +1,28 @@
+{
+  "name": "dsh-plugins-bundle-mcp-connector",
+  "description": "Installable dsh --profile patch layer that mounts the durable MCP connector registry, its mcpConnectors RPC controller, that namespace's Client Remote mount, and the Settings > MCP connectors page — adding OAuth 2.0 authorization-code and automatic token refresh for remote Streamable HTTP MCP servers on top of everything dsh-mcp-client already does",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "dsh-plugins-api-mcp-connector-controller": "workspace:^",
+    "dsh-plugins-client-remotes-mcp-connector": "workspace:^",
+    "dsh-plugins-client-ui-settings-mcp-connector": "workspace:^",
+    "dsh-plugins-mcp-client-oauth": "workspace:^",
+    "dsh-plugins-mcp-connector-registry": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-authorization": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-authorization": "workspace:^",
+    "typescript": "^6.0.3"
+  }
+}

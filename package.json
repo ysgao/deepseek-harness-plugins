@@ -19,7 +19,9 @@
     "packages/_vendor/deepseek-harness/python/sdk-runtime",
     "packages/workspace-git/*",
     "packages/anthropic-subscription/*",
-    "packages/terminal/*"
+    "packages/terminal/*",
+    "packages/mcp-connector",
+    "packages/mcp-connector/*"
   ],
   "scripts": {
     "build:vendor": "pnpm --dir packages/_vendor/deepseek-harness run build",
