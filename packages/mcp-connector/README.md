@@ -116,15 +116,11 @@ Two halves, deliberately kept apart:
 
 ## Setting up a Google connector
 
-Google issues no OAuth client automatically, so create one first: Google Cloud
-console → APIs & Services → Credentials → **Create OAuth client ID** → Desktop
-app (or Web application). Add `http://127.0.0.1:33418/mcp-oauth/callback` as an
-authorized redirect URI — byte for byte, since RFC 6749 §3.1.2.3 has the
-authorization server compare it exactly. Enable the Gmail API / Drive API for
-the project, and add your account as a test user while the consent screen is
-unpublished.
-
-Then, from the CLI:
+[`docs/google-workspace.md`](docs/google-workspace.md) is the full procedure
+for Gmail, Drive, and Calendar: which Cloud APIs to enable (the product API
+*and* the `*mcp.googleapis.com` service — enabling only the first is the usual
+cause of a `PERMISSION_DENIED` after a clean sign-in), the consent-screen scope
+list, the OAuth client, and the `set`/`login` calls. In short:
 
 ```sh
 ./dsh --profile mcp add gmail --url https://gmailmcp.googleapis.com/mcp/v1 \
@@ -134,8 +130,15 @@ Then, from the CLI:
 
 or, in the GUI, Settings → MCP connectors → Add connector, then **Sign in**.
 
+Google issues no OAuth client automatically and `accounts.google.com` publishes
+no `registration_endpoint`, so a client created by hand in a Google Cloud
+project is mandatory, with `http://127.0.0.1:33418/mcp-oauth/callback`
+registered byte for byte — RFC 6749 §3.1.2.3 has the authorization server
+compare `redirect_uri` exactly.
+
 The scopes come from the server's own RFC 9728 metadata, so `--scope` is
-usually unnecessary.
+optional — pass it to request less than everything the server publishes, which
+for Gmail includes full-mailbox `https://mail.google.com/`.
 
 ## Verified
 
