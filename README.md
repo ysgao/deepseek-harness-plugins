@@ -49,6 +49,23 @@ Build the vendored submodule (host libraries, client libraries, and the
 pnpm run build:vendor
 ```
 
+That goes through `scripts/build-vendor.mjs` rather than calling `pnpm
+--dir ... run build` directly. The vendor has its own workspace and
+lockfile, so `pnpm run` inside it auto-installs, and that install fires the
+vendor's `postinstall` lefthook installer, which aborts on any checkout
+where the git dir is a submodule's (`cannot enable
+extensions.worktreeConfig while core.worktree is in the common config`).
+The wrapper sets `CI=true`, the installer's own early exit; the hooks it
+would install have no work to do here, since nothing in this repo ever
+commits to the vendor. The file explains it at length.
+
+If `build:vendor` fails in some other way, check the submodule is actually
+at the pinned commit first — a stale checkout is the usual cause:
+
+```sh
+git submodule update --init --recursive packages/_vendor/deepseek-harness
+```
+
 Then build this repo's own plugin packages:
 
 ```sh

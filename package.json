@@ -24,7 +24,7 @@
     "packages/mcp-connector/*"
   ],
   "scripts": {
-    "build:vendor": "pnpm --dir packages/_vendor/deepseek-harness run build",
+    "build:vendor": "node scripts/build-vendor.mjs",
     "build:lib:host": "tsc -b tsconfig.host.json && tsdown",
     "build:lib:client": "tsc -b tsconfig.client.json && tsdown --env.DSH_BUILD_FACE client",
     "build": "pnpm run build:lib:host && pnpm run build:lib:client",
