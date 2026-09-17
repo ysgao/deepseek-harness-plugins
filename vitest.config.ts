@@ -47,6 +47,7 @@ export default defineConfig({
       'packages/workspace-git/**/*.{test,spec}.{ts,tsx}',
       'packages/anthropic-subscription/**/*.{test,spec}.{ts,tsx}',
       'packages/terminal/**/*.{test,spec}.{ts,tsx}',
+      'packages/mcp-connector/**/*.{test,spec}.{ts,tsx}',
     ],
     exclude: [
       '**/node_modules/**',

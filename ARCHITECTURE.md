@@ -819,7 +819,11 @@ PR against `deepseek-ai/deepseek-harness`.
 
 ## Open items
 
-- **Bundle install order.** `dsh-plugins-bundle-workspace-git`'s
+- **Bundle install order.** `scripts/install-plugins.mjs`'s `BUNDLES` array
+  is where this order is now written down and applied (`pnpm run build`
+  runs it; it appends only what a profile is missing, and warns rather than
+  reshuffles when an existing profile's order disagrees). The constraint
+  itself is unchanged: `dsh-plugins-bundle-workspace-git`'s
   `disabled: true` rows for `ui-workspace` and `ui-conversation`, and
   `dsh-plugins-bundle-anthropic-subscription`'s for `ui-settings-models`,
   only resolve if whatever bundle mounts those rows (`@deepseek-ai/

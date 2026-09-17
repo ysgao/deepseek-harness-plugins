@@ -69,8 +69,30 @@ git submodule update --init --recursive packages/_vendor/deepseek-harness
 Then build this repo's own plugin packages:
 
 ```sh
-pnpm run build   # tsc -b + tsdown, host then client
+pnpm run build   # tsc -b + tsdown, host then client, then install:plugins
 ```
+
+`build` ends by running `pnpm run install:plugins`
+(`scripts/install-plugins.mjs`), which adds every bundle below that the
+`web` profile doesn't have yet — through the same `./dsh plugin --profile
+web add <path>` documented under "Running", in the order that section
+requires, and nothing else. It is idempotent (a profile that already has
+all of them is a no-op), honors `DSH_HOME`, and skips itself entirely when
+`CI` is set. A bundle built but never installed is invisible in the app
+with nothing in the build output to say why; this closes that gap. It also
+fails the build if an install drops a bundle it wasn't asked to touch —
+`dsh plugin add` reconciles the whole layer list against installed state and
+silently unlists anything it can't resolve. Pass `--profile <name>` or
+`--dry-run` when running it directly:
+
+```sh
+node scripts/install-plugins.mjs --profile web-verify --dry-run
+```
+
+**An install only reaches a running app on its next boot.** `dsh`'s
+`patchReload: "live"` covers the profile's own `cordis.patch.yml`, not its
+`dsh.profile.bundles` list, so restart any live `./dsh --profile web` after
+a build that installed something (the script says when it did).
 
 ## Running
 
@@ -85,10 +107,13 @@ anywhere as `./dsh` (repo root) or the script's full path.
 
 Install a bundle into a profile with `./dsh plugin --profile <name> add
 <path>` (nothing here is published to npm, so pass this repo's own
-absolute package paths). `web` is one of the profile names `dsh` knows how
-to auto-initialize from a shipped template (already including
-`@deepseek-ai/dsh-base`/`@deepseek-ai/dsh-web-app`) on first use, so the
-first `plugin add` against it is enough to bring the whole profile up:
+absolute package paths). `pnpm run build` already does exactly this for the
+`web` profile; the commands below are that same install path by hand, for
+any other profile name and for reading what the build does. `web` is one of
+the profile names `dsh` knows how to auto-initialize from a shipped template
+(already including `@deepseek-ai/dsh-base`/`@deepseek-ai/dsh-web-app`) on
+first use, so the first `plugin add` against it is enough to bring the whole
+profile up:
 
 ```sh
 ./dsh plugin --profile web add "$(pwd)/packages/workspace-git/bundle-workspace-git"
@@ -139,7 +164,10 @@ something out.
    Client package for the pattern. `pnpm-workspace.yaml` already globs
    `packages/workspace-git/*` and `packages/anthropic-subscription/*`, so a
    new package inside either existing group needs no separate workspace
-   edit; a genuinely new bundle group needs its own line there.
+   edit; a genuinely new bundle group needs its own line there, plus its
+   bundle package in `scripts/install-plugins.mjs`'s `BUNDLES` array — at
+   the position its `cordis.patch.yml` layer has to apply in — so
+   `pnpm run build` installs it like every other bundle.
 4. **Verify with a real boot, not just typecheck.** A clean typecheck does
    not catch a missing entry-point split or a missing peer service at
    boot; `--dump-config` alone doesn't either (it resolves config, never
