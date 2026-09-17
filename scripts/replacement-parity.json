@@ -1,0 +1,143 @@
+{
+  "comment": [
+    "Declares every vendor plugin row this repo disables and replaces, and what the",
+    "replacement owes it. Read by scripts/check-replacement-parity.mjs; the rule it",
+    "enforces is CONSTITUTION.md's 'A replacement never subtracts'.",
+    "",
+    "`forks[].sha256` is the first 16 hex of the sha256 of the vendor file AS OF the",
+    "commit named by `vendorPin` — the revision each fork was last read against, not",
+    "a checksum of the fork itself. When a pin bump changes one of those files, the",
+    "check goes red until a human re-reads it beside the fork, ports what changed,",
+    "and re-records the hash with `--update`.",
+    "",
+    "`divergences` records the places a replacement deliberately does NOT match the",
+    "row it replaces. Nothing enforces these; they exist so the next pin bump can",
+    "tell an intended difference from an omission."
+  ],
+  "vendorPin": "0d1f50007f9bca3f52b06e1c3074fa14d5fb0720",
+  "replacements": [
+    {
+      "row": "ui-workspace",
+      "bundlePatch": "packages/workspace-git/bundle-workspace-git/cordis.patch.yml",
+      "vendorPlugin": "@deepseek-ai/dsh-client-ui-workspace",
+      "vendorPackage": "packages/_vendor/deepseek-harness/packages/client/ui-workspace",
+      "vendorApply": "src/client/index.ts",
+      "replacementPlugin": "dsh-plugins-client-ui-workspace-enhanced",
+      "replacementPackage": "packages/workspace-git/client-ui-workspace-enhanced",
+      "replacementApply": "src/apply.ts",
+      "adds": [
+        "renders the optional workspaceFilesNode service's Component as a Files sibling row"
+      ],
+      "divergences": [],
+      "forks": [
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-workspace/src/client/index.ts",
+          "fork": "packages/workspace-git/client-ui-workspace-enhanced/src/apply.ts",
+          "sha256": "4d3da537f6e09e71"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx",
+          "fork": "packages/workspace-git/client-ui-workspace-enhanced/src/WorkspaceBrowser.tsx",
+          "sha256": "0b0f6af453652771"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.module.css",
+          "fork": "packages/workspace-git/client-ui-workspace-enhanced/src/WorkspaceBrowser.module.css",
+          "sha256": "1aca37fb6c3409d6"
+        }
+      ]
+    },
+    {
+      "row": "ui-conversation",
+      "bundlePatch": "packages/workspace-git/bundle-workspace-git/cordis.patch.yml",
+      "vendorPlugin": "@deepseek-ai/dsh-client-ui-conversation",
+      "vendorPackage": "packages/_vendor/deepseek-harness/packages/client/ui-conversation",
+      "vendorApply": "src/client/apply.ts",
+      "replacementPlugin": "dsh-plugins-client-ui-conversation-enhanced",
+      "replacementPackage": "packages/workspace-git/client-ui-conversation-enhanced",
+      "replacementApply": "src/apply.ts",
+      "adds": [
+        "provides the conversationFileOpener cross-session bridge",
+        "ORs the per-session everOpenedFile bit into all three pristine blank-phase gates"
+      ],
+      "divergences": [
+        "Entering a conversation activates the landing View (Chat) instead of the Session's persisted View preference (readConversationViewPreference), because the forked File view cannot restore what it was showing — see src/apply.ts's activateLandingView and DefaultConversationViews.tsx's landing effect."
+      ],
+      "forks": [
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/apply.ts",
+          "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/apply.ts",
+          "sha256": "22edd7bd78a215fa"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationMainPanel.tsx",
+          "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/ConversationMainPanel.tsx",
+          "sha256": "419bca98d396d194"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/DefaultConversationViews.tsx",
+          "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/DefaultConversationViews.tsx",
+          "sha256": "34e793d57eeb023c"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.tsx",
+          "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/ConversationRoot.tsx",
+          "sha256": "e423e43755ae1d23"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationSession.tsx",
+          "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/ConversationSession.tsx",
+          "sha256": "c64b0011e255c8a3"
+        }
+      ]
+    },
+    {
+      "row": "ui-settings-models",
+      "bundlePatch": "packages/anthropic-subscription/bundle-anthropic-subscription/cordis.patch.yml",
+      "vendorPlugin": "@deepseek-ai/dsh-client-ui-settings-models",
+      "vendorPackage": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models",
+      "vendorApply": "src/client/index.ts",
+      "replacementPlugin": "dsh-plugins-client-ui-settings-anthropic-subscription",
+      "replacementPackage": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription",
+      "replacementApply": "src/client/index.ts",
+      "locale": {
+        "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/locales.ts",
+        "replacement": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/locales.ts",
+        "dictionaries": [
+          "en",
+          "zh"
+        ]
+      },
+      "adds": [
+        "threads an optional authorization service through ModelsSection into ProviderEditor",
+        "renders AuthorizationPanel beside the API-key field for any row the flow registry claims",
+        "four signIn* copy keys in both dictionaries"
+      ],
+      "divergences": [
+        "apply() does not fall back to the pristine ui-settings-models apply() on setup failure (the other two replacements do) — importing that file for its apply value pulls in its narrower LocaleNamespaceMap declaration, which this package's wider one conflicts with. See src/client/index.ts's own doc comment."
+      ],
+      "forks": [
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/index.ts",
+          "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/index.ts",
+          "sha256": "ecab37b6d846f5f4"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/ModelsSection.tsx",
+          "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/ModelsSection.tsx",
+          "sha256": "2ec7f8ef098c41e0"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/ProviderEditor.tsx",
+          "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/ProviderEditor.tsx",
+          "sha256": "3fcaf69a8fe9be38"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/locales.ts",
+          "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/locales.ts",
+          "sha256": "528f47fe1b652773"
+        }
+      ]
+    }
+  ]
+}

@@ -28,6 +28,10 @@ seams the vendor publishes, same as the other two. Installation is always
 
 ## Core principles
 
+The short, non-negotiable form of this list — the rules the rest of this
+document is not allowed to contradict, and how each is enforced — lives in
+[`CONSTITUTION.md`](CONSTITUTION.md). What follows adds the reasoning.
+
 1. **Everything is a plugin.** Every feature — including one that replaces
    part of the shipped UI — is an ordinary `dsh` plugin package, installed
    through `dsh plugin --profile <name> add`/`remove`. There is no other
@@ -38,9 +42,19 @@ seams the vendor publishes, same as the other two. Installation is always
    is a pinned git submodule tracking `deepseek-ai/deepseek-harness`. The
    only legitimate way its contents change is a pin bump (`git submodule
    update --remote` + `pnpm install`), followed by re-verifying every
-   plugin here still builds and boots against the new pin.
+   plugin here still builds and boots against the new pin — and, for the
+   three replacement plugins, that each still covers everything the vendor
+   row it disables does at the new pin ("Replacement parity" below).
 
-3. **A plugin's absence, or a plugin's failure, must never take down `dsh`
+3. **A replacement is a superset of what it replaces — always.** A
+   `disabled: true` row takes every one of its own registrations with it,
+   so a slot, locale key, service, or config field the original had and the
+   replacement lacks is not a missing enhancement: it is a feature the user
+   loses by installing this repo's bundle. Every vendor pin bump is an
+   opportunity to break this silently, which is why proving it is a step of
+   the bump itself — see "Replacement parity" below.
+
+4. **A plugin's absence, or a plugin's failure, must never take down `dsh`
    itself.**
    - **Absence is normal, not an error.** A feature that depends on another
      out-of-tree package simply degrades — renders without the extra row,
@@ -436,10 +450,124 @@ for the full writeup, including the separate `node-pty` prebuild fix and
 the live-server verification. `packages/_vendor/deepseek-harness` was read
 to find the `ctx.connection` primitive to reuse, never edited.
 
+## Replacement parity
+
+Three of this repo's packages do not extend the vendored harness — they
+*replace* one of its plugin rows. The bundle's `cordis.patch.yml` sets
+`disabled: true` on a vendor row and inserts an out-of-tree package in its
+place:
+
+| Disabled vendor row | Vendor plugin | Replacement | Declared in |
+|---|---|---|---|
+| `ui-workspace` | `@deepseek-ai/dsh-client-ui-workspace` | `dsh-plugins-client-ui-workspace-enhanced` | `bundle-workspace-git/cordis.patch.yml` |
+| `ui-conversation` | `@deepseek-ai/dsh-client-ui-conversation` | `dsh-plugins-client-ui-conversation-enhanced` | `bundle-workspace-git/cordis.patch.yml` |
+| `ui-settings-models` | `@deepseek-ai/dsh-client-ui-settings-models` | `dsh-plugins-client-ui-settings-anthropic-subscription` | `bundle-anthropic-subscription/cordis.patch.yml` |
+
+Nothing else here disables a vendor row: `packages/terminal/` only inserts,
+and every other package in the two bundles registers into a pristine slot
+that already exists.
+
+**A disabled row contributes nothing at all.** Not "nothing new" — nothing:
+its slot registrations, its provided services, its locale dictionary, its
+config schema, and every component it renders all disappear with it. So the
+question a replacement has to answer is never "what did we add", it is
+"what did the row we switched off do, and do we do all of it". Anything
+missed is a regression the user experiences as *installing this repo's
+bundle removed a feature* — which is what Core principle 3 and
+[`CONSTITUTION.md`](CONSTITUTION.md) Article III forbid.
+
+A vendor pin bump is where that goes wrong quietly. Upstream adds a slot, a
+locale key, a config field, or reshapes a component this repo forked; the
+replacement keeps registering last release's surface; and `tsc -b` stays
+green the whole time, because the replacement is perfectly type-correct —
+it is just *less* than the thing it replaced.
+
+### What parity means, check by check
+
+`scripts/replacement-parity.json` declares each replacement above — the row
+it disables, the vendor plugin's apply entry, its own apply entry, its
+forked files, what it deliberately adds, and what it deliberately does
+differently. `pnpm run check:parity` reads it and enforces five things:
+
+1. **Row.** The bundle patch really disables that row id and really inserts
+   the replacement, *and that row id still exists in a vendored bundle*. An
+   upstream rename turns `disabled: true` into a silent no-op, which is
+   worse than an error: the pristine plugin and the replacement then both
+   register the same slots, and the composition dies on a duplicate
+   registration (or, at `priority: -1`, quietly renders the wrong one — see
+   "Replaced-plugin resilience").
+2. **Inject.** The replacement's `inject` array covers the vendor plugin's,
+   so it cannot activate in a composition the original would have refused.
+3. **Slots.** Every slot `name:`/entry `id:` the vendor apply registers is
+   registered by the replacement's apply too.
+4. **Locale.** A forked copy dictionary is a superset of the vendor
+   dictionary it stands in for, key for key, in both `en` and `zh`.
+5. **Forks.** Every vendor file this repo forked still hashes to the
+   revision the fork was last synced against.
+
+Check 5 is the one that carries the weight. The first four are textual and
+cannot prove a forked React component still renders every branch the
+original did — no regex can. What check 5 does instead is refuse to go green
+while a forked file's original has moved, which forces the diff-by-hand that
+actually finds the missing branch. Clear it only by re-reading the vendor
+file beside the fork, porting what changed, and then recording the new hash:
+
+```sh
+pnpm run check:parity                      # red: names each moved original
+# ... re-fork the named files by hand ...
+node scripts/check-replacement-parity.mjs --update   # re-record the hashes
+```
+
+`--update` is not a way to make a red check green. Running it without having
+actually re-forked the files is how the regression this whole section exists
+to prevent gets committed with a passing check next to it.
+
+The check reads the vendored submodule, so run it from the primary checkout
+— or, from a worktree that has no submodule checkout of its own, pass
+`--root <path to the primary checkout>`. It exits telling you so rather than
+reporting a dozen phantom "missing file" failures.
+
+### Diffing a fork against its vendor original
+
+The mechanical form of the by-hand read is "show me every line the vendor
+file has that the fork doesn't", which for a well-maintained fork should be
+nothing but the lines the fork deliberately rewrote — its own doc comment,
+its repointed imports, and its changed signatures:
+
+```sh
+diff -u packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationMainPanel.tsx \
+        packages/workspace-git/client-ui-conversation-enhanced/src/ConversationMainPanel.tsx \
+  | grep '^-' | grep -v '^---'
+```
+
+Every surviving line has to be explainable as an intentional fork edit. A
+line you cannot explain is upstream behaviour the fork dropped.
+
+### Recorded divergences
+
+A replacement may deliberately differ from the row it replaces, but only on
+the record — in the manifest's `divergences`, with the reason — so the next
+reader can tell an intent from an omission. As of vendor pin `0d1f5000`
+there are two:
+
+- **`ui-conversation`** — entering a conversation activates the landing View
+  (Chat) rather than the Session's persisted View preference. The forked
+  File view holds its opened path in component state and cannot restore
+  itself across the per-session remount, so a persisted `view: 'file'` would
+  land on an empty "no file opened yet" notice. See "File tab: a pristine
+  slot, but a fork-only trigger".
+- **`ui-settings-models`** — its `apply()` does not fall back to the
+  pristine plugin's `apply()` on setup failure, the way the other two
+  replacements do. Importing that file for its `apply` value also pulls in
+  its own narrower `LocaleNamespaceMap` declaration, which conflicts with
+  this package's wider one at compile time; see that package's
+  `src/client/index.ts` doc comment for why no import form avoids it.
+
 ## Testing procedures
 
 Two things need testing for any plugin change in this repo: the ordinary
-install path, and the failure path.
+install path, and the failure path. A change that touches a replacement
+package or the submodule pin needs "Replacement parity" above as well.
 
 ### Test `dsh plugin add`/`remove` on a disposable profile
 
@@ -585,6 +713,7 @@ signal as a bug here.
 | A real boot + real browser DOM interaction | Whether the feature actually renders and functions — a served bundle manifest is necessary but not sufficient. Does *not* by itself explain a mis-styled-but-present feature: two packages' components can both render correctly while only one's CSS actually reaches the DOM (see "Check for colliding style-tag ids" above) — a rendering bug that presents as broken *layout*, not a crash, is easy to blame on the wrong file if you skip straight to reading component logic |
 | Colliding style-tag ids (above) | A fork's own CSS Module silently losing its injection race against a same-named vendor CSS Module reached through a fallback import — passes `tsc -b`, `pnpm run build`, and `--dump-config` alike, and requires reading the *built* bundle's content, not just its existence, to catch |
 | Fault injection | Whether a plugin failing takes the rest of `dsh` down with it — no other check exercises this |
+| `pnpm run check:parity` | A replacement that no longer covers the vendor row it disables — a slot, entry id, injected service or locale key the original registered and it doesn't; a disabled row id upstream renamed out from under it; a forked file whose vendor original has moved since the fork was last synced. Every one of these passes `tsc -b` and `pnpm run build` unnoticed, because a replacement that silently dropped a feature is still perfectly type-correct |
 
 ## Explicitly out of scope
 

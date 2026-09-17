@@ -4,6 +4,8 @@ Out-of-tree [`dsh`](https://github.com/deepseek-ai/deepseek-harness) plugin
 bundles, developed against a pinned `deepseek-ai/deepseek-harness` submodule
 instead of a fork.
 
+[`CONSTITUTION.md`](CONSTITUTION.md) holds the rules this repo does not
+trade away — read it before a non-trivial change.
 Three independent bundles live here — see [`ARCHITECTURE.md`](ARCHITECTURE.md)
 for the full package inventory, the seam each package registers into, and
 the design rationale:
@@ -124,8 +126,14 @@ something out.
    subsection for any real design decision (why this seam, not that one).
 6. **Bumping the submodule pin:** `git submodule update --remote` inside
    `packages/_vendor/deepseek-harness`, then `pnpm install`, rebuild both
-   faces (Getting started, above), and re-run verification — treat it like
-   any other dependency bump.
+   faces (Getting started, above), and re-run verification. It is *not*
+   like any other dependency bump in one respect: three packages here
+   disable a vendor plugin row and stand in for it, so a pin bump that adds
+   a slot, a locale key or a config field upstream silently leaves those
+   replacements registering last release's surface — with a clean
+   typecheck. Run `pnpm run check:parity`, re-fork whatever it names, and
+   only then record the new hashes; see `ARCHITECTURE.md`'s "Replacement
+   parity" and [`CONSTITUTION.md`](CONSTITUTION.md) Article III–IV.
 
 Every package here targets `deepseek-ai/deepseek-harness` upstream
 directly.
