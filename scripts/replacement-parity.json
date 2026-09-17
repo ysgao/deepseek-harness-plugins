@@ -12,7 +12,12 @@
     "",
     "`divergences` records the places a replacement deliberately does NOT match the",
     "row it replaces. Nothing enforces these; they exist so the next pin bump can",
-    "tell an intended difference from an omission."
+    "tell an intended difference from an omission.",
+    "",
+    "`forkOnly` is for a package that forks a vendor FILE without disabling any",
+    "vendor plugin row, so checks 1-4 have nothing to judge. Only the fork-hash",
+    "check (5) runs over these, which is the one that forces the by-hand re-read",
+    "a pin bump needs."
   ],
   "vendorPin": "0d1f50007f9bca3f52b06e1c3074fa14d5fb0720",
   "replacements": [
@@ -136,6 +141,35 @@
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/locales.ts",
           "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/locales.ts",
           "sha256": "528f47fe1b652773"
+        }
+      ]
+    }
+  ],
+  "forkOnly": [
+    {
+      "package": "dsh-plugins-mcp-client-oauth",
+      "packagePath": "packages/mcp-connector/mcp-client-oauth",
+      "why": "Adds a streamable-http-oauth transport to the mcp-client bridge. createTransport is reached through a plain relative import no seam can redirect, so adding a transport case means owning the file that calls it. Disables no vendor row: @deepseek-ai/dsh-mcp-client stays installable and instantiable beside it.",
+      "forks": [
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/connection.ts",
+          "fork": "packages/mcp-connector/mcp-client-oauth/src/connection.ts",
+          "sha256": "06dc1b3a1297b8b2"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/transport.ts",
+          "fork": "packages/mcp-connector/mcp-client-oauth/src/transport.ts",
+          "sha256": "6f3fca685af3d565"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/tools.ts",
+          "fork": "packages/mcp-connector/mcp-client-oauth/src/tool-bridge.ts",
+          "sha256": "1c5d889df72f83b1"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/server-context.ts",
+          "fork": "packages/mcp-connector/mcp-client-oauth/src/server-context.ts",
+          "sha256": "02ca9fe759891788"
         }
       ]
     }

@@ -6,7 +6,7 @@ instead of a fork.
 
 [`CONSTITUTION.md`](CONSTITUTION.md) holds the rules this repo does not
 trade away — read it before a non-trivial change.
-Three independent bundles live here — see [`ARCHITECTURE.md`](ARCHITECTURE.md)
+Four independent bundles live here — see [`ARCHITECTURE.md`](ARCHITECTURE.md)
 for the full package inventory, the seam each package registers into, and
 the design rationale:
 
@@ -20,6 +20,11 @@ the design rationale:
   `dsh-plugin-terminal`, not of `deepseek-harness` itself — see its own
   `README.md` for what was changed and why (an unauthenticated-shell-access
   bug and a broken `node-pty` prebuild in the upstream version).
+- **`packages/mcp-connector/`** — MCP connectors, including remote servers
+  behind OAuth 2.0. A superset of `@deepseek-ai/dsh-mcp-client` (same stdio
+  and static-header transports, same config, same tool names) plus an
+  authorization-code flow with unattended token refresh, a durable connector
+  registry, a Settings page, and a `--json` CLI an agent can drive.
 
 ## Getting started
 
@@ -72,6 +77,7 @@ first `plugin add` against it is enough to bring the whole profile up:
 ./dsh plugin --profile web add "$(pwd)/packages/workspace-git/bundle-workspace-git"
 ./dsh plugin --profile web add "$(pwd)/packages/anthropic-subscription/bundle-anthropic-subscription"
 ./dsh plugin --profile web add "$(pwd)/packages/terminal/dsh-plugin-terminal"
+./dsh plugin --profile web add "$(pwd)/packages/mcp-connector/bundle-mcp-connector"
 ./dsh --profile web
 ```
 

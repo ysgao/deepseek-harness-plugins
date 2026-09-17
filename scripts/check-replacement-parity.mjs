@@ -199,6 +199,17 @@ for (const entry of manifest.replacements) {
   checkForks(entry)
 }
 
+// Fork-only packages disable no vendor row, so checks 1-4 have nothing to
+// judge — but check 5 still applies, and is the one that carries the weight.
+// A package that forks a vendor FILE without replacing its plugin row (see
+// `dsh-plugins-mcp-client-oauth`, which forks the mcp-client connection
+// supervisor purely to add a transport case) would otherwise drift silently
+// across a pin bump, which is exactly the failure this whole script exists to
+// prevent.
+for (const entry of manifest.forkOnly ?? []) {
+  checkForks({ ...entry, row: entry.package })
+}
+
 if (UPDATE) {
   writeFileSync(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`)
   console.log(
@@ -212,4 +223,6 @@ if (failures.length > 0) {
   console.error('\nSee ARCHITECTURE.md "Replacement parity" for what each check means.\n')
   process.exit(1)
 }
-console.log(`replacement parity: ${manifest.replacements.length} replacement(s) OK`)
+console.log(
+  `replacement parity: ${manifest.replacements.length} replacement(s) OK`
+  + `, ${String((manifest.forkOnly ?? []).length)} fork-only package(s) OK`)

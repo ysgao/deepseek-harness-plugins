@@ -1,6 +1,6 @@
 # Architecture
 
-This repo hosts three independent, **out-of-tree** `dsh` plugin bundles:
+This repo hosts four independent, **out-of-tree** `dsh` plugin bundles:
 
 1. **`packages/workspace-git/`** — the File manager sidebar (file tree,
    preview, in-app edit, side-by-side git diff) and its git status/commit
@@ -11,6 +11,9 @@ This repo hosts three independent, **out-of-tree** `dsh` plugin bundles:
    the third-party npm package `dsh-plugin-terminal` (not of
    `deepseek-harness`) — see "Why fork instead of patching `node_modules`"
    in its own `README.md`.
+4. **`packages/mcp-connector/`** — MCP connectors, including remote servers
+   behind OAuth 2.0: a superset of `dsh-mcp-client`, a durable connector
+   registry, its RPC controller, a Settings page, and a CLI.
 
 None of the first two bundles patch, copy, or fork any file under
 `packages/_vendor/deepseek-harness/`. Every package in them either *depends
@@ -428,6 +431,99 @@ session, or this package installed without the File-tab package
 (`dsh-plugins-client-ui-conversation-files`) — `FilesNode` falls back to its
 own in-app preview modal in both cases, so the two packages remain
 independently useful.
+
+### `packages/mcp-connector/` — MCP connectors with OAuth 2.0
+
+| Package | Role |
+|---|---|
+| `dsh-plugins-mcp-client-oauth` | A superset of `@deepseek-ai/dsh-mcp-client`: the same stdio and static-header Streamable HTTP transports with identical config fields, defaults, reconnect policy, `serverName` reservation and model-facing tool names, plus a `streamable-http-oauth` transport that hands the MCP SDK an `OAuthClientProvider` backed by `ctx.credentials` and driven through `ctx.authorization` |
+| `dsh-plugins-mcp-connector-registry` | The durable `mcp-connector` settings section and a live mount reconciler; publishes `ctx.mcpConnectors` |
+| `dsh-plugins-api-mcp-connector-controller` | Typert Host controller: the `mcpConnectors` Remote namespace, with its own notice/prompt stream |
+| `dsh-plugins-client-remotes-mcp-connector` | Mounts that namespace's generated Client contribution — see "Plugin isolation" |
+| `dsh-plugins-client-ui-settings-mcp-connector` | Settings > MCP connectors; an *additive* `settings.section` registration, so no vendor row is disabled |
+| `dsh-plugins-cli-mcp-connector` | Standalone `dsh --profile mcp <command>` CLI, every command `--json` so an agent can drive it |
+| `dsh-plugins-bundle-mcp-connector` | `cordis.patch.yml` bundle: the registry, the controller, the Remote mount, and the Settings page |
+
+#### Why this bundle exists at all
+
+`@deepseek-ai/dsh-mcp-client` at pin `0d1f5000` offers exactly two
+authentication shapes — a spawned stdio child with env vars, or a Streamable
+HTTP URL with a *static* `headers` dictionary. Its transport factory builds
+`StreamableHTTPClientTransport` with `{ requestInit: { headers } }` and passes
+no `authProvider`, so there is no authorization-code leg and no refresh
+anywhere in the package. A static header cannot carry a token that expires
+hourly, which is what every OAuth-gated remote MCP server issues — Google's
+official Gmail and Drive MCP servers among them. Both publish RFC 9728
+metadata naming `https://accounts.google.com/` as their authorization server,
+and that server publishes no `registration_endpoint`, so Dynamic Client
+Registration is unavailable and a hand-registered client id *and secret* are
+mandatory. That last fact is why the client pair is stored in the credential
+record rather than assumed to be mintable.
+
+#### What is forked, and why it is not a "replacement"
+
+This bundle disables no vendor plugin row, so CONSTITUTION.md Article III's
+superset obligation does not apply to it — but it does fork two vendor *files*
+(`mcp-client`'s `connection.ts` and `transport.ts`) and reimplement two more
+(`tools.ts`'s name/sync halves as `tool-bridge.ts`, and `server-context.ts`).
+The fork is minimal by construction: `createTransport` is reached through a
+plain relative import that no configuration seam can redirect, so adding a
+transport case means owning the file that calls it. The supervision logic
+inside `connection.ts` is the vendor's, unchanged, with three marked fork
+points.
+
+`tool-bridge.ts` is a reimplementation rather than an import because the vendor
+keeps `publicToolName`/`syncTools` behind its `./src/*` export, and a `./src/*`
+import resolves to a raw `.ts` file plain Node ESM cannot load — a Host package
+cannot do what this repo's browser-bundled Client packages do with that same
+export. Everything difficult (`createMcpToolDefinition`) is imported as a real
+value from the vendor's package entry.
+
+Those four files are recorded in `scripts/replacement-parity.json`'s new
+`forkOnly` array. Checks 1-4 have nothing to judge for a package that replaces
+no row; check 5 — the fork-hash check that forces the by-hand re-read — runs
+over them exactly as it does for the three real replacements.
+
+#### `@deepseek-ai/dsh-mcp-client` is not disabled
+
+It is not a bundle row this repo replaces: a profile instantiates it *once per
+MCP server* through its own `cordis.patch.yml` rows, and disabling it would
+take those servers down. The two plugins coexist; because the config field
+names and derived tool names are identical, migrating one server across is a
+one-word `name:` edit. The one hazard is the same `serverName` live on both at
+once — each keeps its own namespace reservation, so the duplicate is caught not
+by that guard but later by `ctx.tools.register`, which refuses the duplicate
+public name and rolls that server's whole tool generation back with a logged
+error.
+
+#### Reserved Remote method names
+
+The Client gateway installs every Remote method as a property of its namespace
+*service* and refuses a name shadowing one of that service's own members:
+`ctx`, `empty`, `invokeRemote`, `methods`, `name`, `namespace`, plus
+`RemoteNamespaceService`'s own `assertMethodAvailable`, `has`, `install`,
+`installDirect`, `installScoped`, and `remove`. Nothing catches a collision
+until a browser boots — the Host mounts fine, the Client `$mount` throws
+`client api: method "…/remove" conflicts with its namespace service`, the
+mounting plugin catches and logs it per "Plugin isolation", and the only
+visible symptom is a settings page that never appears. This bundle's delete
+operation is therefore `removeConnector`. Check any new `@Remote` method name
+against that list.
+
+#### Typert generation and `tsconfig.host.json`
+
+The generator names a wire-crossing type through its declaring package's export
+map, and resolves that only for packages listed **top-level** in
+`tsconfig.host.json`; for anything else it emits a bare name with no import
+(harmless, and already the case for `dsh-plugins-api-authorization-controller`'s
+own `AuthorizationEntry`/`CredentialKey`). Listing `connector-registry` and
+`mcp-client-oauth` there made the generator crash outright —
+`getExportsOfModule` on an undefined module symbol — while resolving a type
+whose sources were not in the filtered program, so neither is listed; both are
+still typechecked and built through `api-mcp-connector-controller`'s own
+project references. For the same naming reason, a `@Remote` signature must not
+use a mapped type (`Partial<T>`) or an anonymous object literal; declare a
+named interface.
 
 ### `packages/terminal/` — Bottom terminal panel
 

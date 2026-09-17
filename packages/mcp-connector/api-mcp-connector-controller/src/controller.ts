@@ -124,12 +124,23 @@ export class McpConnectorController extends TypertRemoteService {
   /**
    * Remove a connector and, unless asked otherwise, forget its stored
    * authorization along with it.
+   *
+   * Named `removeConnector` rather than the obvious `remove`: the Client
+   * gateway installs every Remote method as a property of its namespace
+   * *service*, and refuses any method name that shadows one of that service's
+   * own members — `RemoteNamespaceService.prototype.remove` is one of them, so
+   * `mcpConnectors/remove` fails the whole namespace mount at boot with
+   * "conflicts with its namespace service". The reserved set is
+   * `ctx`/`empty`/`invokeRemote`/`methods`/`name`/`namespace` plus that class's
+   * own methods (`assertMethodAvailable`, `has`, `install`, `installDirect`,
+   * `installScoped`, `remove`) — worth knowing before naming any future
+   * `@Remote` method, because nothing catches it until a browser boots.
    * @param id - the connector to remove.
    * @param keepAuthorization - keep the stored OAuth grant behind; omitted forgets it.
    * @throws RemoteError `mcp-connectors/not-found` when nothing is configured under that id.
    */
   @Remote
-  async remove(id: string, keepAuthorization: boolean | undefined): Promise<void> {
+  async removeConnector(id: string, keepAuthorization: boolean | undefined): Promise<void> {
     try {
       await this.ctx.mcpConnectors.remove(id, keepAuthorization !== true)
     } catch (error) {

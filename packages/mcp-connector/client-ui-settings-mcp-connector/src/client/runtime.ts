@@ -156,7 +156,9 @@ export class McpConnectorRuntime extends Service implements IMcpConnectors {
 
   /** @inheritdoc */
   async remove(id: string): Promise<void> {
-    unwrap(await this.remote.remove(id, undefined))
+    // `removeConnector`, not `remove` — see the controller's own note on the
+    // Client gateway's reserved namespace-method names.
+    unwrap(await this.remote.removeConnector(id, undefined))
     await this.refresh()
   }
 
