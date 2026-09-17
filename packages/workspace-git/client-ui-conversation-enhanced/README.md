@@ -39,39 +39,90 @@ To get there:
   this codebase's standing convention for optional cross-package services.
 - `src/apply.ts` is a near-verbatim fork of the original's own `apply.ts` —
   same service construction (`UiConversation`, `InputHub`,
-  `ComposerBlockRegistry`, `ComposerSubmissionPolicy`), same four slot
-  registrations, same locale dictionaries, same `ConversationController`/
-  `todoDockEntry`/`queueDockEntry` plugins, all imported unchanged from the
-  original package's own `./src/*` export. The edits: `registerConversationRoot`,
-  `registerConversationSession`, and `registerConversationHeader` each gain
-  an `everOpenedFile` hook (`EnhancedConversationInjected`/
-  `EnhancedConversationSessionInjected`/`EnhancedConversationSessionHeaderInjected`,
-  each widening its pristine counterpart), `registerConversationSession`
-  additionally gains a `pendingFileOpen` hook and `completePendingFileOpen`
-  callback, all three register this package's own forked components instead
-  of the pristine ones, and one `ctx.provide('conversationFileOpener', ...)`
-  call is added at the end.
+  `ComposerBlockRegistry`, `ComposerSubmissionPolicy`), same `commandUi`
+  File-action registration, same five slot registrations (now including the
+  top-level `main`-slot `ConversationPanel` wrapper — see "The `main`/
+  `main.conversation` split" below), same locale dictionaries, same
+  `ConversationController`/`todoDockEntry`/`queueDockEntry` plugins, all
+  imported unchanged from the original package's own `./src/*` export. The
+  edits: `registerConversationRoot`, `registerConversationSession`, and
+  `registerConversationHeader` each gain an `everOpenedFile` hook
+  (`EnhancedConversationInjected`/`EnhancedConversationSessionInjected`/
+  `EnhancedConversationSessionHeaderInjected`, each widening its pristine
+  counterpart), `registerConversationSession` additionally gains a
+  `pendingFileOpen` hook and `completePendingFileOpen` callback, all three
+  register this package's own forked components instead of the pristine
+  ones, and one `ctx.provide('conversationFileOpener', ...)` call is added
+  at the end.
 - `src/ConversationRoot.tsx` is a fork of the original's own
-  `skeleton/ConversationRoot.tsx` — same body (Hero chrome, composer
-  positioning, the composer chain, width handles), with `hero` (and
+  `skeleton/ConversationRoot.tsx` — now a thin two-line wrapper in the
+  pristine package too, delegating its whole body to `ConversationMainPanel`;
+  this fork's only edit is delegating to `./ConversationMainPanel.tsx`
+  instead of vendor's own.
+- `src/ConversationMainPanel.tsx` is a fork of the original's own (new)
+  `skeleton/ConversationMainPanel.tsx` — same body (Hero chrome, composer
+  positioning, the resize-observer width publishing), with `hero` (and
   therefore `phase`) also staying `false` once `everOpenedFile` is true.
+  `ConversationContent.tsx` (the composer chain, width-handle drag
+  plumbing) is reused unchanged.
 - `src/ConversationSession.tsx` is a fork of the original's own
-  `skeleton/ConversationSession.tsx` — both its exports.
-  `ConversationSession` gains one effect that drains a pending
-  `conversationFileOpener` request into this Session's own
+  `skeleton/ConversationSession.tsx` — now just `ConversationSessionHeader`
+  in the pristine package too (`ConversationSession` is a thin wrapper
+  delegating to `DefaultConversationViews`, extracted upstream from what
+  used to be this same file). `ConversationSessionHeader` here widens the
+  pristine `session.blank && conversationPhase(...) === 'blank'` gate (which
+  hides the header tabs) with the same `!everOpenedFile` escape hatch
+  `ConversationMainPanel` uses for `hero`. This fork's `ConversationSession`
+  delegates to `./DefaultConversationViews.tsx` instead of vendor's own.
+- `src/DefaultConversationViews.tsx` is a fork of the original's own (new)
+  `skeleton/DefaultConversationViews.tsx` — the pristine `ConversationSession`
+  body, extracted upstream to its own file. Gains one effect that drains a
+  pending `conversationFileOpener` request into this Session's own
   `actions.openView('file', focus)` (the same one-shot
   `viewRequest`/`completeViewRequest` mechanism the File tab already reads
   — see `dsh-plugins-client-ui-conversation-files/src/FileView.tsx`'s
-  `OpenFileFocus`), and both it and `ConversationSessionHeader` widen the
-  pristine `session.blank && conversationPhase(...) === 'blank'` gate (which
-  hides the header tabs and the view body alike) with the same
-  `!everOpenedFile` escape hatch `ConversationRoot` uses for `hero`.
-  `InputBar` is reused unchanged.
-- `src/ConversationRoot.module.css` is a local copy of the original's CSS
-  Module, not a cross-package import: the CSS-modules-inline transform
-  resolves only relative paths (the same finding
-  `../client-ui-workspace-enhanced` made for `WorkspaceBrowser.module.css`).
-  Both forked skeleton files share this one copy.
+  `OpenFileFocus`), and widens the same blank/Hero gate with the
+  `!everOpenedFile` escape hatch. `InputBar` is reused unchanged.
+
+### The `main`/`main.conversation` split
+
+Upstream now registers the Conversation shell one level deeper: a thin
+`ConversationPanel` (reused unchanged) occupies the shared `main` slot under
+key `conversation`, declaring `main.conversation` as its one child, and
+`ConversationMainPanel` (this package's own fork) registers into
+`main.conversation` — where the whole shell used to register directly into
+a top-level `conversation` slot. This fork's `apply.ts` mirrors both
+registrations (the `main`-key wrapper and `main.conversation` itself),
+still guarding each independently and at `priority: -1`, so bundle
+install-order resilience is unchanged in spirit even though the slot names
+moved.
+
+### Cross-package CSS Modules, not a local copy
+
+`ConversationMainPanel.tsx`, `ConversationSession.tsx`, and
+`DefaultConversationViews.tsx` all import `ConversationRoot.module.css`
+**cross-package**, from `@deepseek-ai/dsh-client-ui-conversation`'s own
+`./src/*` export — NOT a local copy, unlike `../client-ui-workspace-
+enhanced`'s `WorkspaceBrowser.module.css` (a genuinely self-contained,
+wholesale fork). The reason is upstream's own split: `ConversationContent.tsx`
+(reused unchanged) and vendor's own `DefaultConversationViews.tsx` (whose
+body this package's own fork replaces) both import this identical file via
+a *relative* path from inside `dsh-client-ui-conversation`'s own source
+tree. `tsdown.client-plugin-preset.ts`'s CSS-Modules-inline transform
+resolves a `.module.css` specifier to its real absolute source path either
+way (a bare cross-package specifier through Node module resolution rooted
+at the importer's directory, a relative one directly) and the bundler
+de-duplicates by that resolved absolute path — so this package's own
+`ConversationMainPanel` root `<div>` and the reused-unchanged
+`ConversationContent`'s `.viewArea`/`.header`/etc. compile against the
+*same* CSS Modules scope, with the *same* hashed classnames, letting
+compound selectors like `.root[data-phase='active'] .viewArea` (declared in
+that one shared file) actually match in the DOM. A local copy here — correct
+for `WorkspaceBrowser.module.css`'s single-file, self-contained fork — would
+silently break every one of those compound selectors: this package's own
+`.root` and the reused component's own `.viewArea` would compile from two
+different files, with two different scope hashes, and the selector would
+never match either.
 
 ## Why inlining the original package's internals is safe here
 

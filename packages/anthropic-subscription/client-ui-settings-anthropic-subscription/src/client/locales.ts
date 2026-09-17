@@ -1,11 +1,16 @@
 /**
  * Copy dictionaries for the Models settings section, forked from
  * `@deepseek-ai/dsh-client-ui-settings-models`'s own `locales.ts` — the four
- * `signIn*` keys are the only addition; every other key is unchanged. Forked
- * (not imported) because `ModelsSection.tsx`/`ProviderEditor.tsx` (also
- * forked) bind their own `t` to this exact dictionary, and every other
- * unchanged sibling file this package reuses accepts a strictly wider `t`
- * (see this package's README).
+ * `signIn*` keys are this package's own addition; every other key (including
+ * `deepSeekChatBaseUrl`/`deepSeekMessagesBaseUrl`/`deepSeekEndpointHint`/
+ * `customBaseUrlInvalid`, added upstream after this fork's initial cut) is
+ * kept in lockstep with the original dictionary. Forked (not imported)
+ * because `ModelsSection.tsx`/`ProviderEditor.tsx` (also forked) bind their
+ * own `t` to this exact dictionary, and every other unchanged sibling file
+ * this package reuses accepts a strictly wider `t` (see this package's
+ * README) — so this key set must remain a superset of the original's own,
+ * never a subset, or passing this package's own `t` to one of those reused
+ * components fails to compile.
  */
 
 /** English strings (the key-set source of truth for this pair). */
@@ -43,6 +48,9 @@ export const en = {
   customized: 'Customized settings',
   baseUrl: 'Base URL',
   baseUrlDefault: 'Provider default',
+  deepSeekChatBaseUrl: 'https://api.deepseek.com',
+  deepSeekMessagesBaseUrl: 'https://api.deepseek.com/anthropic',
+  deepSeekEndpointHint: 'Use an endpoint compatible with the configured connection.',
   models: 'Models',
   modelsInherited: 'Using the adapter defaults',
   modelsCustomized: 'Customized model catalog',
@@ -94,6 +102,7 @@ export const en = {
   customApi: 'API protocol',
   customApiUnset: 'Not selected',
   customNeedsBaseUrl: 'A custom provider needs a base URL.',
+  customBaseUrlInvalid: 'Enter a valid HTTP or HTTPS URL.',
   customNeedsModels: 'A custom provider needs at least one model.',
   customBaseUrlPlaceholder: 'https://gateway.example/v1',
   settingsPathUnresolvable: 'unresolvable settings path',
@@ -153,6 +162,9 @@ export const zh: { [Key in keyof typeof en]: string } = {
   customized: '自定义设置',
   baseUrl: 'API 地址',
   baseUrlDefault: '提供方默认',
+  deepSeekChatBaseUrl: 'https://api.deepseek.com',
+  deepSeekMessagesBaseUrl: 'https://api.deepseek.com/anthropic',
+  deepSeekEndpointHint: '请填写与当前连接配置兼容的 API 地址。',
   models: '模型目录',
   modelsInherited: '正在使用适配器默认模型',
   modelsCustomized: '已自定义模型目录',
@@ -204,6 +216,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   customApi: 'API 协议',
   customApiUnset: '未选择',
   customNeedsBaseUrl: '自定义提供方需要填写 API 地址。',
+  customBaseUrlInvalid: '请输入有效的 HTTP 或 HTTPS 地址。',
   customNeedsModels: '自定义提供方至少需要一个模型。',
   customBaseUrlPlaceholder: 'https://gateway.example/v1',
   settingsPathUnresolvable: '无法解析设置路径',

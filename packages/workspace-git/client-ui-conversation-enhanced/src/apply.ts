@@ -18,8 +18,12 @@
  * (`./ConversationRoot.tsx`, `./ConversationSession.tsx`) instead of the
  * pristine ones — their blank/Hero gate needs to stay open once
  * `everOpenedFile` is true, so a file opened before a session's first turn
- * doesn't land in a hidden view. `InputBar` is reused unchanged from
- * `@deepseek-ai/dsh-client-ui-conversation`'s own `./src/*` export.
+ * doesn't land in a hidden view. The pristine package's own top-level
+ * `main`-slot wrapper registration (`ConversationPanel`, mounting
+ * `main.conversation` beneath the shared `main` root occupant) and
+ * `InputBar`'s `conversation.composer.bar` registration are both reused
+ * verbatim — `InputBar` unchanged from `@deepseek-ai/dsh-client-ui-
+ * conversation`'s own `./src/*` export, `ConversationPanel` likewise.
  *
  * Resilience (see `../../../../ARCHITECTURE.md`'s "Plugin isolation"):
  * every `ctx.slots.register()` call below registers at `priority: -1`, one
@@ -36,28 +40,34 @@
  * overwhelmingly common path where the fallback never fires — see
  * `styleInjectionModule` in `tsdown.client-plugin-preset.ts` for the CSS
  * injection tag-identity collision that caused with this package's own
- * `ConversationRoot.module.css`.
+ * `ConversationRoot.module.css`. (This package's own forked skeleton files
+ * import that CSS Module cross-package now, not as a local copy — see
+ * `./ConversationMainPanel.tsx`'s own doc comment for why — so this
+ * specific collision risk no longer applies to them, but the dynamic-import
+ * discipline remains correct practice for the same reason it always was:
+ * avoiding unconditional evaluation of vendor's whole component tree.)
  *
  * Once past that point each individual slot registration
- * (`settings.general.item`, and each of the four Conversation-assembly
- * registrations) is independently try/catch-guarded instead: a failure
- * there degrades only that one row, rather than either crashing the whole
- * app or falling back to a full pristine replay that would double-register
- * whatever already succeeded.
+ * (`settings.general.item`, the `main`-slot wrapper, and each of the four
+ * Conversation-assembly registrations) is independently try/catch-guarded
+ * instead: a failure there degrades only that one row, rather than either
+ * crashing the whole app or falling back to a full pristine replay that
+ * would double-register whatever already succeeded.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import { IconPaperclipOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createSnapshotStore, type BoundActions, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only service and declaration merges used by this assembly. Pristine
-// apply.ts gets the SlotMap['conversation'] merge (declared in ui-layout,
-// not ui-conversation) for free from a sibling file in that package's own
-// compiled program; this package's program doesn't include that sibling,
-// so the import is explicit here (see ../client-ui-workspace-enhanced's
-// own README for the same "type-only imports don't pull in transitively"
-// finding).
+// apply.ts gets the SlotMap['main']/['main.conversation'] merge (declared in
+// ui-layout, not ui-conversation) for free from a sibling file in that
+// package's own compiled program; this package's program doesn't include
+// that sibling, so the import is explicit here (see ../client-ui-workspace-
+// enhanced's own README for the same "type-only imports don't pull in
+// transitively" finding).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -84,6 +94,7 @@ import { EnterBehaviorRow } from '@deepseek-ai/dsh-client-ui-conversation/src/cl
 import type {
   EnterBehaviorRowInjected,
 } from '@deepseek-ai/dsh-client-ui-conversation/src/client/settings/EnterBehaviorRow.tsx'
+import { ConversationPanel } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/ConversationPanel.tsx'
 import { InputBar } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/InputBar.tsx'
 import { todoDockEntry } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/TodoPanel.tsx'
 import { resolveActiveView } from '@deepseek-ai/dsh-client-ui-conversation/src/client/view-selection.ts'
@@ -154,9 +165,22 @@ const ABSENT_EVER_OPENED = {
 }
 
 interface WorkspaceNavigation {
-  connectWorkspace(
+  openSession(sessionId: SessionId): void
+  openWorkspace(
     workspaceId: Parameters<ConversationInjected['selectWorkspace']>[0],
-  ): Promise<SessionId>
+    beforeOpen: (sessionId: SessionId) => void,
+  ): Promise<void>
+}
+
+/** Action registration used by the composer without importing its command-UI consumer. */
+interface FileCommandRegistry {
+  register(contribution: {
+    name: string
+    label(): string
+    icon: typeof IconPaperclipOutline16
+    available(session: { sessionId: SessionId }): boolean
+    ui: { kind: 'action'; run(session: { sessionId: SessionId }): void }
+  }): () => void
 }
 
 /** Business callbacks injected into the resident Conversation shell, widened with the sticky ever-opened-a-file bit. */
@@ -229,14 +253,7 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
       'dsh-plugins-client-ui-conversation-enhanced: enhanced setup failed — falling back to the pristine dsh-client-ui-conversation plugin',
     )
     ctx.logger.error(error)
-    // Dynamic, not static: a static top-level import of vendor's apply.ts
-    // unconditionally evaluates (and CSS-injects) vendor's whole
-    // Conversation component tree even on the overwhelmingly common path
-    // where this fallback never fires, racing this package's own
-    // `ConversationRoot.module.css` injection for the same tag id (see
-    // ../../../../ARCHITECTURE.md's "Replaced-plugin resilience"). Loading it
-    // only here means the fallback's own CSS injection wins the race
-    // whenever it is the one that actually runs.
+    // Dynamic, not static — see this file's own doc comment.
     const { apply: pristineApply } = await import('@deepseek-ai/dsh-client-ui-conversation/src/client/apply.ts')
     pristineApply(ctx, config)
     return
@@ -288,9 +305,9 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
   // deliberately ignores that preference and activates the landing View
   // (`null` -> `resolveActiveView`'s Chat default) instead, because every
   // mount of a Session's subtree now lands on Chat regardless of what was
-  // persisted — see `./ConversationSession.tsx`'s own landing effect for why
-  // (the File view cannot restore what it was showing). Activation is
-  // monotonic per Session, so a View the user then selects by hand
+  // persisted — see `./DefaultConversationViews.tsx`'s own landing effect
+  // for why (the File view cannot restore what it was showing). Activation
+  // is monotonic per Session, so a View the user then selects by hand
   // (`selectView`/`openView` below) still activates on its own.
   const activateLandingView = (sessionId: SessionId): void => {
     activateView(sessionId, null)
@@ -349,6 +366,17 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
   const inputHub = new InputHub(ctx, t)
   const composerBlocks = new ComposerBlockRegistry()
 
+  ctx.inject(['commandUi'], (scope) => {
+    const commands = scope.get('commandUi') as FileCommandRegistry
+    scope.effect(() => commands.register({
+      name: 'file',
+      label: () => t('input.file'),
+      icon: IconPaperclipOutline16,
+      available: session => inputHub.canPickFiles(session.sessionId),
+      ui: { kind: 'action', run: (session) => { inputHub.pickFiles(session.sessionId) } },
+    }), 'ui-conversation: File action')
+  })
+
   // Conversation assembly and input share the Session binding lifecycle. The
   // source roster is installed before any consuming Slot entry.
   ctx.uiSession.provide({
@@ -369,7 +397,7 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
   })
 
   const registerConversationRoot = () => slots.register({
-    name: 'conversation',
+    name: 'main.conversation',
     priority: -1,
     locale: NS,
     children: {
@@ -387,8 +415,7 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
         composerBlock: sessionId === undefined ? ABSENT_BLOCK : composerBlocks.storeFor(sessionId),
         everOpenedFile: sessionId === undefined ? ABSENT_EVER_OPENED : fileOpenRegistry.hookForEverOpened(sessionId),
       },
-      selectWorkspace: async (workspaceId) => {
-        const nextId = await workspaceNavigation.connectWorkspace(workspaceId)
+      selectWorkspace: workspaceId => workspaceNavigation.openWorkspace(workspaceId, (nextId) => {
         if (sessionId !== undefined && nextId !== sessionId) {
           const from = inputHub.shell(sessionId)
           const draft = from.snapshot.draft
@@ -408,8 +435,7 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
             }
           }
         }
-        sessions.open(nextId)
-      },
+      }),
     }),
   }, ConversationRoot)
 
@@ -452,7 +478,7 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
       sessionId: SessionId, actions: BoundActions<typeof conversationStore>,
     ): EnhancedConversationSessionHeaderInjected => ({
       hooks: { conversationViews, everOpenedFile: fileOpenRegistry.hookForEverOpened(sessionId) },
-      open: (id) => { sessions.open(id) },
+      open: (id) => { workspaceNavigation.openSession(id) },
       selectView: (view) => {
         activateView(sessionId, view)
         actions.setView(view)
@@ -467,6 +493,7 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
     children: {
       'conversation.input.attachments': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.overlay': { kind: 'list', scope: 'session' },
+      'conversation.input.permission': { kind: 'single', scope: 'session' },
       'conversation.input.left': { kind: 'list', scope: 'session' },
       'conversation.input.plan': { kind: 'single', scope: 'session' },
       'conversation.input.right': { kind: 'list', scope: 'session' },
@@ -483,7 +510,6 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
           retryFileUpload: undefined,
           toggleCommandMenu: undefined,
           stop: undefined,
-          command: undefined,
           hooks: {
             busyEnter: submissionPolicy.busyEnter,
             fileUploads: ABSENT_FILE_UPLOADS,
@@ -536,12 +562,6 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
             // Stop failure is published through Session promptError.
           })
         },
-        command: async (line) => {
-          const session = sessions.binding(sessionId)?.session
-          if (session === undefined) return false
-          const result = await session.command(line)
-          return result.ok && result.value.matched
-        },
         hooks: {
           busyEnter: submissionPolicy.busyEnter,
           fileUploads: conversation.fileUploads,
@@ -553,19 +573,28 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
     },
   }, InputBar)
 
-  slots.inject('conversation', function* () {
+  slots.inject('main', function* () {
     const attempts: ReadonlyArray<{ readonly label: string; readonly register: () => () => void }> = [
-      { label: 'conversation', register: registerConversationRoot },
+      {
+        label: 'main',
+        register: () => slots.register({
+          name: 'main',
+          key: 'conversation',
+          priority: -1,
+          children: { 'main.conversation': { kind: 'single', scope: 'session-maybe' } },
+        }, ConversationPanel),
+      },
+      { label: 'main.conversation', register: registerConversationRoot },
       { label: 'conversation.session', register: registerConversationSession },
       { label: 'conversation.session.header', register: registerConversationHeader },
       { label: 'conversation.composer.bar', register: registerComposerBar },
     ]
-    // Each registration is independently guarded: registerConversationRoot
-    // declares the child slots the other three register into, so if it
-    // fails the others would fail too (their target slots never existed) —
-    // catching each individually still means every failure here logs and
-    // is skipped, never propagates out of this generator to crash the
-    // whole Client boot.
+    // Each registration is independently guarded: the 'main' row declares
+    // main.conversation, registerConversationRoot declares the child slots
+    // the other three register into, so if either fails the ones depending
+    // on it would fail too (their target slots never existed) — catching
+    // each individually still means every failure here logs and is skipped,
+    // never propagates out of this generator to crash the whole Client boot.
     for (const { label, register } of attempts) {
       try {
         yield register()
@@ -585,10 +614,11 @@ export async function apply(ctx: Context, config: Config = Config({})): Promise<
       if (sessions.binding(sessionId) === undefined) return false
       if (!slots.entries('conversation.view').some(entry => entry.options.id === 'file')) return false
       // Queuing this also marks the session's sticky `everOpenedFile` bit
-      // (see FileOpenRegistry), which is what keeps ConversationRoot/
-      // ConversationSessionHeader/ConversationSession out of their pristine
-      // blank/Hero gate even when the session has never had a first turn —
-      // otherwise a queued request would drain into a hidden view.
+      // (see FileOpenRegistry), which is what keeps ConversationMainPanel/
+      // ConversationSessionHeader/ConversationSession (now DefaultConversation
+      // Views) out of their pristine blank/Hero gate even when the session
+      // has never had a first turn — otherwise a queued request would drain
+      // into a hidden view.
       fileOpenRegistry.request(sessionId, path, workspaceId)
       return true
     },

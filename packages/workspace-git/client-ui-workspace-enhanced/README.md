@@ -28,9 +28,14 @@ To get there:
   (`UiWorkspaceService`, `createWorkspaceViewStore`), same locale
   registration (same `workspace` namespace, same dictionaries, imported
   from the original), same `WorkspacePicker` registration for
-  `conversation.hero.workspace` (completely unmodified). The only addition:
-  `filesNode: ctx.get('workspaceFilesNode')` in the browser's injected
-  props.
+  `conversation.hero.workspace` (completely unmodified), same top-level
+  `inject` array (now including `'layout'` — `UiWorkspaceService`'s own
+  `openSession` dismisses the active layout panel through it, and its
+  `open`/`forkSession` injected callbacks now delegate to
+  `UiWorkspaceService.openSession`/`.forkSession` rather than calling
+  `ctx.sessions` directly, mirroring the pristine plugin's own current
+  `open`/`forkSession` wiring). The only addition: `filesNode:
+  ctx.get('workspaceFilesNode')` in the browser's injected props.
 - `WorkspacePicker`, `UiWorkspaceService`, `createWorkspaceViewStore`,
   `tree.ts`'s group-deriving functions, `Rows.tsx` (`ProjectRowItem`,
   `SessionNodeItem`), and the `workspace` locale dictionaries are all

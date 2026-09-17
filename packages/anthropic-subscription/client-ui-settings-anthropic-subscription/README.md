@@ -16,8 +16,12 @@ replace the plugin instead of patching it").
 
 Four files are forked because they actually change:
 `src/client/ModelsSection.tsx`, `src/client/ProviderEditor.tsx`,
-`src/client/index.ts`, and `src/client/locales.ts` (the last only to add four
-`signIn*` keys). `src/client/AuthorizationPanel.tsx` and
+`src/client/index.ts`, and `src/client/locales.ts` (the four `signIn*` keys
+are this package's own addition; `deepSeekChatBaseUrl`/
+`deepSeekMessagesBaseUrl`/`deepSeekEndpointHint`/`customBaseUrlInvalid`
+were mirrored in afterward, added upstream to the same dictionary this
+package's own `en`/`zh` must stay a superset of — see that file's own doc
+comment). `src/client/AuthorizationPanel.tsx` and
 `src/client/authorization-runtime.ts` are new files with no vendored
 counterpart. Every other file the forked ones depend on —
 `CustomProviderCard`, `DeepSeekModelsEditor`, `DeepSeekOnboardingDialog`,

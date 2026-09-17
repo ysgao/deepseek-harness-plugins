@@ -371,15 +371,17 @@ is scoped to whichever session is currently mounted, and no pristine API
 reaches a live per-session store instance from outside its own render tree.
 `dsh-plugins-client-ui-conversation-enhanced` provides this bridge
 (`conversationFileOpener`) by disabling `dsh-client-ui-conversation`'s own
-row and inserting a replacement that forks `ConversationRoot`,
-`ConversationSessionHeader`, and `ConversationSession` (`InputBar` and
-everything else stay unchanged). All three need forking, not just the one
-whose render body drains the request: `dsh-client-ui-conversation`'s
-pristine `session.blank && conversationPhase(...) === 'blank'` Hero gate is
-duplicated across all three — `ConversationRoot`'s `hero` computation (which
-also decides the composer's docked-vs-centered layout and the width
-handles), `ConversationSessionHeader`'s `hideChrome` (the title/tabs row),
-and `ConversationSession`'s own blank early-return (the view body) — so a
+row and inserting a replacement that forks `ConversationMainPanel`,
+`ConversationSessionHeader`, and `DefaultConversationViews` (`InputBar` and
+everything else stay unchanged; `ConversationRoot.tsx`/`ConversationSession.tsx`
+are thin wrappers, in the pristine package now too, delegating to these
+three). All three need forking, not just the one whose render body drains
+the request: `dsh-client-ui-conversation`'s pristine `session.blank &&
+conversationPhase(...) === 'blank'` Hero gate is duplicated across all
+three — `ConversationMainPanel`'s `hero` computation (which also decides
+the composer's docked-vs-centered layout and the width handles),
+`ConversationSessionHeader`'s `hideChrome` (the title/tabs row), and
+`DefaultConversationViews`'s own blank early-return (the view body) — so a
 session that has never had a first turn would otherwise show a file
 requested from the sidebar in a fully hidden tree, regardless of what
 `openView` is told. Each fork's gate ORs in one more condition: the
@@ -398,7 +400,7 @@ subtree per session id, so clicking a conversation in the sidebar
 rehydrates that Session's persisted store — View selection included — and a
 persisted `view: 'file'` would land on the tab's "no file opened yet"
 resting notice rather than on the file that had been showing. So the fork's
-`ConversationSession` resets the selection to Chat once per mount, and
+`DefaultConversationViews` resets the selection to Chat once per mount, and
 `apply.ts` activates that landing View instead of the persisted preference
 it can no longer honour: entering a conversation always shows Chat. The one
 exception is a `conversationFileOpener` request already queued for the
@@ -503,8 +505,8 @@ fault once done.
 
 ### Check for colliding style-tag ids after touching a fork+fallback package
 
-The incident in "Replaced-plugin resilience" above (`ConversationRoot`'s own
-CSS silently losing its `<style data-plugin-css>` tag to vendor's same-named
+The incident in "Replaced-plugin resilience" above (a fork's own CSS
+silently losing its `<style data-plugin-css>` tag to vendor's same-named
 CSS Module) passed every other check in this file — clean `tsc -b`, clean
 `pnpm run build`, a well-formed `--dump-config` tree — because none of them
 inspect the *content* of the built stylesheet injectors, only whether the
@@ -522,31 +524,55 @@ grep -o '[a-zA-Z0-9_-]*/[a-f0-9]\{8\}-[A-Za-z]*\.module\.css' \
   packages/<group>/<package>/lib/client.js | sort | uniq -c
 ```
 
-Run against `client-ui-conversation-enhanced/lib/client.js` today, this
-lists one line per CSS Module the bundle carries, each with its own hash
-prefix — the healthy state, one row per distinct source file:
+Run against `client-ui-workspace-enhanced/lib/client.js` today, this lists
+one line per CSS Module the bundle carries, each with its own hash prefix:
 
 ```
-   1 dsh-plugins-client-ui-conversation-enhanced/166d3e53-InputBar.module.css
-   1 dsh-plugins-client-ui-conversation-enhanced/472b90bb-HeroShell.module.css
-   1 dsh-plugins-client-ui-conversation-enhanced/5d6d7126-ConversationRoot.module.css
-   1 dsh-plugins-client-ui-conversation-enhanced/ac4dac9d-ConversationRoot.module.css
-   ...
+   1 dsh-plugins-client-ui-workspace-enhanced/095dd4a7-WorkspaceBrowser.module.css
+   1 dsh-plugins-client-ui-workspace-enhanced/d1c85a3e-WorkspacePicker.module.css
+   1 dsh-plugins-client-ui-workspace-enhanced/dff3dc91-WorkspaceBrowser.module.css
+   1 dsh-plugins-client-ui-workspace-enhanced/f137afbc-Rows.module.css
 ```
 
-`ConversationRoot.module.css` legitimately appears **twice** here — once
-for this package's own fork (`ac4dac9d`), once for vendor's, pulled in
-through the lazy pristine-`apply` fallback (`5d6d7126`) — and that's
-correct: two different source files sharing a basename, two different
-hashes, two real tag ids, both stylesheets actually reach the DOM. The
-bug this check would have caught looked different: only **one** entry for
-`ConversationRoot.module.css` despite two source files owning that
+`WorkspaceBrowser.module.css` legitimately appears **twice** here — once
+for this package's own local-copy fork, once for vendor's own file, pulled
+in through the lazy pristine-`apply` fallback — and that's correct: two
+different source files sharing a basename, two different hashes, two real
+tag ids, both stylesheets actually reach the DOM. The bug this check would
+have caught looked different: only **one** entry for
+`WorkspaceBrowser.module.css` despite two source files owning that
 basename, because the pre-fix tag id was the basename alone (no hash),
 so the second file's injection saw a tag that already existed and
 silently no-opped. If you ever see a CSS Module basename you know two
 packages both own (a fork and the vendor file it forks) show up only
 once in this listing, one of them lost that race and its rules never
 reach the DOM.
+
+`client-ui-conversation-enhanced` no longer fits this same shape, and
+that's deliberate, not a regression: its own `ConversationMainPanel.tsx`/
+`ConversationSession.tsx`/`DefaultConversationViews.tsx` import
+`ConversationRoot.module.css` **cross-package** (from
+`@deepseek-ai/dsh-client-ui-conversation`'s own `./src/*` export) rather
+than keeping a local copy, because vendor's own upstream split
+(`ConversationMainPanel`/`ConversationContent`/`DefaultConversationViews`,
+formerly one file) now shares that one CSS Module across this fork's own
+components *and* a reused-unchanged vendor component
+(`ConversationContent.tsx`) in the very same bundle — a local copy would
+give the two halves of one rendered subtree two different compiled scopes,
+silently breaking every compound selector between them (`.root[data-phase=
+'active'] .viewArea`, most concretely). Run the same `grep` against
+`client-ui-conversation-enhanced/lib/client.js` and `ConversationRoot.
+module.css` now appears exactly **once**, even though both this fork and
+the reused `ConversationContent.tsx` (and, if the pristine-`apply` fallback
+ever fires, vendor's own `ConversationRoot.tsx`/`ConversationMainPanel.tsx`
+too) all reference it: the bundler de-duplicates by *resolved absolute
+path*, and a bare cross-package specifier resolves to the identical
+absolute file a sibling's relative import does, so all three land in one
+module instead of two or three. Don't read a *single* entry for that one
+basename in this specific package's bundle as a collision — confirm
+first whether the package genuinely still keeps a local copy (`git status`
+/ `ls src/*.module.css`) before treating this check's "only one entry"
+signal as a bug here.
 
 ### What each check catches
 

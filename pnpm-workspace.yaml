@@ -81,6 +81,36 @@ overrides:
   # pinned commit's drift gates don't classify yet) — never fix that by
   # editing vendor source; re-pin here to match the vendor's own lockfile.
   '@earendil-works/pi-ai': '0.85.1'
+  # Same drift-pin rationale as '@earendil-works/pi-ai' above: every package
+  # (vendor's and this repo's own) declares "zod": "^4.4.3", and vendor's own
+  # committed lockfile resolves that range to 4.4.3 everywhere, but a
+  # workspace-wide `pnpm install` here re-resolves it against whatever is
+  # newest on the registry at install time (4.5.4 as of this pin), producing
+  # two zod copies whose exact-optional-property-types structural types
+  # collide (packages/experimental/browser-use-stagehand-native's own
+  # `z.ZodType` parameter, most concretely) — `dsh-typert-loader`'s own `'_zod'
+  # in schema` structural check elsewhere in this codebase exists precisely
+  # because two same-named-but-different zod copies are otherwise
+  # indistinguishable at the type level until they collide like this.
+  zod: '4.4.3'
+  # Same drift-pin rationale again: root and vendor both declare "vitest":
+  # "^4.1.8", but a workspace-wide `pnpm install` re-resolves it (and its
+  # @vitest/* siblings, versioned in lockstep with it) to whatever is newest
+  # on the registry (4.1.11 as of this pin) instead of reusing vendor's own
+  # committed 4.1.8 resolution — two copies of vitest's own internal
+  # `MatcherState`/`TestContext` types then collide under
+  # `exactOptionalPropertyTypes: true` while typechecking `benchmarks`
+  # (folded into `tsconfig.host.json` — see ARCHITECTURE.md's "Dependency
+  # source").
+  vitest: '4.1.8'
+  '@vitest/coverage-v8': '4.1.8'
+  '@vitest/expect': '4.1.8'
+  '@vitest/mocker': '4.1.8'
+  '@vitest/pretty-format': '4.1.8'
+  '@vitest/runner': '4.1.8'
+  '@vitest/snapshot': '4.1.8'
+  '@vitest/spy': '4.1.8'
+  '@vitest/utils': '4.1.8'
 
 peerDependencyRules:
   allowedVersions:
