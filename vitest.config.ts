@@ -31,7 +31,17 @@
  * re-running it under a foreign config — never to edit vendor to suit this
  * root. To run it the way upstream does, use its own entrypoint:
  *
- *   pnpm --dir packages/_vendor/deepseek-harness run test
+ *   CI=true pnpm --dir packages/_vendor/deepseek-harness run test
+ *
+ * `CI=true` is not decoration there. The vendor carries its own workspace and
+ * lockfile, so `pnpm run` inside it runs a deps-status check that auto-invokes
+ * `pnpm install`, which fires the vendor's root `postinstall`,
+ * `scripts/install-lefthook.mjs`. That installer aborts whenever
+ * `core.worktree` lives in the repository's common git config — which is
+ * exactly how git writes a submodule's git dir, so it aborts on every checkout
+ * of this repo, on every platform, before a single spec runs. `CI=true` is the
+ * installer's own documented early exit; `scripts/build-vendor.mjs` takes the
+ * same one for `build:vendor` and explains it at length.
  *
  * (that also needs vendor's root devDependencies installed, which this
  * workspace intentionally does not do.)
@@ -58,11 +68,13 @@ export default defineConfig({
       // the tree, which is how one abandoned worktree once doubled this sweep).
       'packages/_vendor/**',
     ],
-    // This repo's packages ship no tests of their own yet. `vitest run` treats
-    // an empty selection as an error, so without this the scoped command would
-    // trade 943 vendored failures for a different non-zero exit. Keeping it
-    // green here means `pnpm test` is already wired as a gate for the first
-    // spec this repo adds.
-    passWithNoTests: true,
+    // `passWithNoTests` is deliberately NOT set. It was here while this repo's
+    // packages shipped no specs of their own — `vitest run` treats an empty
+    // selection as an error, and back then that would have traded 943 vendored
+    // failures for a different non-zero exit. That gate has since served its
+    // purpose: the first specs landed with the mcp-connector OAuth work, so an
+    // empty selection no longer means "nothing written yet", it means the
+    // `include` globs above stopped matching. Let vitest fail on that rather
+    // than report a green run over zero files.
   },
 })
