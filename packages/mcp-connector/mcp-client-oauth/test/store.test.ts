@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CredentialKey, CredentialRecord } from '@deepseek-ai/dsh-credentials'
-import { grantedScopes, McpOAuthStore, portableGrant } from '../src/oauth/store.ts'
+import { grantedScopes, McpOAuthStore, portableGrant, pruneUndefined } from '../src/oauth/store.ts'
 import type { McpOAuthGrant } from '../src/oauth/types.ts'
 
 /** An in-memory stand-in for the credential seam's record space. */
@@ -122,5 +122,45 @@ describe('copying a grant between two connectors', () => {
     const ctx = fakeCredentialsContext()
     expect(String(new McpOAuthStore(ctx, 'gmail').key)).toBe('mcp-connector/gmail')
     expect(String(new McpOAuthStore(ctx, 'drive').key)).toBe('mcp-connector/drive')
+  })
+})
+
+describe('pruneUndefined', () => {
+  it('drops a nested undefined, which is what the credential seam refuses', () => {
+    // The shape `auth()` hands `saveDiscoveryState` for a server with no RFC
+    // 9728 metadata: both keys present, both undefined.
+    const state = {
+      discoveryState: {
+        authorizationServerUrl: 'https://mcp.atlassian.com',
+        resourceMetadataUrl: undefined,
+        resourceMetadata: undefined,
+        authorizationServerMetadata: { issuer: 'https://mcp.atlassian.com' },
+      },
+    }
+    expect(pruneUndefined(state)).toEqual({
+      discoveryState: {
+        authorizationServerUrl: 'https://mcp.atlassian.com',
+        authorizationServerMetadata: { issuer: 'https://mcp.atlassian.com' },
+      },
+    })
+  })
+
+  it('keeps null, false, 0 and the empty string, which are values and not absence', () => {
+    expect(pruneUndefined({ a: null, b: false, c: 0, d: '' })).toEqual({ a: null, b: false, c: 0, d: '' })
+  })
+
+  it('leaves what the seam should still refuse, so a real mistake is not laundered', () => {
+    const date = new Date(0)
+    expect(pruneUndefined({ at: date }).at).toBe(date)
+  })
+
+  it('does not edit the object it was given, which the SDK still holds', () => {
+    const original: { keep: string; drop?: string } = { keep: 'yes', drop: undefined }
+    pruneUndefined(original)
+    expect('drop' in original).toBe(true)
+  })
+
+  it('prunes inside arrays as well as objects', () => {
+    expect(pruneUndefined({ list: [{ a: 1, b: undefined }] })).toEqual({ list: [{ a: 1 }] })
   })
 })
