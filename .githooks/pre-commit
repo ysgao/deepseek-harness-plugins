@@ -1,0 +1,7 @@
+#!/bin/sh
+# Article II gate. See scripts/check-vendor-pristine.mjs for what it checks and
+# why; see scripts/install-git-hooks.mjs for how this file becomes active.
+#
+# This is what makes Article II's "must be empty in every commit" true rather
+# than aspirational. To bypass it deliberately, `git commit --no-verify`.
+exec node "$(git rev-parse --show-toplevel)/scripts/check-vendor-pristine.mjs"
