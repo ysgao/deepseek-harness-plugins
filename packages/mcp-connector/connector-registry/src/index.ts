@@ -23,6 +23,7 @@ import type {} from '@deepseek-ai/dsh-settings'
 
 export {
   McpConnectorRegistry, McpConnectorInvalidError, McpConnectorNotFoundError, buildClientConfig, resolveEnvFrom,
+  signInFailure,
 } from './registry.ts'
 export type { McpConnectorSection } from './registry.ts'
 export type * from './types.ts'

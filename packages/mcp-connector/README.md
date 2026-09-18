@@ -173,8 +173,10 @@ RFC 7591 `registration_endpoint` — Atlassian's `https://mcp.atlassian.com/v1/m
 does — registers its own client during the first sign-in, and the provider
 stores what comes back, so there is nothing to create and nothing to paste.
 Neither surface gates sign-in on a stored client for that reason; a server that
-truly needs one says so when the attempt fails, and the CLI appends the `set
---client-id` command to that failure.
+truly needs one says so when the attempt fails. That diagnosis is written once,
+in `connector-registry`'s `signInFailure`, and both the CLI and the Settings
+page render it — a page that explained a failure differently from the terminal
+would be two answers to one question.
 
 The scopes come from the server's own RFC 9728 metadata, so `--scope` is
 optional — pass it to request less than everything the server publishes, which

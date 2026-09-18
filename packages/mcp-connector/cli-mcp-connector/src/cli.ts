@@ -31,9 +31,10 @@ import { AuthorizationDeclinedError } from '@deepseek-ai/dsh-authorization'
 import type { AuthorizationInteraction } from '@deepseek-ai/dsh-authorization'
 import { credentialRef, isCredentialRefName, parseCredentialKey } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
+// Also declaration-merges `ctx.mcpConnectors` onto Context, which this file
+// reads; the separate side-effect type import this replaced is now redundant.
+import { signInFailure } from 'dsh-plugins-mcp-connector-registry'
 import type { McpConnectorDefinition, McpConnectorEntry, McpConnectorTransport } from 'dsh-plugins-mcp-connector-registry/types'
-// Side-effect type import: declaration-merges `ctx.mcpConnectors` onto Context.
-import type {} from 'dsh-plugins-mcp-connector-registry'
 
 /** Stable Cordis plugin name. */
 export const name = 'mcp-connector-cli'
@@ -81,33 +82,6 @@ async function readSecretFromStdin(): Promise<string> {
   const chunks: string[] = []
   for await (const chunk of internals.stdin) chunks.push(String(chunk))
   return chunks.join('').replace(/\r?\n$/, '')
-}
-
-/**
- * Turn a failed sign-in into the message a human can act on.
- *
- * Which servers need an OAuth client registered by hand is not knowable before
- * the attempt: one that publishes an RFC 7591 `registration_endpoint` gets its
- * client during the attempt itself, and Atlassian's MCP server is one of
- * those. So the advice is attached to the failure rather than used as a
- * pre-flight refusal — the SDK's own error is what distinguishes the two
- * kinds of server, and refusing first made every self-registering server
- * unreachable from this command.
- *
- * @param id - the connector that failed to sign in.
- * @param error - whatever the authorization attempt threw.
- * @param clientConfigured - whether a client was already stored for it.
- * @returns the message to report.
- */
-export function signInFailure(id: string, error: unknown, clientConfigured: boolean): string {
-  const message = error instanceof Error ? error.message : String(error)
-  // Matches the MCP SDK's own wording for an auth server with no
-  // `registration_endpoint` ("Incompatible auth server: does not support
-  // dynamic client registration"), which is exactly the case a hand-made
-  // client answers. Google's is the one in front of us.
-  if (clientConfigured || !/dynamic client registration/i.test(message)) return message
-  return `${message}. This server does not register a client for you, so it needs one by hand: `
-    + `dsh --profile mcp set ${id} --client-id <id> --client-secret <secret>`
 }
 
 /** Print one JSON document, newline-terminated, for a caller piping to `jq`. */

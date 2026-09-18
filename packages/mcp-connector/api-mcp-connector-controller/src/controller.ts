@@ -21,7 +21,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { AuthorizationError } from '@deepseek-ai/dsh-authorization'
 import { parseCredentialKey } from '@deepseek-ai/dsh-credentials'
-import { McpConnectorInvalidError, McpConnectorNotFoundError } from 'dsh-plugins-mcp-connector-registry'
+import { McpConnectorInvalidError, McpConnectorNotFoundError, signInFailure } from 'dsh-plugins-mcp-connector-registry'
 import type { McpConnectorDefinition, McpConnectorEntry } from 'dsh-plugins-mcp-connector-registry/types'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { McpConnectorFeed } from './feed.ts'
@@ -243,10 +243,40 @@ export class McpConnectorController extends TypertRemoteService {
       return outcome
     } catch (error) {
       this.feed.settled(id, 'failed')
-      throw failure(error)
+      throw failure(await this.explain(id, error))
     } finally {
       signal.removeEventListener('abort', withdrawOnAbort)
       this.feed.changed()
+    }
+  }
+
+  /**
+   * The same failure, carrying whatever diagnosis this one deserves.
+   *
+   * Shares `signInFailure` with the CLI so both surfaces say one thing; a page
+   * that explained a failure differently from the terminal would be two
+   * answers to one question.
+   *
+   * Returns the original error untouched when no diagnosis applies, which is
+   * not a micro-optimisation: {@link failure} maps by error *type*, so
+   * rewrapping an `AuthorizationError` in a plain `Error` would turn a
+   * `mcp-connectors/rejected` into a `gateway/internal` and lose the code the
+   * page branches on.
+   *
+   * @param id - the connector whose sign-in failed.
+   * @param error - what the attempt threw.
+   * @returns the error to map, enriched only where that changes anything.
+   */
+  private async explain(id: string, error: unknown): Promise<unknown> {
+    try {
+      const entry = await this.ctx.mcpConnectors.get(id)
+      const explained = signInFailure(id, error, entry.oauth?.clientConfigured === true)
+      if (explained === (error instanceof Error ? error.message : String(error))) return error
+      return new Error(explained)
+    } catch {
+      // Reading the connector back is a courtesy, not part of the failure:
+      // whatever went wrong here, the caller still deserves the original.
+      return error
     }
   }
 

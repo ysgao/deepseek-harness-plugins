@@ -92,6 +92,38 @@ export class McpConnectorInvalidError extends Error {
 }
 
 /**
+ * Turn a failed sign-in into the message every surface shows.
+ *
+ * Lives here rather than in either surface because both must say the same
+ * thing: the CLI raises it directly, and the Remote controller folds it into
+ * the error the Settings page renders. A diagnosis worth writing once is worth
+ * writing once.
+ *
+ * Which servers need an OAuth client registered by hand is not knowable before
+ * the attempt. One that publishes an RFC 7591 `registration_endpoint` gets its
+ * client during the attempt itself — Atlassian's MCP server is one of those —
+ * so this is advice attached to a failure, never a pre-flight refusal, which
+ * is what used to make every self-registering server unreachable.
+ *
+ * @param id - the connector that failed to sign in.
+ * @param error - whatever the authorization attempt threw.
+ * @param clientConfigured - whether a client was already stored for it.
+ * @returns the message to report, unchanged when this diagnosis does not apply.
+ */
+export function signInFailure(id: string, error: unknown, clientConfigured: boolean): string {
+  const message = error instanceof Error ? error.message : String(error)
+  // Matches the MCP SDK's own wording for an authorization server with no
+  // `registration_endpoint` ("Incompatible auth server: does not support
+  // dynamic client registration"), which is exactly the case a hand-made
+  // client answers. Google's is the one in front of us. Attaching this to any
+  // other failure would send someone to a cloud console over a network blip.
+  if (clientConfigured || !/dynamic client registration/i.test(message)) return message
+  return `${message}. This server does not register a client for you, so "${id}" needs one by hand: `
+    + `add an OAuth client id and secret in Settings > MCP connectors, or run `
+    + `dsh --profile mcp set ${id} --client-id <id> --client-secret <secret>`
+}
+
+/**
  * Build the `dsh-plugins-mcp-client-oauth` config one definition mounts as.
  *
  * Every transport-specific field is validated here rather than by the plugin's
