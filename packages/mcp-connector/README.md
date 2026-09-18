@@ -49,7 +49,7 @@ registered by hand in a Google Cloud project is mandatory. Its
 | [`client-remotes-mcp-connector`](client-remotes-mcp-connector/README.md) | Mounts that namespace's generated Client contribution |
 | [`client-ui-settings-mcp-connector`](client-ui-settings-mcp-connector/README.md) | Settings > MCP connectors — an **additive** `settings.section` registration |
 | [`host-oauth-callback-mcp-connector`](host-oauth-callback-mcp-connector/README.md) | `/mcp-oauth/callback` on the web server, for a browser that cannot reach the host's loopback listener; publishes `ctx.mcpOAuthCallbacks` |
-| [`cli-mcp-connector`](cli-mcp-connector/README.md) | `dsh --profile mcp add\|list\|set\|login\|logout\|remove\|status`, every command `--json` |
+| [`cli-mcp-connector`](cli-mcp-connector/README.md) | `dsh --profile mcp add\|list\|set\|login\|logout\|remove\|status\|clone-grant\|secret`, every command `--json` |
 | [`bundle-mcp-connector`](bundle-mcp-connector/README.md) | The installable `cordis.patch.yml` layer |
 
 Nothing here disables a vendor row for its own UI: `settings.section` is a
@@ -145,6 +145,20 @@ config file: the subprocess seam scrubs every ambient name matching
 `/KEY|PASSWORD|SECRET|TOKEN/i` out of a spawned child's environment, so a token
 merely exported in the parent shell does not reach the server at all unless a
 connector names it.
+
+## Setting up an Atlassian connector
+
+[`docs/atlassian.md`](docs/atlassian.md) covers both routes and the trade
+between them: Atlassian's own remote server over OAuth, which registers its
+client itself and needs no API token at all —
+
+```sh
+./dsh --profile mcp add atlassian --url https://mcp.atlassian.com/v1/mcp
+./dsh --profile mcp login atlassian
+```
+
+— and the local `uvx mcp-atlassian` stdio server, which has a larger tool
+surface and takes an API token named through `--env-from`.
 
 ## Setting up a Google connector
 

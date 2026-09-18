@@ -13,6 +13,14 @@ matching this repo's other settings registrations, so a same-slot collision
 shadows deterministically rather than throwing, and the registration is
 individually try/catch-guarded.
 
+**Sign in is never disabled for want of a stored OAuth client.** It used to be,
+which silently made every self-registering server unreachable from this page:
+such a server has no client to configure and mints one during the attempt. A
+server that does need one by hand says so when the attempt fails, in the same
+sentence the CLI prints — `connector-registry`'s `signInFailure`, rendered here
+from the error the Remote controller raises — and the row's hint says a client
+may not be needed at all rather than ordering one to be added first.
+
 The sign-in half renders `ctx.authorization`'s neutral notice/prompt vocabulary
 and knows nothing about OAuth itself — the posture that seam documents ("a
 surface that renders one flow renders all of them"). The consent URL, the paste

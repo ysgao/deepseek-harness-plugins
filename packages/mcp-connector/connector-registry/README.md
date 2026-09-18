@@ -65,3 +65,18 @@ server unauthenticated to fail every tool call later. And the mount signature
 carries the mapping but never the value, so repointing a variable at another
 credential remounts, while rotating the value behind a name takes effect at
 the next mount rather than instantly.
+
+## One sign-in diagnosis, two surfaces
+
+`signInFailure` lives here rather than in the CLI or the Settings page because
+both must say the same thing: the CLI raises it directly, the Remote controller
+folds it into the error the page renders.
+
+It is advice attached to a failure, never a pre-flight refusal. Whether a
+server needs an OAuth client registered by hand is not knowable before the
+attempt — one publishing an RFC 7591 `registration_endpoint` mints its own
+during it — and refusing first made every such server unreachable from both
+surfaces. The MCP SDK's `registerClient` throws "Incompatible auth server: does
+not support dynamic client registration" in exactly the case a hand-made client
+answers, and that one failure, and no other, gets the advice. Attaching it more
+broadly would send someone to a cloud console over a network blip.

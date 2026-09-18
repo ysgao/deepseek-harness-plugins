@@ -442,7 +442,7 @@ independently useful.
 | `dsh-plugins-client-remotes-mcp-connector` | Mounts that namespace's generated Client contribution — see "Plugin isolation" |
 | `dsh-plugins-client-ui-settings-mcp-connector` | Settings > MCP connectors; an *additive* `settings.section` registration, so no vendor row is disabled |
 | `dsh-plugins-host-oauth-callback-mcp-connector` | `/mcp-oauth/callback` on the web server for a browser that cannot reach the host's loopback listener; publishes the optional `ctx.mcpOAuthCallbacks` sink, and registers its route through a nested `webServer` inject so a CLI profile mounts it harmlessly |
-| `dsh-plugins-cli-mcp-connector` | Standalone `dsh --profile mcp <command>` CLI, every command `--json` so an agent can drive it |
+| `dsh-plugins-cli-mcp-connector` | Standalone `dsh --profile mcp <command>` CLI — `add`/`list`/`set`/`login`/`logout`/`remove`/`status`/`clone-grant`, plus `secret set|status|unset` for the credentials an stdio connector's `envFrom` names; every command `--json` so an agent can drive it |
 | `dsh-plugins-bundle-mcp-connector` | `cordis.patch.yml` bundle: the registry, the controller, the callback route, the Remote mount, and the Settings page |
 
 #### Why this bundle exists at all
@@ -459,7 +459,67 @@ metadata naming `https://accounts.google.com/` as their authorization server,
 and that server publishes no `registration_endpoint`, so Dynamic Client
 Registration is unavailable and a hand-registered client id *and secret* are
 mandatory. That last fact is why the client pair is stored in the credential
-record rather than assumed to be mintable.
+record rather than assumed to be mintable — though a server that *can* mint one
+is supported too, and covered under "Sign-in is not gated on a stored client"
+below.
+
+#### Secrets a stdio server needs
+
+A stdio MCP server that authenticates with an API token needs it in the child
+environment, and the definition's `env` is the wrong place: definitions live in
+the settings document, which this bundle promises is safe to read, print, diff,
+and copy. So a definition names the credential instead of carrying it —
+`envFrom` maps a child variable to a *credential reference*, resolved once per
+mount through `ctx.credentials`, whose local provider layers the process
+environment over `$DSH_HOME/.credentials.yaml` over the `.env` fallbacks.
+
+Naming it is also the only way it arrives. The subprocess seam scrubs every
+ambient name matching `/KEY|PASSWORD|SECRET|TOKEN/i` out of a spawned child, so
+a token merely exported in the parent shell never reaches the server unless a
+connector asks for it. `buildClientConfig` stays pure and secret-free because
+it is both the `put`-time validation and the mount signature — a signature is
+compared, retained, and read by a human debugging a reconcile. Resolution
+happens separately, at mount, and an unresolved reference fails that one
+connector's mount naming every missing credential rather than starting the
+server unauthenticated to fail every tool call later with a 401.
+
+#### Sign-in is not gated on a stored client
+
+Both surfaces once refused to *start* a sign-in while no OAuth client was
+stored — a disabled button, and a CLI error naming the `set --client-id`
+command. That reads as correct only from where this bundle was written:
+Google's authorization server publishes no `registration_endpoint`, so there a
+hand-registered client really is a precondition.
+
+It is not one in general. A server publishing an RFC 7591 registration endpoint
+has no client to configure and mints one *during* the attempt, which is what
+`McpOAuthProvider.saveClientInformation` exists to persist, and the pre-flight
+refusal made every such server unreachable from both surfaces at once —
+including Atlassian's `https://mcp.atlassian.com/v1/mcp`, whose client cannot
+be created by hand anywhere, because that host is its own authorization server.
+
+So the diagnosis moved after the attempt, where the SDK has said which kind of
+server this is: `registerClient` throws "Incompatible auth server: does not
+support dynamic client registration" in exactly the case a hand-made client
+answers. `signInFailure` in `connector-registry` turns that one failure — and
+no other — into advice naming both the Settings field and the CLI command, and
+both surfaces render that single string. The Remote controller returns the
+original error untouched when the diagnosis does not apply, because its
+`failure()` mapper switches on error *type*: rewrapping an `AuthorizationError`
+in a plain `Error` would turn a `mcp-connectors/rejected` into a
+`gateway/internal` and lose the code the page branches on.
+
+Behind that gate sat a second failure worth recording, because its symptom
+named nothing actionable. `auth()` calls `saveDiscoveryState` with
+`resourceMetadata` and `resourceMetadataUrl` present-but-`undefined` whenever a
+server publishes no RFC 9728 document, and the credential seam's
+`assertJsonValue` walks nested values and refuses `undefined` anywhere, while
+`McpOAuthStore.merge` stripped it only from the grant's own top level — the
+level the SDK's object never occupies. Every sign-in to such a server died on
+the first write with "payload holds a value JSON cannot represent". The strip
+is now recursive, and drops `undefined` only: a `Date` or a non-finite number
+is a real mistake about what a record holds and stays refused rather than
+quietly laundered into storage.
 
 #### What is forked, and why it is not a "replacement"
 

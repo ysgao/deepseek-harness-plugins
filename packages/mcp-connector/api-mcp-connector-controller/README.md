@@ -55,3 +55,18 @@ a type whose sources were not in the filtered program.
 For the same naming reason, avoid a mapped type (`Partial<T>`) or an anonymous
 object literal in a `@Remote` signature; declare a named interface instead, as
 `McpSignInOutcome` does.
+
+## Why a failed `authorize` is sometimes re-wrapped, and usually not
+
+`authorize` passes its failure through `connector-registry`'s `signInFailure`,
+so the Settings page explains a sign-in exactly as the terminal does instead of
+showing the bare SDK sentence and leaving the reader to infer that a client id
+was the missing piece.
+
+It re-wraps **only** when that diagnosis changes the message. `failure()` maps
+to a Remote error code by error *type*, so rewrapping an `AuthorizationError`
+in a plain `Error` would turn a `mcp-connectors/rejected` into a
+`gateway/internal` and lose the code the page branches on. Reading the
+connector back to learn whether a client was already stored is a courtesy too:
+if that read fails, the original error is raised unchanged rather than replaced
+by a complaint about the courtesy.

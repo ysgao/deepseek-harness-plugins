@@ -122,8 +122,10 @@ credential seam under `mcp-connector/<id>`, along with the tokens that follow.
 ./dsh --profile mcp login calendar
 ```
 
-Each opens a browser for consent and exits once the grant settles; each
-connector holds its own grant.
+Each prints the consent URL and exits once the grant settles; each connector
+holds its own grant. Nothing opens a browser for you — the machine running
+`dsh` is often not the machine you are sitting at, and a consent page opened on
+the wrong host helps nobody.
 
 **Or consent once for all three.** A Google grant carries the scopes it was
 approved for rather than one endpoint, so one sign-in can cover the set:
@@ -147,7 +149,11 @@ redirect only matters while authorizing.
 On a machine with no browser — `dsh` over SSH, say — the command prints the
 URL and accepts the redirected URL pasted back.
 
-The GUI does the same thing: **Settings → MCP connectors → Sign in**.
+The GUI does the same thing: **Settings → MCP connectors → Sign in**, which
+renders the same URL as a link. That button is never disabled for want of a
+client; if you click it before step 4, the attempt fails with the same sentence
+this document's step 3 exists to prevent — naming both the field to fill in and
+the `set --client-id` command.
 
 ## 6. Verify
 

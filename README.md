@@ -24,7 +24,10 @@ the design rationale:
   behind OAuth 2.0. A superset of `@deepseek-ai/dsh-mcp-client` (same stdio
   and static-header transports, same config, same tool names) plus an
   authorization-code flow with unattended token refresh, a durable connector
-  registry, a Settings page, and a `--json` CLI an agent can drive.
+  registry, a Settings page, and a `--json` CLI an agent can drive. A server
+  needing an API token names a credential rather than storing one, so the
+  settings document holds no secrets; one offering dynamic client registration
+  needs no console work at all.
 
 ## Getting started
 
