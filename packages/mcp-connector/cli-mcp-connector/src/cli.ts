@@ -264,7 +264,7 @@ function mcpCommand(): Command {
     .argument('<id>', 'the connector to authorize')
 
   program.command('clone-grant')
-    .description('copy one signed-in connector\'s authorization onto its siblings, so one consent covers them all')
+    .description('copy one signed-in connector\'s authorization onto its siblings, where the provider allows it (Google does not)')
     .argument('<source>', 'the signed-in connector to copy from')
     .argument('<targets...>', 'the connectors to copy it onto')
     .option('--force', 'replace a target that already holds a grant, and accept scopes the copy does not cover')

@@ -54,18 +54,21 @@ dsh --profile mcp remove gmail
 
 ## One consent for a provider that ships several servers
 
-Google splits its MCP surface across one server per product, so connecting
-Gmail, Drive and Calendar means three connectors — but an authorization server
-issues a grant for the *scopes* consented to, not for one endpoint. Sign one
-connector in with every scope the set needs, then copy that grant to its
-siblings:
+An authorization server issues a grant for the *scopes* consented to rather
+than for one endpoint, so a provider that splits its MCP surface across several
+servers can sometimes be reached with a single consent: sign one connector in,
+then copy that grant to its siblings.
 
 ```sh
-dsh --profile mcp set gmail --scope "https://www.googleapis.com/auth/gmail.readonly \
-    https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/calendar.readonly"
-dsh --profile mcp login gmail
-dsh --profile mcp clone-grant gmail drive calendar
+dsh --profile mcp login example-a
+dsh --profile mcp clone-grant example-a example-b example-c
 ```
+
+**Google is not such a provider**, despite being the obvious candidate. Its
+authorization requests carry an RFC 8707 `resource=` indicator binding each
+token to one MCP endpoint, and each of its servers publishes only its own
+product's scopes, so a Gmail grant carries nothing Drive could use. Sign in to
+each Google connector separately; `docs/google-workspace.md` covers it.
 
 `clone-grant` copies the tokens and the client pair that refreshes them, and
 deliberately not the source's cached RFC 9728 discovery — the target is a

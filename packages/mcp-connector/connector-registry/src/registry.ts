@@ -368,11 +368,16 @@ export class McpConnectorRegistry extends Service {
    *
    * An authorization server issues a grant for the *scopes* consented to, not
    * for one endpoint, so a provider that splits its MCP surface across several
-   * servers — Google's Gmail, Drive and Calendar each have their own — can be
-   * reached with a single consent: sign one connector in with every scope the
-   * set needs, then copy that grant to its siblings. Without this the human
-   * consents once per connector to the same account, through the same client,
-   * for scopes they already approved.
+   * servers can be reached with a single consent: sign one connector in with
+   * every scope the set needs, then copy that grant to its siblings. Without
+   * this the human consents once per connector to the same account, through
+   * the same client, for scopes they already approved.
+   *
+   * Google, the obvious candidate, is not one of them. Its authorization
+   * requests carry an RFC 8707 `resource=` indicator that binds each token to
+   * one MCP endpoint, and each of its servers publishes only its own product's
+   * scopes — so a Gmail grant carries nothing Drive could use, and copying it
+   * produces a token that fails on first call rather than a shortcut.
    *
    * Only the portable half travels (see `portableGrant`); the source's cached
    * discovery does not, because the target is a different resource and must

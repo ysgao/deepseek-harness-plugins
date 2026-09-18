@@ -192,9 +192,12 @@ in `connector-registry`'s `signInFailure`, and both the CLI and the Settings
 page render it — a page that explained a failure differently from the terminal
 would be two answers to one question.
 
-The scopes come from the server's own RFC 9728 metadata, so `--scope` is
-optional — pass it to request less than everything the server publishes, which
-for Gmail includes full-mailbox `https://mail.google.com/`.
+The scopes come from the server's own RFC 9728 metadata, and against such a
+server `--scope` does **not** narrow them: the MCP SDK ranks the published
+`scopes_supported` above the configured scope, so a Google sign-in asks for
+everything published, Gmail's full-mailbox `https://mail.google.com/` included.
+`--scope` is honoured only where a server publishes no such metadata. See
+[`docs/google-workspace.md`](docs/google-workspace.md#what-decides-the-scopes-you-are-asked-for).
 
 ## Verified
 
