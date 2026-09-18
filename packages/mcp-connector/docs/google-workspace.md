@@ -36,9 +36,23 @@ is unavailable: a client registered by hand in a Google Cloud project is
 mandatory, and only the account owner can create it. Everything in this
 document is that part.
 
-> Google's Workspace MCP servers are in **Developer Preview**. Enroll the
-> account you will sign in as at <https://developers.google.com/workspace/preview>
-> before starting, or the consent step can fail with no useful error.
+> Google's Workspace MCP servers are in **Developer Preview**, and the
+> enrollment is of the **Cloud project**, not merely of the account signing
+> in. Apply at <https://developers.google.com/workspace/preview>, giving the
+> project number that owns the OAuth client (see step 1). There is no separate
+> "enroll this project" control: the application form *is* the enrollment, and
+> an existing member adds another project through that page's *Request to add
+> or remove your Google Cloud project* form.
+>
+> **Start this first, because it is the only step with a queue.** Google's own
+> FAQ says to expect an email "within a couple of days"; everything else here
+> takes minutes. Until it lands, every configured connector looks healthy —
+> `connected`, tools enumerated, signed in — and each tool call returns
+> *"Access to this tool requires that your Google Cloud project (NNN) is
+> enrolled in the Google Workspace Developer Preview"*. Two further conditions
+> can stall an application silently: your address must be addable to a Google
+> Group, which a managed domain's policy can forbid, and service accounts
+> cannot be enrolled at all.
 
 ## 1. Enable the APIs
 
@@ -248,6 +262,7 @@ curl -s https://gmailmcp.googleapis.com/.well-known/oauth-protected-resource/mcp
 | "Access blocked: app has not completed verification" | External audience without your account under *Test users*. |
 | Sign-in succeeds, tool calls return `PERMISSION_DENIED` | The `*mcp.googleapis.com` service is not enabled (step 1's second command), or the scope was never granted. |
 | A tool call says the API "has not been used in project NNN before or it is disabled", for a project you did not configure | The APIs were enabled in the wrong project. `NNN` is the client id's numeric prefix — the project that owns the OAuth client, which is the only one that counts. See step 1. |
+| A tool call says the project "is not enrolled in the Google Workspace Developer Preview" | The preview application has not been approved yet, or named a different project. Enrollment is per project and takes a couple of days; see the note at the top. |
 | One connector works and the rest fail identically | Same cause: that one product's MCP service happens to be enabled in the client's project and the others are not. |
 | `EADDRINUSE` on the callback listener | Something already holds port 33418. Re-register a different port and `set --redirect-uri`. |
 | `invalid_scope` at authorization | Scope requested but not listed on the consent screen (step 2). |
