@@ -1,19 +1,34 @@
 # Connecting Google Workspace — Gmail, Drive, Calendar
 
-Google ships one remote MCP server per Workspace product. Three of them are
-configured in this installation already:
+Google ships one remote MCP server per Workspace product, at
+`https://<product>mcp.googleapis.com/mcp/v1`. Seven exist:
 
-| Connector | Endpoint | Scope requested | Tools |
+| Connector | Product | Tools | Representative tools |
 |---|---|---|---|
-| `gmail` | `https://gmailmcp.googleapis.com/mcp/v1` | `gmail.readonly` | 23 (`mcp__gmail__*`) |
-| `drive` | `https://drivemcp.googleapis.com/mcp/v1` | `drive.readonly` | 8 (`mcp__drive__*`) |
-| `calendar` | `https://calendarmcp.googleapis.com/mcp/v1` | `calendar.readonly` | 9 (`mcp__calendar__*`) |
+| `gmail` | Gmail | 23 | `search_threads`, `get_message`, `create_draft`, `send_message` |
+| `calendar` | Calendar | 9 | `list_events`, `create_event`, `suggest_time` |
+| `drive` | Drive | 8 | `search_files`, `read_file_content`, `create_file` |
+| `sheets` | Sheets | 6 | `get_values`, `update_values`, `update_formulas` |
+| `slides` | Slides | 4 | `read_presentation`, `read_slide_page`, `update_presentation` |
+| `chat` | Chat | 4 | `list_messages`, `search_messages`, `send_message` |
+| `docs` | Docs | 2 | `read_doc`, `update_doc` |
 
-All three publish RFC 9728 protected-resource metadata naming
-`https://accounts.google.com/` as their authorization server, and all three
-answer `tools/list` unauthenticated — which is why they already report
-`health: connected` with their tools enumerated before anyone has signed in.
-Tool *calls* need a bearer token, and that is the part below.
+`tasks`, `forms`, `meet`, `keep`, `people` and `admin` have no such server —
+their `…mcp.googleapis.com` hosts answer 404. A third-party server is the only
+route to those products, and to deeper per-product tooling than the counts
+above: `docsmcp` offers two tools where a community server offers a dozen. That
+trade is a real one, and it is about depth, not availability.
+
+Those counts come from each server's own `tools/list`, read without
+authenticating. Add only the products you use: every connector's tools land in
+one model's tool list, and a tighter list is easier to choose from, not a
+lesser installation.
+
+All of them publish RFC 9728 protected-resource metadata naming
+`https://accounts.google.com/` as their authorization server, and all of them
+answer `tools/list` unauthenticated — which is why a freshly added one reports
+`health: connected` with its tools enumerated before anyone has signed in. Tool
+*calls* need a bearer token, and that is the part below.
 
 Google issues no OAuth client automatically and `accounts.google.com`
 publishes no `registration_endpoint`, so RFC 7591 Dynamic Client Registration
@@ -32,12 +47,16 @@ Both are required; enabling only the first is the usual cause of a
 `PERMISSION_DENIED` that arrives *after* a successful sign-in.
 
 ```sh
+# the product APIs — add only what you configured connectors for
 gcloud services enable \
   gmail.googleapis.com drive.googleapis.com calendar-json.googleapis.com \
+  docs.googleapis.com sheets.googleapis.com slides.googleapis.com \
   --project PROJECT_ID
 
+# and the MCP service fronting each one
 gcloud services enable \
   gmailmcp.googleapis.com drivemcp.googleapis.com calendarmcp.googleapis.com \
+  docsmcp.googleapis.com sheetsmcp.googleapis.com slidesmcp.googleapis.com \
   --project PROJECT_ID
 ```
 
@@ -62,7 +81,18 @@ Console → **Google Auth Platform**:
    https://www.googleapis.com/auth/gmail.readonly
    https://www.googleapis.com/auth/drive.readonly
    https://www.googleapis.com/auth/calendar.readonly
+   https://www.googleapis.com/auth/documents.readonly
+   https://www.googleapis.com/auth/spreadsheets.readonly
+   https://www.googleapis.com/auth/presentations.readonly
    ```
+
+   Each server publishes its own `scopes_supported`, and the document
+   servers ask for a Drive scope besides their own — `docs`, `sheets` and
+   `slides` each list `drive.readonly` alongside `documents.readonly`,
+   `spreadsheets.readonly` and `presentations.readonly`. Drive's scope is
+   therefore shared rather than additional. Writing needs the non-readonly
+   form of each (`documents`, `spreadsheets`, `presentations`, and `drive` or
+   `drive.file`); see "Read-only, and how to widen later".
 
    Keep this list and the connectors' own `scope` fields in sync — a scope the
    connector requests but the consent screen does not list is refused at
@@ -103,9 +133,10 @@ One client serves all three connectors.
 ## 4. Give `dsh` the client
 
 ```sh
-./dsh --profile mcp set gmail    --client-id <id>.apps.googleusercontent.com --client-secret <secret>
-./dsh --profile mcp set drive    --client-id <id>.apps.googleusercontent.com --client-secret <secret>
-./dsh --profile mcp set calendar --client-id <id>.apps.googleusercontent.com --client-secret <secret>
+for c in gmail drive calendar docs sheets slides; do
+  ./dsh --profile mcp set "$c" \
+      --client-id <id>.apps.googleusercontent.com --client-secret <secret>
+done
 ```
 
 Add `--redirect-uri <uri>` to each if step 3 registered something other than
@@ -117,9 +148,7 @@ credential seam under `mcp-connector/<id>`, along with the tokens that follow.
 ## 5. Sign in
 
 ```sh
-./dsh --profile mcp login gmail
-./dsh --profile mcp login drive
-./dsh --profile mcp login calendar
+./dsh --profile mcp login gmail      # …and once per other connector, or see below
 ```
 
 Each prints the consent URL and exits once the grant settles; each connector
@@ -127,18 +156,24 @@ holds its own grant. Nothing opens a browser for you — the machine running
 `dsh` is often not the machine you are sitting at, and a consent page opened on
 the wrong host helps nobody.
 
-**Or consent once for all three.** A Google grant carries the scopes it was
-approved for rather than one endpoint, so one sign-in can cover the set:
+**Or consent once for the whole set.** A Google grant carries the scopes it was
+approved for rather than one endpoint, so one sign-in can cover every
+connector:
 
 ```sh
-./dsh --profile mcp set gmail --scope "https://www.googleapis.com/auth/gmail.readonly \
-    https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/calendar.readonly"
+./dsh --profile mcp set gmail --scope "\
+    https://www.googleapis.com/auth/gmail.readonly \
+    https://www.googleapis.com/auth/drive.readonly \
+    https://www.googleapis.com/auth/calendar.readonly \
+    https://www.googleapis.com/auth/documents.readonly \
+    https://www.googleapis.com/auth/spreadsheets.readonly \
+    https://www.googleapis.com/auth/presentations.readonly"
 ./dsh --profile mcp login gmail
-./dsh --profile mcp clone-grant gmail drive calendar
+./dsh --profile mcp clone-grant gmail drive calendar docs sheets slides
 ```
 
-The trade is that the `gmail` connector then *asks* for all three scopes, which
-is what the consent screen will show. If a tool call afterwards fails with an
+The trade is that the `gmail` connector then *asks* for every scope in the set,
+which is what the consent screen will show. If a tool call afterwards fails with an
 audience or resource error, Google has bound that token to one resource after
 all — sign the other two in separately and nothing else changes.
 
@@ -159,7 +194,7 @@ the `set --client-id` command.
 
 ```sh
 ./dsh --profile mcp status gmail --json    # oauth.authorized: true, renewable: true
-./dsh --profile mcp list --json
+./dsh --profile mcp list --json           # every connector, its health and tool count
 ```
 
 `renewable: true` means a refresh token was issued — the hourly access-token
