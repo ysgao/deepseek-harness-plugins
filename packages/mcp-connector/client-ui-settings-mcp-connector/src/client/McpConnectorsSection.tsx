@@ -239,10 +239,15 @@ function ConnectorRow(props: {
             {oauth === undefined
               ? null
               : (
+                // Never gated on a stored client. A server publishing an RFC
+                // 7591 registration endpoint acquires its client during this
+                // very attempt, so disabling this until one existed made every
+                // self-registering server impossible to sign in to. A server
+                // that genuinely needs one by hand says so when the attempt
+                // fails, and that message lands in `failure` above.
                 <Button
                   variant={oauth.authorized ? 'outline' : 'primary'}
                   size="sm"
-                  disabled={!oauth.clientConfigured}
                   onClick={() => { void guard(async () => { await connectors.signIn(definition.id) }) }}
                 >
                   {oauth.authorized ? t('signInAgain') : t('signIn')}

@@ -168,6 +168,14 @@ project is mandatory, with `http://127.0.0.1:33418/mcp-oauth/callback`
 registered byte for byte — RFC 6749 §3.1.2.3 has the authorization server
 compare `redirect_uri` exactly.
 
+That is Google's situation, not the general one. A server that publishes an
+RFC 7591 `registration_endpoint` — Atlassian's `https://mcp.atlassian.com/v1/mcp`
+does — registers its own client during the first sign-in, and the provider
+stores what comes back, so there is nothing to create and nothing to paste.
+Neither surface gates sign-in on a stored client for that reason; a server that
+truly needs one says so when the attempt fails, and the CLI appends the `set
+--client-id` command to that failure.
+
 The scopes come from the server's own RFC 9728 metadata, so `--scope` is
 optional — pass it to request less than everything the server publishes, which
 for Gmail includes full-mailbox `https://mail.google.com/`.

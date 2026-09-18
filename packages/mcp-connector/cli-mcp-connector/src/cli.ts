@@ -83,6 +83,33 @@ async function readSecretFromStdin(): Promise<string> {
   return chunks.join('').replace(/\r?\n$/, '')
 }
 
+/**
+ * Turn a failed sign-in into the message a human can act on.
+ *
+ * Which servers need an OAuth client registered by hand is not knowable before
+ * the attempt: one that publishes an RFC 7591 `registration_endpoint` gets its
+ * client during the attempt itself, and Atlassian's MCP server is one of
+ * those. So the advice is attached to the failure rather than used as a
+ * pre-flight refusal — the SDK's own error is what distinguishes the two
+ * kinds of server, and refusing first made every self-registering server
+ * unreachable from this command.
+ *
+ * @param id - the connector that failed to sign in.
+ * @param error - whatever the authorization attempt threw.
+ * @param clientConfigured - whether a client was already stored for it.
+ * @returns the message to report.
+ */
+export function signInFailure(id: string, error: unknown, clientConfigured: boolean): string {
+  const message = error instanceof Error ? error.message : String(error)
+  // Matches the MCP SDK's own wording for an auth server with no
+  // `registration_endpoint` ("Incompatible auth server: does not support
+  // dynamic client registration"), which is exactly the case a hand-made
+  // client answers. Google's is the one in front of us.
+  if (clientConfigured || !/dynamic client registration/i.test(message)) return message
+  return `${message}. This server does not register a client for you, so it needs one by hand: `
+    + `dsh --profile mcp set ${id} --client-id <id> --client-secret <secret>`
+}
+
 /** Print one JSON document, newline-terminated, for a caller piping to `jq`. */
 function printJson(value: unknown): void {
   internals.stdout.write(`${JSON.stringify(value, undefined, 2)}\n`)
@@ -460,16 +487,18 @@ export function apply(ctx: Context): void {
       if (entry.definition.transport !== 'streamable-http-oauth') {
         throw new Error(`connector "${id}" is ${entry.definition.transport} and needs no sign-in`)
       }
-      if (entry.oauth?.clientConfigured !== true) {
-        throw new Error(
-          `connector "${id}" has no OAuth client id yet — set one with: `
-          + `dsh --profile mcp set ${id} --client-id <id> --client-secret <secret>`,
-        )
+      // Deliberately no pre-flight check that a client is configured: see
+      // `signInFailure`. A server that self-registers has no client to
+      // configure, and refusing here made those impossible to sign in to.
+      let outcome
+      try {
+        outcome = await authorization.begin({
+          key: parseCredentialKey(registry.authorizationKey(id)),
+          interaction: buildTerminalInteraction(),
+        })
+      } catch (error) {
+        throw new Error(signInFailure(id, error, entry.oauth?.clientConfigured === true))
       }
-      const outcome = await authorization.begin({
-        key: parseCredentialKey(registry.authorizationKey(id)),
-        interaction: buildTerminalInteraction(),
-      })
       if (outcome.status === 'cancelled') throw new Error(`sign-in for "${id}" was declined`)
       internals.stdout.write(`Signed in to "${id}".\n`)
       return undefined
