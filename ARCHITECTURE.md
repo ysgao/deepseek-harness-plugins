@@ -650,6 +650,13 @@ node scripts/check-replacement-parity.mjs --update   # re-record the hashes
 actually re-forked the files is how the regression this whole section exists
 to prevent gets committed with a passing check next to it.
 
+`--update` re-records the fork hashes but deliberately leaves `vendorPin`
+alone — that one is set by hand, to the commit the files were read from.
+Forgetting it used to be silent. It is not any more: `pnpm run check:vendor`
+compares `vendorPin` against the submodule commit the index would record and
+fails while they disagree, and the `pre-commit` hook runs it, so a pin bump
+whose parity file still points at the previous release cannot land.
+
 The check reads the vendored submodule, so run it from the primary checkout
 — or, from a worktree that has no submodule checkout of its own, pass
 `--root <path to the primary checkout>`. It exits telling you so rather than
@@ -841,6 +848,7 @@ signal as a bug here.
 | A real boot + real browser DOM interaction | Whether the feature actually renders and functions — a served bundle manifest is necessary but not sufficient. Does *not* by itself explain a mis-styled-but-present feature: two packages' components can both render correctly while only one's CSS actually reaches the DOM (see "Check for colliding style-tag ids" above) — a rendering bug that presents as broken *layout*, not a crash, is easy to blame on the wrong file if you skip straight to reading component logic |
 | Colliding style-tag ids (above) | A fork's own CSS Module silently losing its injection race against a same-named vendor CSS Module reached through a fallback import — passes `tsc -b`, `pnpm run build`, and `--dump-config` alike, and requires reading the *built* bundle's content, not just its existence, to catch |
 | Fault injection | Whether a plugin failing takes the rest of `dsh` down with it — no other check exercises this |
+| `pnpm run check:vendor` | A modified vendor submodule (Article II), in either of its two shapes: a dirty vendor working tree, and a submodule pin that has moved away from `vendorPin` in `scripts/replacement-parity.json` — the second being what a commit made *inside* the submodule looks like, since it leaves the vendor's own `status` clean. Runs from the `pre-commit` hook, so it catches these before they land rather than after. Note it deliberately *skips* the working-tree half where the submodule is not checked out (a plain `git worktree add` does not populate submodules) — a vendor that is not on disk cannot have been edited, and the pin half still runs there because it reads the index |
 | `pnpm run check:parity` | A replacement that no longer covers the vendor row it disables — a slot, entry id, injected service or locale key the original registered and it doesn't; a disabled row id upstream renamed out from under it; a forked file whose vendor original has moved since the fork was last synced. Every one of these passes `tsc -b` and `pnpm run build` unnoticed, because a replacement that silently dropped a feature is still perfectly type-correct |
 
 ## Explicitly out of scope
