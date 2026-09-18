@@ -357,7 +357,10 @@ export class McpConnectorRegistry extends Service {
    */
   async signOut(id: string): Promise<void> {
     this.require(id)
-    await new McpOAuthStore(this.ctx, id).clear()
+    // `forgetGrant`, not `clear`: a client the human registered by hand is not
+    // part of what they are signing out of, and deleting it leaves a connector
+    // that cannot be signed back in without a trip to the provider's console.
+    await new McpOAuthStore(this.ctx, id).forgetGrant()
   }
 
   /**

@@ -233,11 +233,31 @@ export class McpOAuthStore {
   }
 
   /**
-   * Remove the stored grant entirely — the "sign out" path, and the one
-   * `invalidateCredentials('all')` takes when a server rejects everything.
+   * Remove the stored record entirely — what deleting a connector does, and
+   * the one `invalidateCredentials('all')` takes when a server rejects
+   * everything.
+   *
+   * Not what signing out does; see {@link forgetGrant}.
    */
   async clear(): Promise<void> {
     await this.ctx.credentials.deleteRecord(this.key)
+  }
+
+  /**
+   * Forget the tokens, keeping the client they were obtained with — the
+   * "sign out" path.
+   *
+   * The distinction is the one {@link McpOAuthGrant.clientConfigured} exists
+   * for. A hand-registered client pair is not part of the grant: nothing can
+   * recreate it, so discarding it turns "sign in again" into "go find your
+   * client id and secret again" — and against an authorization server with no
+   * Dynamic Client Registration, which is Google's, into a connector that
+   * cannot be signed in at all until a human pastes the pair back. The
+   * `codeVerifier` goes with the tokens because it belongs to an attempt that
+   * is over.
+   */
+  async forgetGrant(): Promise<void> {
+    await this.merge({ tokens: undefined, obtainedAt: undefined, codeVerifier: undefined })
   }
 
   /**

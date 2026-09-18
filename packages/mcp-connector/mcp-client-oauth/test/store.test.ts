@@ -164,3 +164,31 @@ describe('pruneUndefined', () => {
     expect(pruneUndefined({ list: [{ a: 1, b: undefined }] })).toEqual({ list: [{ a: 1 }] })
   })
 })
+
+describe('signing out keeps the client', () => {
+  it('forgets the tokens and keeps a hand-registered client pair', async () => {
+    const store = new McpOAuthStore(fakeCredentialsContext(), 'gmail')
+    await store.setConfiguredClient('client-id', 'client-secret')
+    await store.merge({ tokens: { access_token: 'a', token_type: 'Bearer' }, obtainedAt: 1, codeVerifier: 'v' })
+
+    await store.forgetGrant()
+
+    const after = await store.read()
+    expect(after.tokens).toBeUndefined()
+    expect(after.obtainedAt).toBeUndefined()
+    expect(after.codeVerifier).toBeUndefined()
+    // Nothing can recreate this pair, and Google's authorization server offers
+    // no dynamic registration to fall back on — so losing it here would leave
+    // a connector that cannot be signed back in at all.
+    expect(after.clientInformation?.client_id).toBe('client-id')
+    expect(after.clientConfigured).toBe(true)
+  })
+
+  it('still removes everything when the whole record goes', async () => {
+    const ctx = fakeCredentialsContext()
+    const store = new McpOAuthStore(ctx, 'gmail')
+    await store.setConfiguredClient('client-id', 'client-secret')
+    await store.clear()
+    expect((await store.read()).clientInformation).toBeUndefined()
+  })
+})
