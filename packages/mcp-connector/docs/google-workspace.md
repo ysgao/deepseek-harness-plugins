@@ -46,9 +46,16 @@ gcloud services enable \
 Console → **Google Auth Platform**:
 
 1. **Branding** — app name, user support email, contact email.
-2. **Audience** — pick *Internal* if the project is in a Workspace org. If
-   only *External* is available, add yourself under **Test users**, or consent
-   is refused for an unverified app.
+2. **Audience** — pick *Internal* if the project is in a Workspace org. This
+   is the choice that matters most: an Internal app needs no Google
+   verification, has no user cap, and its refresh tokens do not expire on a
+   timer. If only *External* is available, add yourself under **Test users**
+   (consent is refused for an unverified app otherwise) and accept two limits
+   until the app is verified — at most 100 test users, and **refresh tokens
+   that expire after 7 days**, so every connector needs signing in again
+   weekly. Verification for `gmail.readonly` and `drive.readonly` also
+   requires a CASA Tier 2 security assessment, because both are *restricted*
+   scopes.
 3. **Data Access** → *Add or remove scopes* → *Manually add scopes*:
 
    ```
