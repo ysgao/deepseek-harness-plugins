@@ -35,8 +35,22 @@ An upstream-worthy change belongs in a real pull request against
 `deepseek-ai/deepseek-harness`, filed from a personal fork. Everything else
 belongs in this repo's own packages, using Article III.
 
-*Enforced by:* `git -C packages/_vendor/deepseek-harness status --porcelain`
-must be empty in every commit that touches this repo.
+*Enforced by:* `pnpm run check:vendor`
+(`scripts/check-vendor-pristine.mjs`), run automatically by the `pre-commit`
+hook in `.githooks/`, which `postinstall` wires into every clone. It asserts
+both halves of "unmodified": that
+`git -C packages/_vendor/deepseek-harness status --porcelain` is empty, and
+that the submodule commit this repo's index would record still equals
+`vendorPin` in `scripts/replacement-parity.json` — a commit made *inside* the
+submodule moves the pin while dirtying nothing the first check would see.
+
+Ahead of that, `.claude/settings.json` denies `Edit`/`Write` under
+`packages/_vendor/**`, so an agent working in this repo is refused the edit
+rather than caught after making it.
+
+Neither layer is the point. The rule is the point; they exist so that
+breaking it fails loudly instead of landing quietly, and `--no-verify` still
+belongs to whoever is willing to answer for it.
 
 ## III. A replacement never subtracts
 
@@ -85,10 +99,16 @@ change:
 
 1. `pnpm run check:parity` passes, with every forked file re-read against
    its moved vendor original and its recorded hash updated by hand;
-2. `pnpm run typecheck` and `pnpm run build` pass for the whole workspace;
-3. every bundle still boots, and the replaced surfaces are exercised in the
+2. `scripts/replacement-parity.json`'s `vendorPin` is moved to the new
+   commit in the same change, so `pnpm run check:vendor` passes. That check
+   is what makes a half-done pin bump impossible to commit: bumping the
+   submodule without touching the parity file fails it, which is exactly the
+   state in which the fork hashes above still describe the *previous*
+   release;
+3. `pnpm run typecheck` and `pnpm run build` pass for the whole workspace;
+4. every bundle still boots, and the replaced surfaces are exercised in the
    running app, not just compiled (ARCHITECTURE.md's "Testing procedures");
-4. the pin bump and the plugin resync are reported together — a pin bump
+5. the pin bump and the plugin resync are reported together — a pin bump
    reported as done while the replacements still target the previous release
    misstates what was delivered.
 

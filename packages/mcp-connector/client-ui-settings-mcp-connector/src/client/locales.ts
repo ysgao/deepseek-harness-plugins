@@ -41,7 +41,11 @@ export const en = {
   fieldArgs: 'Arguments',
   fieldArgsHint: 'One per line.',
   fieldEnv: 'Environment',
-  fieldEnvHint: 'One KEY=VALUE per line.',
+  fieldEnvHint: 'One KEY=VALUE per line. Stored in clear — never put a token here.',
+  fieldEnvFrom: 'Environment from credentials',
+  fieldEnvFromHint:
+    'One VARIABLE=CREDENTIAL per line. The credential is named here and its value is read from the '
+    + 'credential store or the environment at connect time, so no secret is written to the settings document.',
   fieldCwd: 'Working directory',
   fieldHeaders: 'Headers',
   fieldHeadersHint: 'One Name: value per line.',
@@ -73,7 +77,9 @@ export const en = {
   signedInRenewing: 'Signed in — renews automatically',
   signedInNoRefresh: 'Signed in — will need signing in again when the token expires',
   notSignedIn: 'Not signed in',
-  needsClient: 'Add an OAuth client id before signing in.',
+  needsClient:
+    'No OAuth client stored yet. A server that supports dynamic registration creates one when you sign in; '
+    + 'one that does not needs a client id and secret filled in below.',
   signInCancel: 'Cancel sign-in',
   signInSubmit: 'Submit',
   signInDecline: 'Skip',
@@ -110,7 +116,9 @@ export const zh: Record<keyof typeof en, string> = {
   fieldArgs: '参数',
   fieldArgsHint: '每行一个。',
   fieldEnv: '环境变量',
-  fieldEnvHint: '每行一个 KEY=VALUE。',
+  fieldEnvHint: '每行一个 KEY=VALUE。以明文保存 —— 请勿在此填写令牌。',
+  fieldEnvFrom: '来自凭据的环境变量',
+  fieldEnvFromHint: '每行一个 变量=凭据名。此处只写凭据的名称，其值在连接时从凭据存储或环境中读取，因此设置文档中不会写入任何密钥。',
   fieldCwd: '工作目录',
   fieldHeaders: '请求头',
   fieldHeadersHint: '每行一个 Name: value。',
@@ -140,7 +148,7 @@ export const zh: Record<keyof typeof en, string> = {
   signedInRenewing: '已登录 — 将自动续期',
   signedInNoRefresh: '已登录 — 令牌过期后需要重新登录',
   notSignedIn: '未登录',
-  needsClient: '登录前请先填写 OAuth 客户端 ID。',
+  needsClient: '尚未保存 OAuth 客户端。支持动态注册的服务器会在登录时自动创建；不支持的则需在下方填写客户端 ID 与密钥。',
   signInCancel: '取消登录',
   signInSubmit: '提交',
   signInDecline: '跳过',

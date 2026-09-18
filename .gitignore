@@ -4,4 +4,11 @@ lib/
 .DS_Store
 dist/
 .pnpm-store/
-.claude
+# Session residue (worktrees/, transcripts, settings.local.json) stays out, but
+# .claude/settings.json is a tracked project file: it carries the Article II
+# Edit/Write deny rules, which are worth nothing if each clone has to add them
+# by hand. Spelled `.claude/*` rather than `.claude` because git cannot
+# re-include a path whose parent DIRECTORY is excluded — the negation below
+# only works if the directory itself is not the thing ignored.
+.claude/*
+!.claude/settings.json

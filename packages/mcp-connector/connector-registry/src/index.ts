@@ -21,7 +21,10 @@ import type { McpConnectorDefinition } from './types.ts'
 // Side-effect type import: declaration-merges `ctx.settings` onto Context.
 import type {} from '@deepseek-ai/dsh-settings'
 
-export { McpConnectorRegistry, McpConnectorInvalidError, McpConnectorNotFoundError, buildClientConfig } from './registry.ts'
+export {
+  McpConnectorRegistry, McpConnectorInvalidError, McpConnectorNotFoundError, buildClientConfig, resolveEnvFrom,
+  signInFailure,
+} from './registry.ts'
 export type { McpConnectorSection } from './registry.ts'
 export type * from './types.ts'
 
@@ -55,6 +58,7 @@ const Definition: z<McpConnectorDefinition> = z.object({
   command: z.string(),
   args: z.array(String).default([]),
   env: z.dict(String).default({}),
+  envFrom: z.dict(String).default({}),
   cwd: z.string(),
   url: z.string(),
   headers: z.dict(String).default({}),
@@ -68,8 +72,9 @@ const Definition: z<McpConnectorDefinition> = z.object({
  * The stored section.
  *
  * Nothing here is a secret, deliberately: the OAuth client pair and the
- * tokens both live in the credential seam's record space instead, so this
- * document stays safe to read, print, diff, and copy.
+ * tokens both live in the credential seam's record space instead, and a stdio
+ * server's API token is named by `envFrom` rather than written by `env`, so
+ * this document stays safe to read, print, diff, and copy.
  */
 export const Config: z<McpConnectorSection> = z.object({
   connectors: z.array(Definition).default([]),

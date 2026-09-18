@@ -49,7 +49,7 @@ registered by hand in a Google Cloud project is mandatory. Its
 | [`client-remotes-mcp-connector`](client-remotes-mcp-connector/README.md) | Mounts that namespace's generated Client contribution |
 | [`client-ui-settings-mcp-connector`](client-ui-settings-mcp-connector/README.md) | Settings > MCP connectors — an **additive** `settings.section` registration |
 | [`host-oauth-callback-mcp-connector`](host-oauth-callback-mcp-connector/README.md) | `/mcp-oauth/callback` on the web server, for a browser that cannot reach the host's loopback listener; publishes `ctx.mcpOAuthCallbacks` |
-| [`cli-mcp-connector`](cli-mcp-connector/README.md) | `dsh --profile mcp add\|list\|set\|login\|logout\|remove\|status`, every command `--json` |
+| [`cli-mcp-connector`](cli-mcp-connector/README.md) | `dsh --profile mcp add\|list\|set\|login\|logout\|remove\|status\|clone-grant\|secret`, every command `--json` |
 | [`bundle-mcp-connector`](bundle-mcp-connector/README.md) | The installable `cordis.patch.yml` layer |
 
 Nothing here disables a vendor row for its own UI: `settings.section` is a
@@ -91,7 +91,10 @@ take those servers down. This bundle is purely additive and the two coexist.
 Because the config field names, defaults, and derived tool names are identical,
 migrating one server across is a one-word edit — change that row's `name:` from
 `@deepseek-ai/dsh-mcp-client` to `dsh-plugins-mcp-client-oauth` — or re-add it
-as a connector through the CLI or the Settings page. The one thing to avoid is
+as a connector through the CLI or the Settings page. A row whose `env:` carries
+a literal API token is worth moving the second way and re-pointing at
+`--env-from`, since a `cordis.patch.yml` is an ordinary config file that gets
+read, copied, and pasted into bug reports. The one thing to avoid is
 the *same* `serverName` live on both plugins at once: each keeps its own
 namespace reservation, so the duplicate is not caught by that guard, only later
 by `ctx.tools.register`, which refuses the duplicate public name and rolls that
@@ -115,6 +118,48 @@ Two halves, deliberately kept apart:
   safe when a CLI run and the GUI both notice the access token expiring at the
   same moment.
 
+A **stdio** server authenticating with an API token has the same split, by a
+different route: its definition's `envFrom` maps a child environment variable
+to the *name* of a credential, and the value is resolved at mount time through
+`ctx.credentials`.
+
+```sh
+dsh --profile mcp add atlassian --transport stdio \
+    --command uvx --arg mcp-atlassian \
+    --env JIRA_URL=https://example.atlassian.net \
+    --env-from JIRA_API_TOKEN=ATLASSIAN_API_TOKEN
+dsh --profile mcp secret set ATLASSIAN_API_TOKEN   # paste, then ctrl-D
+```
+
+`--env` is the field that is stored in clear, and it is for a URL or a
+username; a token belongs in `--env-from`, whose value the settings document
+never sees. `secret set` reads standard input by default precisely so the value
+misses the shell history and the process table, and writes it through the
+credential seam — for the local provider, `$DSH_HOME/.credentials.yaml` at mode
+`0600`. Exporting the same name in the parent shell works too, and the seam
+reports which layer a value came from, because the environment outranks the
+file and a stored value can otherwise sit there shadowed.
+
+Passing the token through the seam is not only tidier than writing it into a
+config file: the subprocess seam scrubs every ambient name matching
+`/KEY|PASSWORD|SECRET|TOKEN/i` out of a spawned child's environment, so a token
+merely exported in the parent shell does not reach the server at all unless a
+connector names it.
+
+## Setting up an Atlassian connector
+
+[`docs/atlassian.md`](docs/atlassian.md) covers both routes and the trade
+between them: Atlassian's own remote server over OAuth, which registers its
+client itself and needs no API token at all —
+
+```sh
+./dsh --profile mcp add atlassian --url https://mcp.atlassian.com/v1/mcp
+./dsh --profile mcp login atlassian
+```
+
+— and the local `uvx mcp-atlassian` stdio server, which has a larger tool
+surface and takes an API token named through `--env-from`.
+
 ## Setting up a Google connector
 
 [`docs/google-workspace.md`](docs/google-workspace.md) is the full procedure
@@ -137,9 +182,22 @@ project is mandatory, with `http://127.0.0.1:33418/mcp-oauth/callback`
 registered byte for byte — RFC 6749 §3.1.2.3 has the authorization server
 compare `redirect_uri` exactly.
 
-The scopes come from the server's own RFC 9728 metadata, so `--scope` is
-optional — pass it to request less than everything the server publishes, which
-for Gmail includes full-mailbox `https://mail.google.com/`.
+That is Google's situation, not the general one. A server that publishes an
+RFC 7591 `registration_endpoint` — Atlassian's `https://mcp.atlassian.com/v1/mcp`
+does — registers its own client during the first sign-in, and the provider
+stores what comes back, so there is nothing to create and nothing to paste.
+Neither surface gates sign-in on a stored client for that reason; a server that
+truly needs one says so when the attempt fails. That diagnosis is written once,
+in `connector-registry`'s `signInFailure`, and both the CLI and the Settings
+page render it — a page that explained a failure differently from the terminal
+would be two answers to one question.
+
+The scopes come from the server's own RFC 9728 metadata, and against such a
+server `--scope` does **not** narrow them: the MCP SDK ranks the published
+`scopes_supported` above the configured scope, so a Google sign-in asks for
+everything published, Gmail's full-mailbox `https://mail.google.com/` included.
+`--scope` is honoured only where a server publishes no such metadata. See
+[`docs/google-workspace.md`](docs/google-workspace.md#what-decides-the-scopes-you-are-asked-for).
 
 ## Verified
 

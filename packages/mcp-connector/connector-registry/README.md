@@ -35,3 +35,48 @@ under `mcp-connector/<id>`, written only through `modifyRecord`.
 A connector id folds to its credential-key segment (lower case, `_` → `-`), and
 two ids that fold together are refused at write time rather than silently
 sharing one stored authorization.
+
+A **stdio** server keeps the same split through `envFrom`, which maps a child
+environment variable to the *name* of a credential rather than to its value:
+
+```yaml
+- id: atlassian
+  transport: stdio
+  command: uvx
+  args: ['mcp-atlassian']
+  env:
+    JIRA_URL: https://example.atlassian.net   # not a secret, stored in clear
+  envFrom:
+    JIRA_API_TOKEN: ATLASSIAN_API_TOKEN       # a name; the value is never here
+```
+
+The value is resolved once per mount through `ctx.credentials`, whose local
+provider layers the inherited process environment over
+`$DSH_HOME/.credentials.yaml` over the `.env` fallbacks — so the token can live
+in a `0600` file the seam manages, or in the environment, and in neither case
+in this document. Resolution is also what makes it arrive at all: the
+subprocess seam scrubs every ambient name matching `/KEY|PASSWORD|SECRET|TOKEN/i`
+out of a child's environment, so a token merely exported in the parent shell
+never reaches the server on its own.
+
+Two consequences worth knowing. A reference that resolves to nothing fails
+that connector's mount and names what is missing, rather than starting the
+server unauthenticated to fail every tool call later. And the mount signature
+carries the mapping but never the value, so repointing a variable at another
+credential remounts, while rotating the value behind a name takes effect at
+the next mount rather than instantly.
+
+## One sign-in diagnosis, two surfaces
+
+`signInFailure` lives here rather than in the CLI or the Settings page because
+both must say the same thing: the CLI raises it directly, the Remote controller
+folds it into the error the page renders.
+
+It is advice attached to a failure, never a pre-flight refusal. Whether a
+server needs an OAuth client registered by hand is not knowable before the
+attempt — one publishing an RFC 7591 `registration_endpoint` mints its own
+during it — and refusing first made every such server unreachable from both
+surfaces. The MCP SDK's `registerClient` throws "Incompatible auth server: does
+not support dynamic client registration" in exactly the case a hand-made client
+answers, and that one failure, and no other, gets the advice. Attaching it more
+broadly would send someone to a cloud console over a network blip.

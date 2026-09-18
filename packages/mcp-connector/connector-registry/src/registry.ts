@@ -27,6 +27,8 @@ import {
   assertConnectorIdUnfolded, connectorCredentialKey, grantedScopes, McpOAuthStore, portableGrant,
 } from 'dsh-plugins-mcp-client-oauth'
 import type { Config as McpClientConfig } from 'dsh-plugins-mcp-client-oauth'
+import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials'
+import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import type {
   McpClonedAuthorization, McpConnectorDefinition, McpConnectorEntry, McpConnectorHealth,
@@ -47,6 +49,9 @@ export interface McpConnectorSection {
 
 /** A connector's `id` grammar, matching `mcp-client-oauth`'s own `serverName` pattern. */
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
+
+/** The grammar of a name a child process can carry as an environment variable. */
+const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** One live mount. */
 interface Mount {
@@ -87,6 +92,38 @@ export class McpConnectorInvalidError extends Error {
 }
 
 /**
+ * Turn a failed sign-in into the message every surface shows.
+ *
+ * Lives here rather than in either surface because both must say the same
+ * thing: the CLI raises it directly, and the Remote controller folds it into
+ * the error the Settings page renders. A diagnosis worth writing once is worth
+ * writing once.
+ *
+ * Which servers need an OAuth client registered by hand is not knowable before
+ * the attempt. One that publishes an RFC 7591 `registration_endpoint` gets its
+ * client during the attempt itself — Atlassian's MCP server is one of those —
+ * so this is advice attached to a failure, never a pre-flight refusal, which
+ * is what used to make every self-registering server unreachable.
+ *
+ * @param id - the connector that failed to sign in.
+ * @param error - whatever the authorization attempt threw.
+ * @param clientConfigured - whether a client was already stored for it.
+ * @returns the message to report, unchanged when this diagnosis does not apply.
+ */
+export function signInFailure(id: string, error: unknown, clientConfigured: boolean): string {
+  const message = error instanceof Error ? error.message : String(error)
+  // Matches the MCP SDK's own wording for an authorization server with no
+  // `registration_endpoint` ("Incompatible auth server: does not support
+  // dynamic client registration"), which is exactly the case a hand-made
+  // client answers. Google's is the one in front of us. Attaching this to any
+  // other failure would send someone to a cloud console over a network blip.
+  if (clientConfigured || !/dynamic client registration/i.test(message)) return message
+  return `${message}. This server does not register a client for you, so "${id}" needs one by hand: `
+    + `add an OAuth client id and secret in Settings > MCP connectors, or run `
+    + `dsh --profile mcp set ${id} --client-id <id> --client-secret <secret>`
+}
+
+/**
  * Build the `dsh-plugins-mcp-client-oauth` config one definition mounts as.
  *
  * Every transport-specific field is validated here rather than by the plugin's
@@ -113,11 +150,30 @@ export function buildClientConfig(definition: McpConnectorDefinition): McpClient
     if (definition.command === undefined || definition.command === '') {
       throw new McpConnectorInvalidError(`connector "${definition.id}" is stdio but names no command`)
     }
+    // Judged here so an unusable mapping is refused at `put` time, beside
+    // every other field the transport needs, rather than at the mount that
+    // would have spawned the server without its credential.
+    for (const [name, ref] of Object.entries(definition.envFrom ?? {})) {
+      if (!ENV_NAME_PATTERN.test(name)) {
+        throw new McpConnectorInvalidError(
+          `connector "${definition.id}" maps envFrom entry "${name}", which is not an environment variable name`,
+        )
+      }
+      if (!isCredentialRefName(ref)) {
+        throw new McpConnectorInvalidError(
+          `connector "${definition.id}" points envFrom "${name}" at "${ref}", which is not a credential reference`,
+        )
+      }
+    }
     return {
       transport: 'stdio',
       ...shared,
       command: definition.command,
       args: definition.args ?? [],
+      // The secret half is deliberately absent: `envFrom` is resolved at mount
+      // time (see `resolveEnvFrom`), so no value a credential store holds ever
+      // reaches this config — which is also the mount signature, and the
+      // argument the loader logs on a refusal.
       env: definition.env ?? {},
       cwd: definition.cwd ?? '',
     }
@@ -144,6 +200,48 @@ export function buildClientConfig(definition: McpConnectorDefinition): McpClient
       clientName: `dsh (${definition.id})`,
     },
   }
+}
+
+/**
+ * Resolve a stdio connector's `envFrom` mapping into the env dictionary its
+ * child is actually spawned with.
+ *
+ * Takes the reader as an argument rather than reaching for `ctx.credentials`
+ * itself, so the resolution rule is testable without a credential provider,
+ * and so the one place a secret is handled stays a single short function.
+ *
+ * Every missing reference is reported together. Resolving one at a time would
+ * make a connector needing two credentials take two failed mounts to
+ * configure, each naming only the next thing wrong.
+ *
+ * @param id - the connector being mounted, for the error message.
+ * @param envFrom - child variable name to credential reference.
+ * @param read - resolves one reference to its value, or undefined when unset.
+ * @returns child variable name to secret value.
+ * @throws {McpConnectorInvalidError} when any reference resolves to nothing.
+ */
+export async function resolveEnvFrom(
+  id: string,
+  envFrom: Record<string, string>,
+  read: (ref: CredentialRef) => Promise<string | undefined>,
+): Promise<Record<string, string>> {
+  const resolved: Record<string, string> = {}
+  const missing: string[] = []
+  for (const [name, ref] of Object.entries(envFrom)) {
+    // `isCredentialRefName` first: `credentialRef` throws on a name outside
+    // the grammar, and a stored definition that predates this field's
+    // validation must read as "not set" rather than as a crash.
+    const value = isCredentialRefName(ref) ? await read(credentialRef(ref)) : undefined
+    if (value === undefined || value === '') missing.push(`${name} (${ref})`)
+    else resolved[name] = value
+  }
+  if (missing.length > 0) {
+    throw new McpConnectorInvalidError(
+      `connector "${id}" needs credentials that are not set: ${missing.join(', ')}. `
+      + 'Set each one in the environment or in $DSH_HOME/.credentials.yaml.',
+    )
+  }
+  return resolved
 }
 
 /** `ctx.mcpConnectors`: the durable connector list, its mounts, and the operations over both. */
@@ -259,7 +357,10 @@ export class McpConnectorRegistry extends Service {
    */
   async signOut(id: string): Promise<void> {
     this.require(id)
-    await new McpOAuthStore(this.ctx, id).clear()
+    // `forgetGrant`, not `clear`: a client the human registered by hand is not
+    // part of what they are signing out of, and deleting it leaves a connector
+    // that cannot be signed back in without a trip to the provider's console.
+    await new McpOAuthStore(this.ctx, id).forgetGrant()
   }
 
   /**
@@ -267,11 +368,16 @@ export class McpConnectorRegistry extends Service {
    *
    * An authorization server issues a grant for the *scopes* consented to, not
    * for one endpoint, so a provider that splits its MCP surface across several
-   * servers — Google's Gmail, Drive and Calendar each have their own — can be
-   * reached with a single consent: sign one connector in with every scope the
-   * set needs, then copy that grant to its siblings. Without this the human
-   * consents once per connector to the same account, through the same client,
-   * for scopes they already approved.
+   * servers can be reached with a single consent: sign one connector in with
+   * every scope the set needs, then copy that grant to its siblings. Without
+   * this the human consents once per connector to the same account, through
+   * the same client, for scopes they already approved.
+   *
+   * Google, the obvious candidate, is not one of them. Its authorization
+   * requests carry an RFC 8707 `resource=` indicator that binds each token to
+   * one MCP endpoint, and each of its servers publishes only its own product's
+   * scopes — so a Gmail grant carries nothing Drive could use, and copying it
+   * produces a token that fails on first call rather than a shortcut.
    *
    * Only the portable half travels (see `portableGrant`); the source's cached
    * discovery does not, because the target is a different resource and must
@@ -377,6 +483,32 @@ export class McpConnectorRegistry extends Service {
   }
 
   /** Project one definition into the shape a listing surface reads. */
+  /**
+   * The config one definition mounts with, secrets included.
+   *
+   * Split from {@link buildClientConfig} because that one is pure, synchronous,
+   * and doubles as both the `put` validation and the mount signature; this one
+   * is the only place a credential value is read, and it is read once per
+   * mount rather than held anywhere.
+   *
+   * @param definition - the connector being mounted.
+   * @returns its plugin config, with `envFrom` folded into `env`.
+   * @throws {McpConnectorInvalidError} when a referenced credential is unset.
+   */
+  private async mountConfig(definition: McpConnectorDefinition): Promise<McpClientConfig> {
+    const config = buildClientConfig(definition)
+    const envFrom = definition.envFrom ?? {}
+    if (config.transport !== 'stdio' || Object.keys(envFrom).length === 0) return config
+    const secrets = await resolveEnvFrom(
+      definition.id,
+      envFrom,
+      async ref => (await this.ctx.credentials.resolve(ref))?.value,
+    )
+    // Secrets last: a definition that names both an `env` entry and an
+    // `envFrom` entry for one variable means the credential, not the literal.
+    return { ...config, env: { ...config.env, ...secrets } }
+  }
+
   private async describe(definition: McpConnectorDefinition): Promise<McpConnectorEntry> {
     const mount = this.mounts.get(definition.id)
     const prefix = `mcp__${definition.id}__`
@@ -427,7 +559,12 @@ export class McpConnectorRegistry extends Service {
       if (!definition.enabled) continue
       let signature: string
       try {
-        signature = JSON.stringify(buildClientConfig(definition))
+        // The mapping rides in the signature, the resolved values do not: an
+        // edit that repoints a variable at another credential must remount,
+        // and a signature is compared, kept, and read by a human debugging a
+        // reconcile, so no secret belongs in one. A rotation in place is
+        // therefore not noticed here; it takes effect on the next mount.
+        signature = JSON.stringify([buildClientConfig(definition), definition.envFrom ?? {}])
       } catch (error) {
         // An invalid definition is reported as a failed mount rather than
         // thrown: the other connectors must still reconcile, and a surface
@@ -459,7 +596,7 @@ export class McpConnectorRegistry extends Service {
     for (const [id, { definition, signature }] of wanted) {
       if (this.mounts.has(id)) continue
       try {
-        const fiber = this.ctx.plugin(mcpClientOAuth, buildClientConfig(definition))
+        const fiber = this.ctx.plugin(mcpClientOAuth, await this.mountConfig(definition))
         this.mounts.set(id, { signature, fiber })
         // Awaiting the fiber surfaces a load-time refusal (a duplicate
         // serverName, a rejected reconnect policy) as this connector's own

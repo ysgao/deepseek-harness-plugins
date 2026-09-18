@@ -97,3 +97,54 @@ preferring config so a pasted-in client id takes effect on the next sign-in.
 The redirect URI's port is fixed rather than ephemeral because RFC 6749
 §3.1.2.3 has the authorization server compare `redirect_uri` byte for byte
 against what the client registered.
+
+## Two ways a client is obtained, and one rule about storing it
+
+`clientId`/`clientSecret` are optional because the two ways are mutually
+exclusive rather than layered. An authorization server offering RFC 7591
+Dynamic Client Registration mints its own pair on first use and
+`saveClientInformation` persists it; one that does not — `accounts.google.com`
+publishes no `registration_endpoint` at all — can only be used with a pair a
+human registered. Leaving both unset selects DCR, which is why nothing refuses
+a sign-in for want of a stored client: that would make the first kind of server
+impossible to reach.
+
+`clientConfigured` records which of the two happened, and the distinction is
+not cosmetic. When a server rejects the client the SDK calls
+`invalidateCredentials('client')`; discarding a DCR-minted registration is
+right, because the next attempt mints another, while discarding a
+hand-registered pair turns "consent again" into "go find your client id
+again".
+
+**Everything written to the record is pruned of `undefined` first, at every
+depth.** The credential seam walks nested values and refuses `undefined`
+anywhere, and `auth()` hands `saveDiscoveryState` an object with
+`resourceMetadata` and `resourceMetadataUrl` present-but-undefined whenever the
+server publishes no RFC 9728 document — so a top-level-only strip let one
+nested `undefined` fail the whole write, and with it every sign-in to such a
+server. Only `undefined` is dropped: it is the one value that means "absent"
+once the record has round-tripped through JSON. A `Date` or a non-finite number
+is a real mistake about what a record holds and stays refused.
+
+## One authorization request per attempt
+
+A sign-in asks the human to open exactly one URL, and keeps the PKCE verifier
+that belongs to it.
+
+The alternative is not theoretical. A connector's mount keeps retrying while a
+sign-in is pending, every retry is answered `401`, and every `401` has the SDK
+call `auth()` again — which mints a fresh PKCE pair and saves it over the last.
+One attempt against Atlassian's MCP server produced six authorization URLs with
+six `code_challenge` values and a single `state`, spaced on the reconnect
+backoff. The human opens the first URL minutes later, the stored verifier
+belongs to the sixth, and the redemption fails with `Invalid PKCE
+code_verifier` — an error that mentions no retries and points at the one thing
+that was never wrong.
+
+So `issuedFor` records the `state` a redirect has already gone out for. While
+it holds, `redirectToAuthorization` drops the duplicate rather than showing
+another near-identical link nobody could choose between, and `saveCodeVerifier`
+keeps the verifier matching the URL the human actually has. A new attempt — a
+new redirect handler and `state` — clears it, so Cancel-then-retry still gets a
+fresh URL. Neither guard fires outside an attempt, where the unattended refresh
+leg stores verifiers as before.

@@ -29,10 +29,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import { parseCmdline } from '@deepseek-ai/dsh-cmdline'
 import { AuthorizationDeclinedError } from '@deepseek-ai/dsh-authorization'
 import type { AuthorizationInteraction } from '@deepseek-ai/dsh-authorization'
-import { parseCredentialKey } from '@deepseek-ai/dsh-credentials'
+import { credentialRef, isCredentialRefName, parseCredentialKey } from '@deepseek-ai/dsh-credentials'
+import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
+// Also declaration-merges `ctx.mcpConnectors` onto Context, which this file
+// reads; the separate side-effect type import this replaced is now redundant.
+import { signInFailure } from 'dsh-plugins-mcp-connector-registry'
 import type { McpConnectorDefinition, McpConnectorEntry, McpConnectorTransport } from 'dsh-plugins-mcp-connector-registry/types'
-// Side-effect type import: declaration-merges `ctx.mcpConnectors` onto Context.
-import type {} from 'dsh-plugins-mcp-connector-registry'
 
 /** Stable Cordis plugin name. */
 export const name = 'mcp-connector-cli'
@@ -66,6 +68,22 @@ function collectValue(raw: string, previous: string[]): string[] {
   return [...previous, raw]
 }
 
+/**
+ * Read a secret from standard input, to end of stream.
+ *
+ * The default input for `secret set` precisely because the alternative is a
+ * value on the command line, where it lands in the shell history and in every
+ * `ps` listing for as long as the process runs.
+ *
+ * @returns the input with one trailing newline removed, so a piped `echo` and
+ *   a typed line both give the value the user meant.
+ */
+async function readSecretFromStdin(): Promise<string> {
+  const chunks: string[] = []
+  for await (const chunk of internals.stdin) chunks.push(String(chunk))
+  return chunks.join('').replace(/\r?\n$/, '')
+}
+
 /** Print one JSON document, newline-terminated, for a caller piping to `jq`. */
 function printJson(value: unknown): void {
   internals.stdout.write(`${JSON.stringify(value, undefined, 2)}\n`)
@@ -82,6 +100,12 @@ function renderEntry(entry: McpConnectorEntry): string {
     `  state      ${entry.health}${entry.error === undefined ? '' : ` — ${entry.error}`}`,
     `  tools      ${entry.tools.length === 0 ? 'none' : `${String(entry.tools.length)} (${entry.tools.join(', ')})`}`,
   ]
+  const envFrom = Object.entries(entry.definition.envFrom ?? {})
+  if (envFrom.length > 0) {
+    // The reference, never a resolved value: this output is the thing a human
+    // pastes into a bug report.
+    lines.push(`  credentials ${envFrom.map(([name, ref]) => `${name}=$${ref}`).join(', ')}`)
+  }
   if (entry.oauth !== undefined) {
     const o = entry.oauth
     lines.push(`  client     ${o.clientConfigured ? o.clientId ?? 'configured' : 'not configured'}`)
@@ -144,6 +168,7 @@ interface DefinitionOptions {
   command?: string
   arg: string[]
   env: Record<string, string>
+  envFrom: Record<string, string>
   cwd?: string
   header: Record<string, string>
   scope?: string
@@ -166,6 +191,7 @@ function toDefinition(id: string, options: DefinitionOptions, previous?: McpConn
     ...options.command === undefined ? {} : { command: options.command },
     ...options.arg.length === 0 ? {} : { args: options.arg },
     ...Object.keys(options.env).length === 0 ? {} : { env: options.env },
+    ...Object.keys(options.envFrom).length === 0 ? {} : { envFrom: options.envFrom },
     ...options.cwd === undefined ? {} : { cwd: options.cwd },
     ...options.url === undefined ? {} : { url: options.url },
     ...Object.keys(options.header).length === 0 ? {} : { headers: options.header },
@@ -187,7 +213,13 @@ function withDefinitionOptions(command: Command): Command {
     .option('--url <url>', 'MCP endpoint URL (both streamable-http transports)')
     .option('--command <command>', 'executable to start (stdio)')
     .option('--arg <value>', 'one argument for --command; repeatable (stdio)', collectValue, [])
-    .option('--env <KEY=VALUE>', 'one extra env var; repeatable (stdio)', collectPair, {})
+    .option('--env <KEY=VALUE>', 'one extra env var, stored in clear; repeatable (stdio)', collectPair, {})
+    .option(
+      '--env-from <KEY=REF>',
+      'one env var whose value is the credential named REF, not REF itself; repeatable (stdio)',
+      collectPair,
+      {},
+    )
     .option('--cwd <dir>', 'working directory for --command (stdio)')
     .option('--header <KEY=VALUE>', 'one extra HTTP header; repeatable', collectPair, {})
     .option('--scope <scope>', 'OAuth scopes to request; omit to use the server\'s published scopes_supported')
@@ -232,7 +264,7 @@ function mcpCommand(): Command {
     .argument('<id>', 'the connector to authorize')
 
   program.command('clone-grant')
-    .description('copy one signed-in connector\'s authorization onto its siblings, so one consent covers them all')
+    .description('copy one signed-in connector\'s authorization onto its siblings, where the provider allows it (Google does not)')
     .argument('<source>', 'the signed-in connector to copy from')
     .argument('<targets...>', 'the connectors to copy it onto')
     .option('--force', 'replace a target that already holds a grant, and accept scopes the copy does not cover')
@@ -246,6 +278,25 @@ function mcpCommand(): Command {
   program.command('status')
     .description('show one connector')
     .argument('<id>', 'the connector to describe')
+    .option('--json', 'print as JSON')
+
+  const secret = program.command('secret')
+    .description('store, inspect, and forget the credentials an stdio connector\'s --env-from names')
+
+  secret.command('set')
+    .description('store a credential value, read from standard input unless --value is given')
+    .argument('<ref>', 'the credential reference, an environment-variable-style name')
+    .option('--value <value>', 'the value, instead of reading standard input (lands in shell history)')
+    .option('--json', 'print as JSON')
+
+  secret.command('status')
+    .description('say whether a credential is set, and which layer supplies it — never its value')
+    .argument('<ref>', 'the credential reference')
+    .option('--json', 'print as JSON')
+
+  secret.command('unset')
+    .description('forget a stored credential value')
+    .argument('<ref>', 'the credential reference')
     .option('--json', 'print as JSON')
 
   program.addHelpText('after', `
@@ -266,6 +317,16 @@ Examples:
   # A local stdio server, no authorization involved.
   dsh --profile mcp add memory --transport stdio \\
       --command npx --arg -y --arg @modelcontextprotocol/server-memory
+
+  # A local stdio server that authenticates with an API token. The settings
+  # document stores the NAME of the credential; the value goes to the
+  # credential store, read from stdin so it misses the shell history.
+  dsh --profile mcp add atlassian --transport stdio \\
+      --command uvx --arg mcp-atlassian \\
+      --env JIRA_URL=https://example.atlassian.net \\
+      --env-from JIRA_API_TOKEN=ATLASSIAN_API_TOKEN
+  dsh --profile mcp secret set ATLASSIAN_API_TOKEN   # then paste, then ctrl-D
+  dsh --profile mcp secret status ATLASSIAN_API_TOKEN
 
   # A remote server behind a static token.
   dsh --profile mcp add internal --transport streamable-http \\
@@ -400,21 +461,95 @@ export function apply(ctx: Context): void {
       if (entry.definition.transport !== 'streamable-http-oauth') {
         throw new Error(`connector "${id}" is ${entry.definition.transport} and needs no sign-in`)
       }
-      if (entry.oauth?.clientConfigured !== true) {
-        throw new Error(
-          `connector "${id}" has no OAuth client id yet — set one with: `
-          + `dsh --profile mcp set ${id} --client-id <id> --client-secret <secret>`,
-        )
+      // Deliberately no pre-flight check that a client is configured: see
+      // `signInFailure`. A server that self-registers has no client to
+      // configure, and refusing here made those impossible to sign in to.
+      let outcome
+      try {
+        outcome = await authorization.begin({
+          key: parseCredentialKey(registry.authorizationKey(id)),
+          interaction: buildTerminalInteraction(),
+        })
+      } catch (error) {
+        throw new Error(signInFailure(id, error, entry.oauth?.clientConfigured === true))
       }
-      const outcome = await authorization.begin({
-        key: parseCredentialKey(registry.authorizationKey(id)),
-        interaction: buildTerminalInteraction(),
-      })
       if (outcome.status === 'cancelled') throw new Error(`sign-in for "${id}" was declined`)
       internals.stdout.write(`Signed in to "${id}".\n`)
       return undefined
     }, false)
   })
+
+  const secret = program.commands.find(command => command.name() === 'secret')
+
+  /** The credential seam, or a message saying this profile composes none. */
+  const requireCredentials = (): Context['credentials'] => {
+    const credentials = ctx.get('credentials')
+    if (credentials === undefined) {
+      throw new Error('no credential seam is mounted in this profile, so credentials cannot be stored here')
+    }
+    return credentials
+  }
+
+  /** Reject a name outside the reference grammar before it reaches the seam. */
+  const requireRef = (ref: string): CredentialRef => {
+    if (!isCredentialRefName(ref)) {
+      throw new Error(`"${ref}" is not a credential reference; use an environment-variable-style name`)
+    }
+    return credentialRef(ref)
+  }
+
+  secret?.commands.find(command => command.name() === 'set')
+    ?.action((ref: string, options: { value?: string; json?: boolean }) => {
+      void execute(ctx, async () => {
+        const credentials = requireCredentials()
+        const name = requireRef(ref)
+        const value = options.value ?? await readSecretFromStdin()
+        if (value === '') {
+          throw new Error('refusing to store an empty value; "secret unset" is how a credential is forgotten')
+        }
+        await credentials.set(name, value)
+        // Reported rather than assumed: the local provider ranks the inherited
+        // process environment ABOVE its own file, so a value stored here while
+        // the same name is exported in the parent shell is written correctly
+        // and still not the one that resolves.
+        const info = await credentials.describe(name)
+        const shadowed = info.source !== undefined && info.source !== 'file'
+        if (options.json === true) {
+          return { ok: true, ref, configured: info.configured, source: info.source, shadowed }
+        }
+        internals.stdout.write(
+          shadowed
+            ? `Stored ${ref}, but the ${String(info.source)} layer still supplies the value that resolves.\n`
+            : `Stored ${ref}.\n`,
+        )
+        return undefined
+      }, options.json === true)
+    })
+
+  secret?.commands.find(command => command.name() === 'status')
+    ?.action((ref: string, options: { json?: boolean }) => {
+      void execute(ctx, async () => {
+        const info = await requireCredentials().describe(requireRef(ref))
+        if (options.json === true) return { ok: true, ref, ...info }
+        internals.stdout.write(
+          `${ref}\n`
+          + `  set        ${info.configured ? 'yes' : 'no'}\n`
+          + `  source     ${info.source ?? 'none'}\n`
+          + `  writable   ${info.writable ? 'yes' : 'no'}\n`,
+        )
+        return undefined
+      }, options.json === true)
+    })
+
+  secret?.commands.find(command => command.name() === 'unset')
+    ?.action((ref: string, options: { json?: boolean }) => {
+      void execute(ctx, async () => {
+        await requireCredentials().unset(requireRef(ref))
+        if (options.json === true) return { ok: true, ref }
+        internals.stdout.write(`Forgot ${ref}.\n`)
+        return undefined
+      }, options.json === true)
+    })
 
   parseCmdline(ctx, program)
 }

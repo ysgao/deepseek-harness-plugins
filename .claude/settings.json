@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "deny": [
+      "Edit(./packages/_vendor/**)",
+      "Write(./packages/_vendor/**)"
+    ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "denyWrite": [
+        "./packages/_vendor"
+      ]
+    }
+  }
+}

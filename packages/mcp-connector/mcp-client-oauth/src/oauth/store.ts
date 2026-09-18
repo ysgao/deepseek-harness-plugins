@@ -126,6 +126,41 @@ export function portableGrant(grant: McpOAuthGrant): McpOAuthGrantPatch {
 }
 
 /**
+ * The same value with every `undefined`-valued key removed, at every depth.
+ *
+ * Needed because the seam's contract is stricter than the top-level strip this
+ * store used to do, and the SDK hands over objects that violate it through no
+ * fault of anyone's: `auth()` calls `saveDiscoveryState` with
+ * `resourceMetadata` and `resourceMetadataUrl` present-but-undefined whenever
+ * the server publishes no RFC 9728 metadata. Atlassian's MCP server is exactly
+ * that server, and one nested `undefined` made the credential provider refuse
+ * the entire record — failing the sign-in at the first write, with a message
+ * about JSON that named nothing a reader could act on.
+ *
+ * Only `undefined` is dropped, because only `undefined` means "absent" on the
+ * way back out. A `Date`, a class instance or a non-finite number is a real
+ * mistake about what a record holds, and the seam should still refuse those
+ * rather than have this quietly launder them.
+ *
+ * Returns new containers rather than editing in place: the objects come from
+ * the SDK, which is free to keep its own references to them.
+ *
+ * @param value - the value to copy.
+ * @returns the copy, free of `undefined` members.
+ */
+export function pruneUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(item => pruneUndefined(item)) as unknown as T
+  if (typeof value !== 'object' || value === null) return value
+  if (Object.getPrototypeOf(value) !== Object.prototype) return value
+  const pruned: Record<string, unknown> = {}
+  for (const [key, member] of Object.entries(value)) {
+    if (member === undefined) continue
+    pruned[key] = pruneUndefined(member)
+  }
+  return pruned as unknown as T
+}
+
+/**
  * The scopes a stored token set actually carries.
  * @param grant - the grant to read.
  * @returns the granted scopes, or undefined when the server named none.
@@ -187,26 +222,42 @@ export class McpOAuthStore {
   async merge(patch: McpOAuthGrantPatch): Promise<McpOAuthGrant> {
     let next: McpOAuthGrant = EMPTY
     await this.ctx.credentials.modifyRecord(this.key, (current) => {
-      const merged: Record<string, unknown> = { ...readGrant(current), ...patch, version: 1 }
-      // An explicitly-undefined patch field removes the key outright rather
-      // than storing `undefined`: the record round-trips through JSON, where
-      // an `undefined` value and an absent key are the same thing on the way
-      // back but not on the way in.
-      for (const [field, value] of Object.entries(merged)) {
-        if (value === undefined) delete merged[field]
-      }
-      next = merged as unknown as McpOAuthGrant
+      // An explicitly-undefined field is removed rather than stored, at every
+      // depth: the record round-trips through JSON, where an `undefined` value
+      // and an absent key are the same thing on the way back but not on the
+      // way in — and the seam refuses the whole record over one of them.
+      next = pruneUndefined({ ...readGrant(current), ...patch, version: 1 }) as McpOAuthGrant
       return Promise.resolve({ kind: 'grant', payload: next })
     })
     return next
   }
 
   /**
-   * Remove the stored grant entirely — the "sign out" path, and the one
-   * `invalidateCredentials('all')` takes when a server rejects everything.
+   * Remove the stored record entirely — what deleting a connector does, and
+   * the one `invalidateCredentials('all')` takes when a server rejects
+   * everything.
+   *
+   * Not what signing out does; see {@link forgetGrant}.
    */
   async clear(): Promise<void> {
     await this.ctx.credentials.deleteRecord(this.key)
+  }
+
+  /**
+   * Forget the tokens, keeping the client they were obtained with — the
+   * "sign out" path.
+   *
+   * The distinction is the one {@link McpOAuthGrant.clientConfigured} exists
+   * for. A hand-registered client pair is not part of the grant: nothing can
+   * recreate it, so discarding it turns "sign in again" into "go find your
+   * client id and secret again" — and against an authorization server with no
+   * Dynamic Client Registration, which is Google's, into a connector that
+   * cannot be signed in at all until a human pastes the pair back. The
+   * `codeVerifier` goes with the tokens because it belongs to an attempt that
+   * is over.
+   */
+  async forgetGrant(): Promise<void> {
+    await this.merge({ tokens: undefined, obtainedAt: undefined, codeVerifier: undefined })
   }
 
   /**

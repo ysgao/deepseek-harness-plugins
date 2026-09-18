@@ -24,7 +24,10 @@ the design rationale:
   behind OAuth 2.0. A superset of `@deepseek-ai/dsh-mcp-client` (same stdio
   and static-header transports, same config, same tool names) plus an
   authorization-code flow with unattended token refresh, a durable connector
-  registry, a Settings page, and a `--json` CLI an agent can drive.
+  registry, a Settings page, and a `--json` CLI an agent can drive. A server
+  needing an API token names a credential rather than storing one, so the
+  settings document holds no secrets; one offering dynamic client registration
+  needs no console work at all.
 
 ## Getting started
 
@@ -34,8 +37,23 @@ cd deepseek-harness-plugins
 pnpm install
 ```
 
+`pnpm install` also runs `scripts/install-git-hooks.mjs`, which points this
+clone's `core.hooksPath` at the tracked `.githooks/` directory so the
+Article II pre-commit gate is active without a separate setup step. It sets
+one git config key and nothing else; if your clone already has a
+`core.hooksPath`, it says so and leaves it alone rather than taking your
+hooks over — then the gate is only `pnpm run check:vendor`, run by hand. It
+never fails an install.
+
 `packages/_vendor/deepseek-harness` is a git submodule pinned to
-`deepseek-ai/deepseek-harness`, unmodified. `pnpm-workspace.yaml` folds it
+`deepseek-ai/deepseek-harness`, unmodified — and enforced as such, not just
+asked for. `pnpm run check:vendor` fails if the vendor working tree is dirty
+or if the submodule pin has moved away from `vendorPin` in
+`scripts/replacement-parity.json`, `.claude/settings.json` denies
+`Edit`/`Write` under `packages/_vendor/**`, and the pre-commit hook above runs
+the check on every commit. [`CONSTITUTION.md`](CONSTITUTION.md) Article II
+says why, and what to do instead (Article III: a replacement, in this repo's
+own packages). `pnpm-workspace.yaml` folds it
 into this workspace so `workspace:^` dependencies on `@deepseek-ai/dsh-*`
 resolve against real upstream sources (those packages are not published to
 npm). It's nested under `packages/` rather than a sibling `vendor/`
@@ -185,6 +203,12 @@ something out.
    typecheck. Run `pnpm run check:parity`, re-fork whatever it names, and
    only then record the new hashes; see `ARCHITECTURE.md`'s "Replacement
    parity" and [`CONSTITUTION.md`](CONSTITUTION.md) Article III–IV.
+
+   Move `vendorPin` in `scripts/replacement-parity.json` to the new commit
+   **in the same change**. `pnpm run check:vendor` — and therefore the
+   pre-commit hook — fails while the submodule and that field disagree,
+   which is deliberate: that disagreement is precisely the window in which
+   every fork hash in the file still describes the previous release.
 
 Every package here targets `deepseek-ai/deepseek-harness` upstream
 directly.

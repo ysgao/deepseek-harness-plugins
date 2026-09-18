@@ -31,7 +31,9 @@
     "install:plugins": "node scripts/install-plugins.mjs",
     "typecheck": "tsc -b tsconfig.host.json && tsc -b tsconfig.client.json",
     "test": "vitest run",
-    "check:parity": "node scripts/check-replacement-parity.mjs"
+    "check:parity": "node scripts/check-replacement-parity.mjs",
+    "check:vendor": "node scripts/check-vendor-pristine.mjs",
+    "postinstall": "node scripts/install-git-hooks.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",
