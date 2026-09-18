@@ -38,8 +38,32 @@ export interface McpConnectorDefinition {
   command?: string
   /** `stdio`: arguments passed directly, without shell interpolation. */
   args?: string[]
-  /** `stdio`: extra env vars merged on top of the scrubbed ambient env. */
+  /** `stdio`: extra env vars merged on top of the scrubbed ambient env. Never a secret; see {@link envFrom}. */
   env?: Record<string, string>
+  /**
+   * `stdio`: secret env vars, as child variable name to *credential
+   * reference* — the name of a credential, never its value.
+   *
+   * A stdio server that authenticates with an API token needs that token in
+   * its child environment, and {@link env} is the wrong place for it: this
+   * definition is ordinary configuration that a settings document holds in
+   * clear, and that the README promises is safe to read, print, diff, and
+   * copy between machines. So the document stores the *name* and the value is
+   * resolved at mount time through `ctx.credentials`, whose local provider
+   * layers the inherited process environment over `$DSH_HOME/.credentials.yaml`
+   * over the `.env` fallbacks. Either home works and neither is this file.
+   *
+   * Resolution is also what makes the value arrive at all: the subprocess
+   * seam scrubs every ambient name matching `/KEY|PASSWORD|SECRET|TOKEN/i`
+   * out of the child environment, so a token merely exported in the parent
+   * shell never reaches the server on its own. Entries here are merged after
+   * that scrub, on top of {@link env}.
+   *
+   * A reference that resolves to nothing fails this connector's mount, with
+   * the missing name reported as its {@link McpConnectorEntry.error} — it does
+   * not start the server unauthenticated to fail every tool call later.
+   */
+  envFrom?: Record<string, string>
   /** `stdio`: working directory for the child process. */
   cwd?: string
   /** Both HTTP transports: the MCP endpoint URL. */

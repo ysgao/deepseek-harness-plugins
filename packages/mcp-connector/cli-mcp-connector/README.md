@@ -28,6 +28,17 @@ dsh --profile mcp add drive --url https://drivemcp.googleapis.com/mcp/v1 \
 dsh --profile mcp add memory --transport stdio \
     --command npx --arg -y --arg @modelcontextprotocol/server-memory
 
+# A local stdio server that authenticates with an API token. --env is stored
+# in clear and --env-from names a credential instead, so the token itself goes
+# to the credential store — read from stdin, so it misses the shell history.
+dsh --profile mcp add atlassian --transport stdio \
+    --command uvx --arg mcp-atlassian \
+    --env JIRA_URL=https://example.atlassian.net \
+    --env-from JIRA_API_TOKEN=ATLASSIAN_API_TOKEN
+dsh --profile mcp secret set ATLASSIAN_API_TOKEN     # paste, then ctrl-D
+dsh --profile mcp secret status ATLASSIAN_API_TOKEN  # set? from which layer?
+dsh --profile mcp secret unset ATLASSIAN_API_TOKEN
+
 dsh --profile mcp list --json
 dsh --profile mcp status gmail --json
 dsh --profile mcp logout gmail

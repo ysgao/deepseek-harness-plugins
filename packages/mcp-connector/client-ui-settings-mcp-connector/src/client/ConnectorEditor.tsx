@@ -47,6 +47,7 @@ interface Draft {
   command: string
   args: string
   env: string
+  envFrom: string
   cwd: string
   headers: string
   scope: string
@@ -88,6 +89,7 @@ function toDraft(definition: McpConnectorDefinition | undefined): Draft {
     command: definition?.command ?? '',
     args: (definition?.args ?? []).join('\n'),
     env: linesFromDict(definition?.env, '='),
+    envFrom: linesFromDict(definition?.envFrom, '='),
     cwd: definition?.cwd ?? '',
     headers: linesFromDict(definition?.headers, ': '),
     scope: definition?.scope ?? '',
@@ -109,6 +111,7 @@ function toDefinition(draft: Draft, previous: McpConnectorDefinition | undefined
     ...draft.command.trim() === '' ? {} : { command: draft.command.trim() },
     ...args.length === 0 ? {} : { args },
     env: dictFromLines(draft.env, '='),
+    envFrom: dictFromLines(draft.envFrom, '='),
     ...draft.cwd.trim() === '' ? {} : { cwd: draft.cwd.trim() },
     ...draft.url.trim() === '' ? {} : { url: draft.url.trim() },
     headers: dictFromLines(draft.headers, ':'),
@@ -230,6 +233,15 @@ export function ConnectorEditor(props: ConnectorEditorProps): ReactNode {
                 value={draft.env}
                 disabled={busy}
                 onChange={(event) => { set('env', event.target.value) }}
+              />
+            </Field>
+            <Field label={t('fieldEnvFrom')} hint={t('fieldEnvFromHint')}>
+              <textarea
+                className={styles['textarea']}
+                value={draft.envFrom}
+                disabled={busy}
+                placeholder="JIRA_API_TOKEN=ATLASSIAN_API_TOKEN"
+                onChange={(event) => { set('envFrom', event.target.value) }}
               />
             </Field>
           </div>

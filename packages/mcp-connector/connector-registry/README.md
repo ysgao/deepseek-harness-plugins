@@ -35,3 +35,33 @@ under `mcp-connector/<id>`, written only through `modifyRecord`.
 A connector id folds to its credential-key segment (lower case, `_` → `-`), and
 two ids that fold together are refused at write time rather than silently
 sharing one stored authorization.
+
+A **stdio** server keeps the same split through `envFrom`, which maps a child
+environment variable to the *name* of a credential rather than to its value:
+
+```yaml
+- id: atlassian
+  transport: stdio
+  command: uvx
+  args: ['mcp-atlassian']
+  env:
+    JIRA_URL: https://example.atlassian.net   # not a secret, stored in clear
+  envFrom:
+    JIRA_API_TOKEN: ATLASSIAN_API_TOKEN       # a name; the value is never here
+```
+
+The value is resolved once per mount through `ctx.credentials`, whose local
+provider layers the inherited process environment over
+`$DSH_HOME/.credentials.yaml` over the `.env` fallbacks — so the token can live
+in a `0600` file the seam manages, or in the environment, and in neither case
+in this document. Resolution is also what makes it arrive at all: the
+subprocess seam scrubs every ambient name matching `/KEY|PASSWORD|SECRET|TOKEN/i`
+out of a child's environment, so a token merely exported in the parent shell
+never reaches the server on its own.
+
+Two consequences worth knowing. A reference that resolves to nothing fails
+that connector's mount and names what is missing, rather than starting the
+server unauthenticated to fail every tool call later. And the mount signature
+carries the mapping but never the value, so repointing a variable at another
+credential remounts, while rotating the value behind a name takes effect at
+the next mount rather than instantly.

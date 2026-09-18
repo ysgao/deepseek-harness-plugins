@@ -41,7 +41,11 @@ export const en = {
   fieldArgs: 'Arguments',
   fieldArgsHint: 'One per line.',
   fieldEnv: 'Environment',
-  fieldEnvHint: 'One KEY=VALUE per line.',
+  fieldEnvHint: 'One KEY=VALUE per line. Stored in clear — never put a token here.',
+  fieldEnvFrom: 'Environment from credentials',
+  fieldEnvFromHint:
+    'One VARIABLE=CREDENTIAL per line. The credential is named here and its value is read from the '
+    + 'credential store or the environment at connect time, so no secret is written to the settings document.',
   fieldCwd: 'Working directory',
   fieldHeaders: 'Headers',
   fieldHeadersHint: 'One Name: value per line.',
@@ -110,7 +114,9 @@ export const zh: Record<keyof typeof en, string> = {
   fieldArgs: '参数',
   fieldArgsHint: '每行一个。',
   fieldEnv: '环境变量',
-  fieldEnvHint: '每行一个 KEY=VALUE。',
+  fieldEnvHint: '每行一个 KEY=VALUE。以明文保存 —— 请勿在此填写令牌。',
+  fieldEnvFrom: '来自凭据的环境变量',
+  fieldEnvFromHint: '每行一个 变量=凭据名。此处只写凭据的名称，其值在连接时从凭据存储或环境中读取，因此设置文档中不会写入任何密钥。',
   fieldCwd: '工作目录',
   fieldHeaders: '请求头',
   fieldHeadersHint: '每行一个 Name: value。',

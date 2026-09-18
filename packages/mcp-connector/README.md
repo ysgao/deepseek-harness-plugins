@@ -91,7 +91,10 @@ take those servers down. This bundle is purely additive and the two coexist.
 Because the config field names, defaults, and derived tool names are identical,
 migrating one server across is a one-word edit — change that row's `name:` from
 `@deepseek-ai/dsh-mcp-client` to `dsh-plugins-mcp-client-oauth` — or re-add it
-as a connector through the CLI or the Settings page. The one thing to avoid is
+as a connector through the CLI or the Settings page. A row whose `env:` carries
+a literal API token is worth moving the second way and re-pointing at
+`--env-from`, since a `cordis.patch.yml` is an ordinary config file that gets
+read, copied, and pasted into bug reports. The one thing to avoid is
 the *same* `serverName` live on both plugins at once: each keeps its own
 namespace reservation, so the duplicate is not caught by that guard, only later
 by `ctx.tools.register`, which refuses the duplicate public name and rolls that
@@ -114,6 +117,34 @@ Two halves, deliberately kept apart:
   the backing store supports it. That is what makes a refresh-token rotation
   safe when a CLI run and the GUI both notice the access token expiring at the
   same moment.
+
+A **stdio** server authenticating with an API token has the same split, by a
+different route: its definition's `envFrom` maps a child environment variable
+to the *name* of a credential, and the value is resolved at mount time through
+`ctx.credentials`.
+
+```sh
+dsh --profile mcp add atlassian --transport stdio \
+    --command uvx --arg mcp-atlassian \
+    --env JIRA_URL=https://example.atlassian.net \
+    --env-from JIRA_API_TOKEN=ATLASSIAN_API_TOKEN
+dsh --profile mcp secret set ATLASSIAN_API_TOKEN   # paste, then ctrl-D
+```
+
+`--env` is the field that is stored in clear, and it is for a URL or a
+username; a token belongs in `--env-from`, whose value the settings document
+never sees. `secret set` reads standard input by default precisely so the value
+misses the shell history and the process table, and writes it through the
+credential seam — for the local provider, `$DSH_HOME/.credentials.yaml` at mode
+`0600`. Exporting the same name in the parent shell works too, and the seam
+reports which layer a value came from, because the environment outranks the
+file and a stored value can otherwise sit there shadowed.
+
+Passing the token through the seam is not only tidier than writing it into a
+config file: the subprocess seam scrubs every ambient name matching
+`/KEY|PASSWORD|SECRET|TOKEN/i` out of a spawned child's environment, so a token
+merely exported in the parent shell does not reach the server at all unless a
+connector names it.
 
 ## Setting up a Google connector
 

@@ -27,6 +27,8 @@ import {
   assertConnectorIdUnfolded, connectorCredentialKey, grantedScopes, McpOAuthStore, portableGrant,
 } from 'dsh-plugins-mcp-client-oauth'
 import type { Config as McpClientConfig } from 'dsh-plugins-mcp-client-oauth'
+import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials'
+import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import type {
   McpClonedAuthorization, McpConnectorDefinition, McpConnectorEntry, McpConnectorHealth,
@@ -47,6 +49,9 @@ export interface McpConnectorSection {
 
 /** A connector's `id` grammar, matching `mcp-client-oauth`'s own `serverName` pattern. */
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
+
+/** The grammar of a name a child process can carry as an environment variable. */
+const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** One live mount. */
 interface Mount {
@@ -113,11 +118,30 @@ export function buildClientConfig(definition: McpConnectorDefinition): McpClient
     if (definition.command === undefined || definition.command === '') {
       throw new McpConnectorInvalidError(`connector "${definition.id}" is stdio but names no command`)
     }
+    // Judged here so an unusable mapping is refused at `put` time, beside
+    // every other field the transport needs, rather than at the mount that
+    // would have spawned the server without its credential.
+    for (const [name, ref] of Object.entries(definition.envFrom ?? {})) {
+      if (!ENV_NAME_PATTERN.test(name)) {
+        throw new McpConnectorInvalidError(
+          `connector "${definition.id}" maps envFrom entry "${name}", which is not an environment variable name`,
+        )
+      }
+      if (!isCredentialRefName(ref)) {
+        throw new McpConnectorInvalidError(
+          `connector "${definition.id}" points envFrom "${name}" at "${ref}", which is not a credential reference`,
+        )
+      }
+    }
     return {
       transport: 'stdio',
       ...shared,
       command: definition.command,
       args: definition.args ?? [],
+      // The secret half is deliberately absent: `envFrom` is resolved at mount
+      // time (see `resolveEnvFrom`), so no value a credential store holds ever
+      // reaches this config — which is also the mount signature, and the
+      // argument the loader logs on a refusal.
       env: definition.env ?? {},
       cwd: definition.cwd ?? '',
     }
@@ -144,6 +168,48 @@ export function buildClientConfig(definition: McpConnectorDefinition): McpClient
       clientName: `dsh (${definition.id})`,
     },
   }
+}
+
+/**
+ * Resolve a stdio connector's `envFrom` mapping into the env dictionary its
+ * child is actually spawned with.
+ *
+ * Takes the reader as an argument rather than reaching for `ctx.credentials`
+ * itself, so the resolution rule is testable without a credential provider,
+ * and so the one place a secret is handled stays a single short function.
+ *
+ * Every missing reference is reported together. Resolving one at a time would
+ * make a connector needing two credentials take two failed mounts to
+ * configure, each naming only the next thing wrong.
+ *
+ * @param id - the connector being mounted, for the error message.
+ * @param envFrom - child variable name to credential reference.
+ * @param read - resolves one reference to its value, or undefined when unset.
+ * @returns child variable name to secret value.
+ * @throws {McpConnectorInvalidError} when any reference resolves to nothing.
+ */
+export async function resolveEnvFrom(
+  id: string,
+  envFrom: Record<string, string>,
+  read: (ref: CredentialRef) => Promise<string | undefined>,
+): Promise<Record<string, string>> {
+  const resolved: Record<string, string> = {}
+  const missing: string[] = []
+  for (const [name, ref] of Object.entries(envFrom)) {
+    // `isCredentialRefName` first: `credentialRef` throws on a name outside
+    // the grammar, and a stored definition that predates this field's
+    // validation must read as "not set" rather than as a crash.
+    const value = isCredentialRefName(ref) ? await read(credentialRef(ref)) : undefined
+    if (value === undefined || value === '') missing.push(`${name} (${ref})`)
+    else resolved[name] = value
+  }
+  if (missing.length > 0) {
+    throw new McpConnectorInvalidError(
+      `connector "${id}" needs credentials that are not set: ${missing.join(', ')}. `
+      + 'Set each one in the environment or in $DSH_HOME/.credentials.yaml.',
+    )
+  }
+  return resolved
 }
 
 /** `ctx.mcpConnectors`: the durable connector list, its mounts, and the operations over both. */
@@ -377,6 +443,32 @@ export class McpConnectorRegistry extends Service {
   }
 
   /** Project one definition into the shape a listing surface reads. */
+  /**
+   * The config one definition mounts with, secrets included.
+   *
+   * Split from {@link buildClientConfig} because that one is pure, synchronous,
+   * and doubles as both the `put` validation and the mount signature; this one
+   * is the only place a credential value is read, and it is read once per
+   * mount rather than held anywhere.
+   *
+   * @param definition - the connector being mounted.
+   * @returns its plugin config, with `envFrom` folded into `env`.
+   * @throws {McpConnectorInvalidError} when a referenced credential is unset.
+   */
+  private async mountConfig(definition: McpConnectorDefinition): Promise<McpClientConfig> {
+    const config = buildClientConfig(definition)
+    const envFrom = definition.envFrom ?? {}
+    if (config.transport !== 'stdio' || Object.keys(envFrom).length === 0) return config
+    const secrets = await resolveEnvFrom(
+      definition.id,
+      envFrom,
+      async ref => (await this.ctx.credentials.resolve(ref))?.value,
+    )
+    // Secrets last: a definition that names both an `env` entry and an
+    // `envFrom` entry for one variable means the credential, not the literal.
+    return { ...config, env: { ...config.env, ...secrets } }
+  }
+
   private async describe(definition: McpConnectorDefinition): Promise<McpConnectorEntry> {
     const mount = this.mounts.get(definition.id)
     const prefix = `mcp__${definition.id}__`
@@ -427,7 +519,12 @@ export class McpConnectorRegistry extends Service {
       if (!definition.enabled) continue
       let signature: string
       try {
-        signature = JSON.stringify(buildClientConfig(definition))
+        // The mapping rides in the signature, the resolved values do not: an
+        // edit that repoints a variable at another credential must remount,
+        // and a signature is compared, kept, and read by a human debugging a
+        // reconcile, so no secret belongs in one. A rotation in place is
+        // therefore not noticed here; it takes effect on the next mount.
+        signature = JSON.stringify([buildClientConfig(definition), definition.envFrom ?? {}])
       } catch (error) {
         // An invalid definition is reported as a failed mount rather than
         // thrown: the other connectors must still reconcile, and a surface
@@ -459,7 +556,7 @@ export class McpConnectorRegistry extends Service {
     for (const [id, { definition, signature }] of wanted) {
       if (this.mounts.has(id)) continue
       try {
-        const fiber = this.ctx.plugin(mcpClientOAuth, buildClientConfig(definition))
+        const fiber = this.ctx.plugin(mcpClientOAuth, await this.mountConfig(definition))
         this.mounts.set(id, { signature, fiber })
         // Awaiting the fiber surfaces a load-time refusal (a duplicate
         // serverName, a rejected reconnect policy) as this connector's own
