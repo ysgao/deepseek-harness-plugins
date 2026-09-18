@@ -521,6 +521,18 @@ is now recursive, and drops `undefined` only: a `Date` or a non-finite number
 is a real mistake about what a record holds and stays refused rather than
 quietly laundered into storage.
 
+#### One authorization request per attempt
+
+A sign-in must ask for exactly one URL. The mount keeps retrying underneath a
+pending attempt, each retry is answered `401`, and each `401` drives `auth()`
+again — which mints a new PKCE pair and stores it over the previous one. The
+human is still looking at the first URL, so by the time they open it the stored
+verifier belongs to a later round and the redemption fails with `Invalid PKCE
+code_verifier`, an error naming nothing that was actually wrong. Against
+Atlassian's server one attempt produced six URLs and six challenges under a
+single `state`. `McpOAuthProvider.issuedFor` closes it: the first redirect of an
+attempt wins, later ones are dropped, and a new attempt issues afresh.
+
 #### What is forked, and why it is not a "replacement"
 
 This bundle disables no vendor plugin row, so CONSTITUTION.md Article III's
