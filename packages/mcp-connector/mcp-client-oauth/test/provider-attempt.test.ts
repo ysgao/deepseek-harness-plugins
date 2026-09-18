@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CredentialKey, CredentialRecord } from '@deepseek-ai/dsh-credentials'
-import { McpOAuthProvider } from '../src/oauth/provider.ts'
+import { McpOAuthProvider, withRefreshableGrant } from '../src/oauth/provider.ts'
 import { McpOAuthStore } from '../src/oauth/store.ts'
 
 /** An in-memory stand-in for the credential seam's record space. */
@@ -108,5 +108,35 @@ describe('one authorization request per attempt', () => {
     const { provider, store } = subject()
     await provider.saveCodeVerifier('unattended')
     expect((await store.read()).codeVerifier).toBe('unattended')
+  })
+})
+
+describe('withRefreshableGrant', () => {
+  it('asks Google for the refresh token it otherwise withholds', () => {
+    const url = withRefreshableGrant(new URL('https://accounts.google.com/o/oauth2/v2/auth?client_id=x&scope=y'))
+    expect(url.searchParams.get('access_type')).toBe('offline')
+    // Without this Google returns a refresh token only on the very first
+    // grant, so re-authorizing after an expiry would not fix the expiry.
+    expect(url.searchParams.get('prompt')).toBe('consent')
+  })
+
+  it('keeps every parameter the SDK put there', () => {
+    const url = withRefreshableGrant(new URL('https://accounts.google.com/o/oauth2/v2/auth?client_id=x&state=s&scope=y'))
+    expect(url.searchParams.get('client_id')).toBe('x')
+    expect(url.searchParams.get('state')).toBe('s')
+    expect(url.searchParams.get('scope')).toBe('y')
+  })
+
+  it('sends nothing non-standard to an authorization server that did not ask for it', () => {
+    const original = new URL('https://mcp.atlassian.com/v1/authorize?client_id=x')
+    const url = withRefreshableGrant(original)
+    expect(url).toBe(original)
+    expect(url.searchParams.get('access_type')).toBeNull()
+  })
+
+  it('does not edit the URL the SDK still holds', () => {
+    const original = new URL('https://accounts.google.com/o/oauth2/v2/auth?client_id=x')
+    withRefreshableGrant(original)
+    expect(original.searchParams.get('access_type')).toBeNull()
   })
 })

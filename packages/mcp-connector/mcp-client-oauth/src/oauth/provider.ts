@@ -69,6 +69,42 @@ const GRANT_TYPES = ['authorization_code', 'refresh_token']
  * Persisted-credential and human-interaction half of the MCP SDK's OAuth
  * client, for one connector.
  */
+/**
+ * Google's authorization endpoint, the one server in common use that withholds
+ * a refresh token unless asked in its own dialect.
+ */
+const GOOGLE_AUTHORIZATION_HOST = 'accounts.google.com'
+
+/**
+ * The authorization URL, with the parameters Google requires before it will
+ * issue a refresh token.
+ *
+ * OAuth 2.0 has no standard way to ask for one — RFC 6749 leaves it to the
+ * authorization server — and Google's answer is two non-standard query
+ * parameters the MCP SDK has no reason to send. Without `access_type=offline`
+ * Google returns an access token alone, so a connector reports itself signed
+ * in and then stops working roughly an hour later with nothing to renew from;
+ * without `prompt=consent` it withholds the refresh token on every grant after
+ * the first, which is precisely the re-authorization someone reaches for when
+ * the first one expired.
+ *
+ * Scoped to Google's host rather than sent everywhere. These parameters are
+ * not part of the protocol, and an authorization server is within its rights
+ * to reject a request carrying parameters it does not know. Atlassian's issues
+ * refresh tokens without being asked, which is the ordinary behaviour this
+ * works around.
+ *
+ * @param authorizationUrl - the URL the SDK built.
+ * @returns a copy carrying the parameters, or the original for any other host.
+ */
+export function withRefreshableGrant(authorizationUrl: URL): URL {
+  if (authorizationUrl.hostname !== GOOGLE_AUTHORIZATION_HOST) return authorizationUrl
+  const url = new URL(authorizationUrl)
+  url.searchParams.set('access_type', 'offline')
+  url.searchParams.set('prompt', 'consent')
+  return url
+}
+
 export class McpOAuthProvider implements OAuthClientProvider {
   private readonly store: McpOAuthStore
   /**
@@ -240,7 +276,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
     // which one is still valid, and only the first one is.
     if (this.alreadyIssued) return
     this.issuedFor = this.pendingState
-    await handler(authorizationUrl)
+    await handler(withRefreshableGrant(authorizationUrl))
   }
 
   /** @inheritdoc */
