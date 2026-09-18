@@ -93,6 +93,50 @@ export type McpOAuthGrantPatch = { [K in keyof McpOAuthGrant]?: McpOAuthGrant[K]
 const EMPTY: McpOAuthGrant = { version: 1 }
 
 /**
+ * The half of a grant that means the same thing under another connector.
+ *
+ * One Google consent covers every scope it was asked for, and the access
+ * token that comes back is scoped, not endpoint-bound — so a grant obtained
+ * for one connector can authorize a sibling pointed at a different server of
+ * the same provider, which is what spares a human three consent rounds for
+ * Gmail, Drive and Calendar. Two fields must *not* travel with it:
+ *
+ *   * `codeVerifier` belongs to one authorization attempt mid-redirect. It is
+ *     meaningless once the code is redeemed and actively misleading in a
+ *     record that never made that attempt.
+ *   * `discoveryState` caches the RFC 9728 protected-resource document and
+ *     the authorization-server metadata *for the source's own resource URL*.
+ *     The target is a different resource — copying it would hand the target's
+ *     provider another server's discovery and skip the round trip that would
+ *     have corrected it.
+ *
+ * `clientInformation` and `clientConfigured` do travel, and must: refreshing
+ * the copied token needs the same client pair that obtained it.
+ *
+ * @param grant - the source connector's stored grant.
+ * @returns the patch to merge into another connector's record.
+ */
+export function portableGrant(grant: McpOAuthGrant): McpOAuthGrantPatch {
+  return {
+    ...grant.tokens === undefined ? {} : { tokens: grant.tokens },
+    ...grant.clientInformation === undefined ? {} : { clientInformation: grant.clientInformation },
+    ...grant.clientConfigured === undefined ? {} : { clientConfigured: grant.clientConfigured },
+    ...grant.obtainedAt === undefined ? {} : { obtainedAt: grant.obtainedAt },
+  }
+}
+
+/**
+ * The scopes a stored token set actually carries.
+ * @param grant - the grant to read.
+ * @returns the granted scopes, or undefined when the server named none.
+ */
+export function grantedScopes(grant: McpOAuthGrant): readonly string[] | undefined {
+  const scope = grant.tokens?.scope
+  if (typeof scope !== 'string' || scope.trim() === '') return undefined
+  return scope.split(/\s+/u).filter(entry => entry !== '')
+}
+
+/**
  * Narrow one stored record to this package's payload. A record written by
  * something else — an `api-key` record filed under a colliding key, or a
  * payload from a future version — reads as empty rather than throwing: the

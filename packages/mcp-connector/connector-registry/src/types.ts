@@ -95,3 +95,15 @@ export interface McpConnectorEntry {
    */
   authorizationKey?: string
 }
+
+/** What one `cloneAuthorization` copy did, for a surface reporting it. */
+export interface McpClonedAuthorization {
+  /** The connector the grant was read from. */
+  source: string
+  /** The connector it was written to. */
+  target: string
+  /** The scopes the copied token set carries, when the server named them. */
+  scope?: readonly string[]
+  /** Whether the target already held a grant that this copy replaced. */
+  replaced: boolean
+}

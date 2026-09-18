@@ -114,7 +114,27 @@ credential seam under `mcp-connector/<id>`, along with the tokens that follow.
 ```
 
 Each opens a browser for consent and exits once the grant settles; each
-connector holds its own grant, so one sign-in does not cover the other two.
+connector holds its own grant.
+
+**Or consent once for all three.** A Google grant carries the scopes it was
+approved for rather than one endpoint, so one sign-in can cover the set:
+
+```sh
+./dsh --profile mcp set gmail --scope "https://www.googleapis.com/auth/gmail.readonly \
+    https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/calendar.readonly"
+./dsh --profile mcp login gmail
+./dsh --profile mcp clone-grant gmail drive calendar
+```
+
+The trade is that the `gmail` connector then *asks* for all three scopes, which
+is what the consent screen will show. If a tool call afterwards fails with an
+audience or resource error, Google has bound that token to one resource after
+all — sign the other two in separately and nothing else changes.
+
+The same copy moves a grant between machines: the record is one entry in
+`$DSH_HOME/.credentials.yaml` under `mcp-connector/<id>`, the file is watched
+for external edits, and a refresh token is not machine-bound — the loopback
+redirect only matters while authorizing.
 On a machine with no browser — `dsh` over SSH, say — the command prints the
 URL and accepts the redirected URL pasted back.
 

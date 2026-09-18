@@ -45,7 +45,11 @@ import type {} from '@deepseek-ai/dsh-tools'
 export type { ReconnectConfig, ResolvedReconnectPolicy } from './connection.ts'
 export { publicToolName } from './tool-bridge.ts'
 export { McpOAuthProvider, McpReauthorizationRequiredError } from './oauth/provider.ts'
-export { McpOAuthStore, assertConnectorIdUnfolded, connectorCredentialKey, foldConnectorId, MCP_OAUTH_SCOPE } from './oauth/store.ts'
+export {
+  McpOAuthStore, assertConnectorIdUnfolded, connectorCredentialKey, foldConnectorId, grantedScopes,
+  MCP_OAUTH_SCOPE, portableGrant,
+} from './oauth/store.ts'
+export type { McpOAuthGrantPatch } from './oauth/store.ts'
 export type { McpOAuthConfig, McpOAuthGrant, McpOAuthStatus } from './oauth/types.ts'
 
 /** Cordis plugin name used by loader diagnostics. */

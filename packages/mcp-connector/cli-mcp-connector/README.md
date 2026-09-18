@@ -34,6 +34,27 @@ dsh --profile mcp logout gmail
 dsh --profile mcp remove gmail
 ```
 
+## One consent for a provider that ships several servers
+
+Google splits its MCP surface across one server per product, so connecting
+Gmail, Drive and Calendar means three connectors — but an authorization server
+issues a grant for the *scopes* consented to, not for one endpoint. Sign one
+connector in with every scope the set needs, then copy that grant to its
+siblings:
+
+```sh
+dsh --profile mcp set gmail --scope "https://www.googleapis.com/auth/gmail.readonly \
+    https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/calendar.readonly"
+dsh --profile mcp login gmail
+dsh --profile mcp clone-grant gmail drive calendar
+```
+
+`clone-grant` copies the tokens and the client pair that refreshes them, and
+deliberately not the source's cached RFC 9728 discovery — the target is a
+different resource and must discover its own. It refuses a source that is not
+signed in, a target that already holds a grant, and a target whose configured
+scopes the copied grant does not cover; the last two yield to `--force`.
+
 Its own dedicated profile plugin rather than a subcommand of
 `@deepseek-ai/dsh-headless`, for the reason `dsh-plugins-cli-login-app`
 documents at length: `dsh-cmdline` lets any number of plugins parse the same

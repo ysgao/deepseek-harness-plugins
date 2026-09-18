@@ -231,6 +231,13 @@ function mcpCommand(): Command {
     .description('sign in to an OAuth connector, and exit once it settles')
     .argument('<id>', 'the connector to authorize')
 
+  program.command('clone-grant')
+    .description('copy one signed-in connector\'s authorization onto its siblings, so one consent covers them all')
+    .argument('<source>', 'the signed-in connector to copy from')
+    .argument('<targets...>', 'the connectors to copy it onto')
+    .option('--force', 'replace a target that already holds a grant, and accept scopes the copy does not cover')
+    .option('--json', 'print as JSON')
+
   program.command('logout')
     .description('forget a connector\'s stored authorization, leaving its definition')
     .argument('<id>', 'the connector to sign out')
@@ -351,6 +358,28 @@ export function apply(ctx: Context): void {
       return undefined
     }, options.json === true)
   })
+
+  program.commands.find(command => command.name() === 'clone-grant')
+    ?.action((source: string, targets: string[], options: { force?: boolean; json?: boolean }) => {
+      void execute(ctx, async (registry) => {
+        const copied = []
+        // Sequential rather than concurrent: every copy writes through the
+        // credential seam's own exclusion, and a partial failure reads far
+        // better when the copies before it have already landed in order.
+        for (const target of targets) {
+          copied.push(await registry.cloneAuthorization(source, target, options.force === true))
+        }
+        if (options.json === true) return { ok: true, source, copied }
+        for (const entry of copied) {
+          internals.stdout.write(
+            `Copied the authorization from "${entry.source}" to "${entry.target}"${
+              entry.replaced ? ', replacing the one it held' : ''
+            }.\n`,
+          )
+        }
+        return undefined
+      }, options.json === true)
+    })
 
   program.commands.find(command => command.name() === 'status')?.action((id: string, options: { json?: boolean }) => {
     void execute(ctx, async (registry) => {

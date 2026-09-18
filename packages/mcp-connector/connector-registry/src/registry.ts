@@ -23,11 +23,13 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { Fiber } from '@deepseek-ai/cordis'
 import * as mcpClientOAuth from 'dsh-plugins-mcp-client-oauth'
-import { assertConnectorIdUnfolded, connectorCredentialKey, McpOAuthStore } from 'dsh-plugins-mcp-client-oauth'
+import {
+  assertConnectorIdUnfolded, connectorCredentialKey, grantedScopes, McpOAuthStore, portableGrant,
+} from 'dsh-plugins-mcp-client-oauth'
 import type { Config as McpClientConfig } from 'dsh-plugins-mcp-client-oauth'
 import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import type {
-  McpConnectorDefinition, McpConnectorEntry, McpConnectorHealth,
+  McpClonedAuthorization, McpConnectorDefinition, McpConnectorEntry, McpConnectorHealth,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -258,6 +260,80 @@ export class McpConnectorRegistry extends Service {
   async signOut(id: string): Promise<void> {
     this.require(id)
     await new McpOAuthStore(this.ctx, id).clear()
+  }
+
+  /**
+   * Copy one connector's stored authorization onto another.
+   *
+   * An authorization server issues a grant for the *scopes* consented to, not
+   * for one endpoint, so a provider that splits its MCP surface across several
+   * servers — Google's Gmail, Drive and Calendar each have their own — can be
+   * reached with a single consent: sign one connector in with every scope the
+   * set needs, then copy that grant to its siblings. Without this the human
+   * consents once per connector to the same account, through the same client,
+   * for scopes they already approved.
+   *
+   * Only the portable half travels (see `portableGrant`); the source's cached
+   * discovery does not, because the target is a different resource and must
+   * discover its own.
+   *
+   * Refuses rather than guesses: a source with no tokens, a target that would
+   * lose a grant it already holds, and a target whose configured scopes the
+   * copied grant does not cover are all errors, the last two overridable with
+   * `force` for the human who knows better than the check does.
+   *
+   * @param sourceId - the signed-in connector to copy from.
+   * @param targetId - the connector to copy onto.
+   * @param force - overwrite a target that already holds a grant, and accept a
+   *   scope set the copied grant does not cover.
+   * @returns what was copied, for the surface reporting it.
+   * @throws {McpConnectorNotFoundError} when either id is not configured.
+   * @throws {McpConnectorInvalidError} on any of the refusals above.
+   */
+  async cloneAuthorization(sourceId: string, targetId: string, force = false): Promise<McpClonedAuthorization> {
+    const source = this.require(sourceId)
+    const target = this.require(targetId)
+    if (sourceId === targetId) {
+      throw new McpConnectorInvalidError(`"${sourceId}" cannot copy its authorization onto itself`)
+    }
+    for (const definition of [source, target]) {
+      if (definition.transport !== 'streamable-http-oauth') {
+        throw new McpConnectorInvalidError(
+          `connector "${definition.id}" is ${definition.transport} and holds no OAuth authorization`,
+        )
+      }
+    }
+    const sourceGrant = await new McpOAuthStore(this.ctx, sourceId).read()
+    if (sourceGrant.tokens === undefined) {
+      throw new McpConnectorInvalidError(
+        `connector "${sourceId}" is not signed in — sign it in first, then copy its authorization`,
+      )
+    }
+    const scope = grantedScopes(sourceGrant)
+    const wanted = (target.scope ?? '').split(/\s+/u).filter(entry => entry !== '')
+    // An undefined `scope` means the server named none in its token response,
+    // which is a silence this cannot read as either coverage or a gap.
+    const missing = scope === undefined ? [] : wanted.filter(entry => !scope.includes(entry))
+    if (missing.length > 0 && !force) {
+      throw new McpConnectorInvalidError(
+        `the authorization stored for "${sourceId}" does not cover ${missing.join(', ')}, which "${targetId}" asks for `
+        + `— sign "${sourceId}" in again with those scopes, or pass force to copy it anyway`,
+      )
+    }
+    const targetStore = new McpOAuthStore(this.ctx, targetId)
+    const replaced = (await targetStore.read()).tokens !== undefined
+    if (replaced && !force) {
+      throw new McpConnectorInvalidError(
+        `connector "${targetId}" already holds an authorization — pass force to replace it`,
+      )
+    }
+    await targetStore.merge(portableGrant(sourceGrant))
+    return {
+      source: sourceId,
+      target: targetId,
+      ...scope === undefined ? {} : { scope },
+      replaced,
+    }
   }
 
   /**
