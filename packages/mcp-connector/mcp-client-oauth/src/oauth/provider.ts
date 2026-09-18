@@ -86,6 +86,20 @@ export class McpOAuthProvider implements OAuthClientProvider {
    * callback from an unrelated request that merely found the open port.
    */
   private pendingState: string | undefined
+  /**
+   * The {@link pendingState} an authorization request has already been issued
+   * for, so that one attempt asks the human to open exactly one URL.
+   *
+   * Without this, a connector whose mount is retrying underneath a pending
+   * sign-in issues a fresh PKCE pair per retry: the supervisor reconnects, the
+   * server answers 401, the SDK calls `auth()` again, and each round saves a
+   * new `codeVerifier` over the last. The human is looking at the first URL
+   * the whole time, so whichever they open carries a `code_challenge` that no
+   * longer matches what is stored, and the redemption fails with "Invalid PKCE
+   * code_verifier" — an error that says nothing about retries and points at
+   * the one thing that was never wrong.
+   */
+  private issuedFor: string | undefined
 
   /**
    * @param ctx - context carrying `ctx.credentials`.
@@ -116,11 +130,15 @@ export class McpOAuthProvider implements OAuthClientProvider {
   withRedirect(handler: RedirectHandler, state: string): () => void {
     const previousHandler = this.redirectHandler
     const previousState = this.pendingState
+    const previousIssued = this.issuedFor
     this.redirectHandler = handler
     this.pendingState = state
+    // A new attempt has issued nothing yet, whatever the last one did.
+    this.issuedFor = undefined
     return () => {
       this.redirectHandler = previousHandler
       this.pendingState = previousState
+      this.issuedFor = previousIssued
     }
   }
 
@@ -201,15 +219,35 @@ export class McpOAuthProvider implements OAuthClientProvider {
     await this.store.merge({ tokens, obtainedAt: Date.now(), codeVerifier: undefined })
   }
 
+  /**
+   * Whether this attempt has already asked the human to open a URL.
+   *
+   * Both halves of issuing an authorization request consult it, and the SDK
+   * calls them in the order `saveCodeVerifier` then `redirectToAuthorization`
+   * — so the flag is set by the redirect and read by the *next* round's save,
+   * which is exactly the pair that must be kept together.
+   */
+  private get alreadyIssued(): boolean {
+    return this.pendingState !== undefined && this.issuedFor === this.pendingState
+  }
+
   /** @inheritdoc */
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
     const handler = this.redirectHandler
     if (handler === undefined) throw new McpReauthorizationRequiredError(this.serverName)
+    // Second and later rounds of one attempt are dropped rather than shown: a
+    // human staring at a list of near-identical consent links cannot tell
+    // which one is still valid, and only the first one is.
+    if (this.alreadyIssued) return
+    this.issuedFor = this.pendingState
     await handler(authorizationUrl)
   }
 
   /** @inheritdoc */
   async saveCodeVerifier(codeVerifier: string): Promise<void> {
+    // Keeps the verifier that belongs to the URL the human was given. See
+    // `issuedFor`: the retry that generated this one has no way to reach them.
+    if (this.alreadyIssued) return
     await this.store.merge({ codeVerifier })
   }
 
