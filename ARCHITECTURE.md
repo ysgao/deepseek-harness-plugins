@@ -441,8 +441,9 @@ independently useful.
 | `dsh-plugins-api-mcp-connector-controller` | Typert Host controller: the `mcpConnectors` Remote namespace, with its own notice/prompt stream |
 | `dsh-plugins-client-remotes-mcp-connector` | Mounts that namespace's generated Client contribution — see "Plugin isolation" |
 | `dsh-plugins-client-ui-settings-mcp-connector` | Settings > MCP connectors; an *additive* `settings.section` registration, so no vendor row is disabled |
+| `dsh-plugins-host-oauth-callback-mcp-connector` | `/mcp-oauth/callback` on the web server for a browser that cannot reach the host's loopback listener; publishes the optional `ctx.mcpOAuthCallbacks` sink, and registers its route through a nested `webServer` inject so a CLI profile mounts it harmlessly |
 | `dsh-plugins-cli-mcp-connector` | Standalone `dsh --profile mcp <command>` CLI, every command `--json` so an agent can drive it |
-| `dsh-plugins-bundle-mcp-connector` | `cordis.patch.yml` bundle: the registry, the controller, the Remote mount, and the Settings page |
+| `dsh-plugins-bundle-mcp-connector` | `cordis.patch.yml` bundle: the registry, the controller, the callback route, the Remote mount, and the Settings page |
 
 #### Why this bundle exists at all
 
@@ -509,6 +510,37 @@ mounting plugin catches and logs it per "Plugin isolation", and the only
 visible symptom is a settings page that never appears. This bundle's delete
 operation is therefore `removeConnector`. Check any new `@Remote` method name
 against that list.
+
+#### Where the browser redirect lands
+
+A sign-in needs the authorization server's redirect to reach the process that
+minted the request's `state`. The default is a loopback listener bound on the
+`dsh` host for the duration of one attempt — nothing extra mounted, nothing
+reachable from off the box — and it is exactly right while the human's browser
+runs on that host. It is useless when the browser is elsewhere (a `dsh` over
+SSH, the web UI opened from a laptop), because that browser resolves
+`127.0.0.1` to its own machine. The paste-the-URL prompt has always covered
+that case, at the cost of a human copying a URL with an authorization code in
+it out of one window into another.
+
+`dsh-plugins-host-oauth-callback-mcp-connector` adds a third delivery: the web
+server that is already serving the UI answers `/mcp-oauth/callback`. Which
+deliveries run is decided by the connector's own redirect URI rather than by
+configuration — loopback URI, loopback listener; a URI whose path is the
+route's, the web sink; the paste prompt races either, always.
+
+The seam points the unusual way round on purpose. `McpOAuthCallbackSink` and
+its `ctx.mcpOAuthCallbacks` Context merge are declared in
+`dsh-plugins-mcp-client-oauth`, the *consumer*, not in the package that
+implements it. The consumer must compile and run in a profile with no web
+server at all — the CLI's own profile has none — so it can hold the contract
+but never the dependency, and reads the sink with `ctx.get(...)` rather than
+an `inject` that would strand it. The implementing plugin inverts the same
+rule for its route: it publishes the service unconditionally and requires
+`webServer` through a nested `ctx.inject`, because a top-level requirement
+would leave the entry pending forever in a CLI profile, which this repo's boot
+treats as fatal to the whole application rather than to one feature
+(CONSTITUTION.md Article V).
 
 #### Typert generation and `tsconfig.host.json`
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugins-bundle-mcp-connector",
-  "description": "Installable dsh --profile patch layer that mounts the durable MCP connector registry, its mcpConnectors RPC controller, that namespace's Client Remote mount, and the Settings > MCP connectors page — adding OAuth 2.0 authorization-code and automatic token refresh for remote Streamable HTTP MCP servers on top of everything dsh-mcp-client already does",
+  "description": "Installable dsh --profile patch layer that mounts the durable MCP connector registry, its mcpConnectors RPC controller, that namespace's Client Remote mount, and the Settings > MCP connectors page \u2014 adding OAuth 2.0 authorization-code and automatic token refresh for remote Streamable HTTP MCP servers on top of everything dsh-mcp-client already does",
   "version": "0.0.0",
   "type": "module",
   "main": "lib/index.js",
@@ -15,6 +15,7 @@
     "dsh-plugins-api-mcp-connector-controller": "workspace:^",
     "dsh-plugins-client-remotes-mcp-connector": "workspace:^",
     "dsh-plugins-client-ui-settings-mcp-connector": "workspace:^",
+    "dsh-plugins-host-oauth-callback-mcp-connector": "workspace:^",
     "dsh-plugins-mcp-client-oauth": "workspace:^",
     "dsh-plugins-mcp-connector-registry": "workspace:^"
   },

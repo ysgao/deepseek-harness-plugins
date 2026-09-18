@@ -34,6 +34,12 @@
 # web, headless, acp, sdk — install this layer into one of those, not
 # sdk-minimal).
 #
+# mcp-oauth-callback: receives an authorization redirect on the web server at
+# /mcp-oauth/callback, for a browser that cannot reach the host's loopback
+# listener — the Settings page opened from another machine, or a dsh reached
+# over SSH. It publishes its sink unconditionally and registers the route only
+# once a webServer exists, so it is harmless in a profile that serves no UI.
+#
 # remotes-mcp-connector mounts that namespace's generated Client contribution
 # — the role @deepseek-ai/dsh-api-remotes fills for every in-tree namespace
 # but cannot for an out-of-tree one. Kept as its own dedicated plugin, not
@@ -54,6 +60,9 @@
 
     - id: mcp-connector-controller
       name: 'dsh-plugins-api-mcp-connector-controller'
+
+    - id: mcp-oauth-callback
+      name: 'dsh-plugins-host-oauth-callback-mcp-connector'
 
     - id: remotes-mcp-connector
       name: 'dsh-plugins-client-remotes-mcp-connector'

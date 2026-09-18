@@ -48,6 +48,7 @@ registered by hand in a Google Cloud project is mandatory. Its
 | [`api-mcp-connector-controller`](api-mcp-connector-controller/README.md) | Typert Host controller: the `mcpConnectors` Remote namespace, with its own notice/prompt stream |
 | [`client-remotes-mcp-connector`](client-remotes-mcp-connector/README.md) | Mounts that namespace's generated Client contribution |
 | [`client-ui-settings-mcp-connector`](client-ui-settings-mcp-connector/README.md) | Settings > MCP connectors — an **additive** `settings.section` registration |
+| [`host-oauth-callback-mcp-connector`](host-oauth-callback-mcp-connector/README.md) | `/mcp-oauth/callback` on the web server, for a browser that cannot reach the host's loopback listener; publishes `ctx.mcpOAuthCallbacks` |
 | [`cli-mcp-connector`](cli-mcp-connector/README.md) | `dsh --profile mcp add\|list\|set\|login\|logout\|remove\|status`, every command `--json` |
 | [`bundle-mcp-connector`](bundle-mcp-connector/README.md) | The installable `cordis.patch.yml` layer |
 

@@ -14,6 +14,7 @@ const HOST_PACKAGES = [
   'packages/mcp-connector/connector-registry',
   'packages/mcp-connector/api-mcp-connector-controller',
   'packages/mcp-connector/cli-mcp-connector',
+  'packages/mcp-connector/host-oauth-callback-mcp-connector',
   'packages/workspace-git/api-workspace-git-controller',
   'packages/workspace-git/api-workspace-file-controller',
 ]

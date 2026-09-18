@@ -51,6 +51,9 @@ export {
 } from './oauth/store.ts'
 export type { McpOAuthGrantPatch } from './oauth/store.ts'
 export type { McpOAuthConfig, McpOAuthGrant, McpOAuthStatus } from './oauth/types.ts'
+// The optional web-server delivery seam: the contract lives here, in the
+// consumer, so this package compiles in a profile that mounts no web server.
+export type { McpOAuthCallbackDelivery, McpOAuthCallbackSink } from './oauth/callback-sink.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'mcp-client-oauth'

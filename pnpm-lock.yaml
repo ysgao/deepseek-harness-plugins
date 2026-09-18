@@ -12532,6 +12532,9 @@ importers:
       dsh-plugins-client-ui-settings-mcp-connector:
         specifier: workspace:^
         version: link:../client-ui-settings-mcp-connector
+      dsh-plugins-host-oauth-callback-mcp-connector:
+        specifier: workspace:^
+        version: link:../host-oauth-callback-mcp-connector
       dsh-plugins-mcp-client-oauth:
         specifier: workspace:^
         version: link:../mcp-client-oauth
@@ -12663,6 +12666,22 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/core/tools
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/mcp-connector/host-oauth-callback-mcp-connector:
+    dependencies:
+      dsh-plugins-mcp-client-oauth:
+        specifier: workspace:^
+        version: link:../mcp-client-oauth
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-host-webserver':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/host/webserver
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

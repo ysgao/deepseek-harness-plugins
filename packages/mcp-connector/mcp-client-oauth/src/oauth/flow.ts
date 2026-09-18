@@ -25,6 +25,11 @@ import { auth } from '@modelcontextprotocol/client'
 import { awaitAuthorizationCallback } from './callback.ts'
 import type { CallbackResult } from './callback.ts'
 import { McpOAuthProvider } from './provider.ts'
+// Side-effect type import: declaration-merges the optional
+// `ctx.mcpOAuthCallbacks` sink onto Context. Optional by design — see that
+// module's doc comment.
+import type {} from './callback-sink.ts'
+import type { McpOAuthCallbackSink } from './callback-sink.ts'
 
 /** The one method this flow offers; a single-method flow renders as one button. */
 const METHOD = { id: 'browser', label: 'Sign in with your browser' } as const
@@ -73,7 +78,7 @@ export async function runOAuthAttempt(
     if (redirected === undefined) {
       throw new Error(`mcp-client-oauth(${serverName}): the SDK asked for a redirect without producing a URL`)
     }
-    const callback = await raceForCode(serverName, provider.redirectUrl, state, session)
+    const callback = await raceForCode(serverName, provider.redirectUrl, state, session, ctx.get('mcpOAuthCallbacks'))
     const second = await auth(provider, {
       serverUrl,
       authorizationCode: callback.code,
@@ -91,12 +96,70 @@ export async function runOAuthAttempt(
 }
 
 /**
- * Wait for the authorization code, from whichever of the two ways produces it
- * first.
+ * Whether a redirect URI names a host the loopback listener can usefully bind.
+ *
+ * A non-loopback URI is not a misconfiguration — it is how a redirect is
+ * routed through the web server instead — so the listener is skipped rather
+ * than attempted and reported as broken.
+ *
+ * @param redirectUri - the configured redirect URI.
+ * @returns true when the URI names loopback.
+ */
+function isLoopbackRedirect(redirectUri: string): boolean {
+  let host: string
+  try {
+    host = new URL(redirectUri).hostname
+  } catch {
+    return false
+  }
+  return host === '127.0.0.1' || host === 'localhost' || host === '[::1]' || host === '::1'
+}
+
+/**
+ * Whether a sink can receive this attempt's redirect.
+ *
+ * The sink answers one pathname on the web server; a redirect URI pointing
+ * somewhere else will never reach it, and entering it in the race would leave
+ * a wait that can only ever lose.
+ *
+ * @param sink - the sink, when one is mounted.
+ * @param redirectUri - the configured redirect URI.
+ * @returns true when the URI's path is the one the sink answers.
+ */
+function sinkServes(sink: McpOAuthCallbackSink | undefined, redirectUri: string): boolean {
+  if (sink === undefined) return false
+  try {
+    return new URL(redirectUri).pathname === sink.path
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Wait for the authorization code, from whichever way produces it first.
+ *
+ * Up to three ways run at once, and which of them are live depends on the
+ * redirect URI rather than on configuration:
+ *
+ *   * the **loopback listener**, for a `127.0.0.1`/`localhost` redirect URI —
+ *     the ordinary case, and the only one that needs nothing else mounted;
+ *   * the **web-server sink**, when one is mounted and the redirect URI names
+ *     its path. This is what makes a browser on another machine work: the
+ *     authorization server redirects that browser to the `dsh` web server,
+ *     which every browser that can open the UI can also reach, and the code
+ *     never touches the human's clipboard;
+ *   * the **paste prompt**, always, because neither of the other two can be
+ *     promised in every deployment.
+ *
+ * The losers are retired through their own `signal` — the seam documents that
+ * exact use for the prompt, so withdrawing the question does not read as the
+ * human declining.
+ *
  * @param serverName - the connector being authorized, for diagnostics.
- * @param redirectUri - the configured redirect URI the listener binds.
+ * @param redirectUri - the configured redirect URI.
  * @param state - the nonce this attempt sent.
  * @param session - the seam's handle on the human.
+ * @param sink - the web-server delivery seam, when one is mounted.
  * @returns the captured code.
  */
 async function raceForCode(
@@ -104,57 +167,76 @@ async function raceForCode(
   redirectUri: string,
   state: string,
   session: AuthorizationSession,
+  sink: McpOAuthCallbackSink | undefined,
 ): Promise<CallbackResult> {
-  // One controller per side, each aborting the other's wait once this side
-  // wins. The prompt's own `signal` is the seam's documented way to retire
-  // the losing question of a race without it reading as a human declining.
-  const listenerDone = new AbortController()
-  const promptDone = new AbortController()
-  const withdraw = (): void => {
-    listenerDone.abort(new Error(`mcp-client-oauth(${serverName}): the sign-in attempt ended`))
-    promptDone.abort(new Error(`mcp-client-oauth(${serverName}): the sign-in attempt ended`))
+  const controllers: AbortController[] = []
+  const contenders: Promise<CallbackResult>[] = []
+  const withdraw = (reason: string): void => {
+    for (const controller of controllers) {
+      controller.abort(new Error(`mcp-client-oauth(${serverName}): ${reason}`))
+    }
   }
-  session.signal.addEventListener('abort', withdraw, { once: true })
+  const abandon = (): void => { withdraw('the sign-in attempt ended') }
+  session.signal.addEventListener('abort', abandon, { once: true })
 
-  const listening = awaitAuthorizationCallback(redirectUri, state, listenerDone.signal)
-  // A listener that could not bind its port is not a reason to fail the whole
-  // attempt — the paste path still works — but it must be reported, or the
-  // human is left staring at a prompt with no idea why the browser round trip
-  // did nothing.
-  listening.catch((error: unknown) => {
-    if (listenerDone.signal.aborted) return
-    session.notify({
-      message: `Could not receive the browser redirect automatically (${
-        error instanceof Error ? error.message : String(error)
-      }). Paste the URL your browser was redirected to instead.`,
+  /**
+   * Enter one way of receiving the code into the race, with its own signal.
+   * @param won - what to say when this one wins, retiring the others.
+   * @param start - begins the wait under the signal that retires it.
+   */
+  const enter = (won: string, start: (signal: AbortSignal) => Promise<CallbackResult>): Promise<CallbackResult> => {
+    const done = new AbortController()
+    controllers.push(done)
+    const attempt = start(done.signal)
+    contenders.push(attempt.then((result) => {
+      for (const other of controllers) {
+        if (other !== done) other.abort(new Error(`mcp-client-oauth(${serverName}): ${won}`))
+      }
+      return result
+    }))
+    return attempt
+  }
+
+  if (isLoopbackRedirect(redirectUri)) {
+    const listening = enter(
+      'the browser redirect arrived',
+      signal => awaitAuthorizationCallback(redirectUri, state, signal),
+    )
+    // A listener that could not bind its port is not a reason to fail the
+    // whole attempt — the paste path still works — but it must be reported,
+    // or the human is left staring at a prompt with no idea why the browser
+    // round trip did nothing.
+    listening.catch((error: unknown) => {
+      if (controllers[0]?.signal.aborted === true) return
+      session.notify({
+        message: `Could not receive the browser redirect automatically (${
+          error instanceof Error ? error.message : String(error)
+        }). Paste the URL your browser was redirected to instead.`,
+      })
     })
-  })
+  }
 
-  const pasting = session.prompt({
+  if (sinkServes(sink, redirectUri)) {
+    // Non-null: sinkServes is false for an absent sink.
+    const served = sink as McpOAuthCallbackSink
+    enter('the browser redirect reached the web server', signal => served.await(state, signal))
+  }
+
+  enter('the redirect URL was pasted', signal => session.prompt({
     kind: 'text',
     message: 'Paste the full URL your browser was redirected to, if it did not return here by itself.',
     placeholder: `${redirectUri}?code=...`,
-    signal: promptDone.signal,
-  }).then(pasted => parsePastedRedirect(serverName, pasted, state))
+    signal,
+  }).then(pasted => parsePastedRedirect(serverName, pasted, state)))
 
   try {
-    return await Promise.race([
-      listening.then((result) => {
-        promptDone.abort(new Error(`mcp-client-oauth(${serverName}): the browser redirect arrived`))
-        return result
-      }),
-      pasting.then((result) => {
-        listenerDone.abort(new Error(`mcp-client-oauth(${serverName}): the redirect URL was pasted`))
-        return result
-      }),
-    ])
+    return await Promise.race(contenders)
   } finally {
-    session.signal.removeEventListener('abort', withdraw)
-    withdraw()
-    // Both sides are settled or withdrawn; marking the loser handled keeps an
+    session.signal.removeEventListener('abort', abandon)
+    abandon()
+    // Every side is settled or withdrawn; marking the losers handled keeps an
     // orphaned rejection from reaching the process.
-    void listening.catch(() => {})
-    void pasting.catch(() => {})
+    for (const contender of contenders) void contender.catch(() => {})
   }
 }
 

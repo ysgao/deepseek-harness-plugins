@@ -86,6 +86,15 @@ If the console refuses an `http://127.0.0.1` URI on a Web application client,
 either use `http://localhost:33418/mcp-oauth/callback` (the loopback listener
 binds whatever host the URI names) and pass it as `--redirect-uri` in step 4,
 or create a **Desktop app** client instead, which accepts loopback redirects.
+
+**If you use the Settings page from another machine**, register the web UI's
+own callback instead — `https://<your dsh host>/mcp-oauth/callback` — and pass
+it as `--redirect-uri`. The loopback listener runs on the `dsh` host, so a
+browser elsewhere never reaches it and the sign-in falls back to pasting the
+redirected URL by hand; the web server answers that path itself and completes
+the round trip from any browser that can open the UI. Google requires `https`
+for a non-localhost redirect URI, so this needs the UI served over TLS. One
+client can carry both URIs.
 A client *secret* is required either way: `accounts.google.com` advertises only
 `client_secret_post` / `client_secret_basic` token-endpoint auth.
 

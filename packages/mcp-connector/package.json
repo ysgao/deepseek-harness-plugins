@@ -3,7 +3,7 @@
   "private": true,
   "description": "Build-only grouping for this plugin bundle's packages — declares no dependencies of its own. `pnpm run build` (from this directory, or `pnpm --filter mcp-connector run build` from the root) builds every package below in the same host-then-client order the root's own `build` script uses: the client packages import the Typert `/remote` stub that only exists once the host packages' own tsdown pass has generated it.",
   "scripts": {
-    "build:host": "tsc -b mcp-client-oauth connector-registry api-mcp-connector-controller cli-mcp-connector && (cd ../.. && tsdown --filter dsh-plugins-mcp-client-oauth --filter dsh-plugins-mcp-connector-registry --filter dsh-plugins-api-mcp-connector-controller --filter dsh-plugins-cli-mcp-connector)",
+    "build:host": "tsc -b mcp-client-oauth connector-registry api-mcp-connector-controller cli-mcp-connector host-oauth-callback-mcp-connector && (cd ../.. && tsdown --filter dsh-plugins-mcp-client-oauth --filter dsh-plugins-mcp-connector-registry --filter dsh-plugins-api-mcp-connector-controller --filter dsh-plugins-cli-mcp-connector --filter dsh-plugins-host-oauth-callback-mcp-connector)",
     "build:client": "tsc -b client-remotes-mcp-connector client-ui-settings-mcp-connector && for d in client-remotes-mcp-connector client-ui-settings-mcp-connector; do (cd \"$d\" && tsdown) || exit 1; done",
     "build": "pnpm run build:host && pnpm run build:client"
   }
