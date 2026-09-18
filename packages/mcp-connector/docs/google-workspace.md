@@ -42,6 +42,24 @@ document is that part.
 
 ## 1. Enable the APIs
 
+**In the project that owns the OAuth client**, which is not necessarily the one
+`gcloud` has selected. Google bills and authorizes API use against the client's
+project, so enabling an API anywhere else changes nothing and reports success
+while doing it. The client id carries that project's *number* as its prefix —
+`687081679312-v0cdf….apps.googleusercontent.com` belongs to project number
+`687081679312` — which resolves to a project id like this:
+
+```sh
+gcloud projects list --filter="projectNumber=<the prefix>" --format="value(projectId)"
+```
+
+Pass that id as `--project` below and everywhere else in this document. The
+symptom when this is wrong is unusually unhelpful: sign-in succeeds, the
+connector reports `connected` with its tools listed — that listing is
+unauthenticated and says nothing about your project — and the first real tool
+call returns "*API has not been used in project NNN before or it is disabled*",
+naming a project number you never typed.
+
 Two distinct sets — the product APIs, and the MCP services that front them.
 Both are required; enabling only the first is the usual cause of a
 `PERMISSION_DENIED` that arrives *after* a successful sign-in.
@@ -229,5 +247,7 @@ curl -s https://gmailmcp.googleapis.com/.well-known/oauth-protected-resource/mcp
 | `redirect_uri_mismatch` | The registered URI differs from the connector's, somewhere byte-exact — trailing slash, `localhost` vs `127.0.0.1`, port. |
 | "Access blocked: app has not completed verification" | External audience without your account under *Test users*. |
 | Sign-in succeeds, tool calls return `PERMISSION_DENIED` | The `*mcp.googleapis.com` service is not enabled (step 1's second command), or the scope was never granted. |
+| A tool call says the API "has not been used in project NNN before or it is disabled", for a project you did not configure | The APIs were enabled in the wrong project. `NNN` is the client id's numeric prefix — the project that owns the OAuth client, which is the only one that counts. See step 1. |
+| One connector works and the rest fail identically | Same cause: that one product's MCP service happens to be enabled in the client's project and the others are not. |
 | `EADDRINUSE` on the callback listener | Something already holds port 33418. Re-register a different port and `set --redirect-uri`. |
 | `invalid_scope` at authorization | Scope requested but not listed on the consent screen (step 2). |
