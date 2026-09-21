@@ -132,6 +132,31 @@ through a top-level `inject` array.
 a plugin to prove `dsh` survives it"), run whenever a plugin's mount, inject,
 or registration shape changes.
 
+## VI. Work lands on `main`, not through a pull request
+
+This repository has one author, and a pull request against it has no reviewer
+but the person who wrote it. So a change is committed to `main` — directly, or
+by a local merge from a working branch that is never pushed. No pull request is
+opened against this repo, and no working branch reaches `origin`.
+
+This says nothing about upstream. Article II's instruction to send an
+upstream-worthy change as a real pull request against
+`deepseek-ai/deepseek-harness` stands unchanged: that one is filed from a
+personal fork against a repository whose maintainers actually are the
+reviewers. The rule here governs only this repo, where the review would be
+self-addressed.
+
+The rule is "never open one" rather than "close it afterwards" because the
+mistake is not reversible: GitHub has no way to delete a pull request — not
+in the web UI, not in the API or `gh` — and Support removes one only when it
+leaks a credential. An accidental PR against this repo is a permanent entry
+in its history.
+
+*Enforced by:* the observable state of `origin`, which carries exactly one
+branch, `main`. A working branch pushed to `origin`, or a pull request open
+against this repo, is itself the violation rather than evidence of one; the
+remedy is to merge the work locally and delete the branch.
+
 ---
 
 ## Amending this document
