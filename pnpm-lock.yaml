@@ -12754,6 +12754,28 @@ importers:
         specifier: ^0.28.2
         version: 0.28.2
 
+  packages/web-search-webcli:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../_vendor/deepseek-harness/vendor/schemastery
+        version: link:../_vendor/deepseek-harness/vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-launch-environment':
+        specifier: workspace:^
+        version: link:../_vendor/deepseek-harness/packages/util/launch-environment
+      '@deepseek-ai/dsh-web':
+        specifier: workspace:^
+        version: link:../_vendor/deepseek-harness/packages/web/web
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/workspace-git: {}
 
   packages/workspace-git/api-workspace-file-controller:

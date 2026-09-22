@@ -21,7 +21,8 @@
     "packages/anthropic-subscription/*",
     "packages/terminal/*",
     "packages/mcp-connector",
-    "packages/mcp-connector/*"
+    "packages/mcp-connector/*",
+    "packages/web-search-webcli"
   ],
   "scripts": {
     "build:vendor": "node scripts/build-vendor.mjs",

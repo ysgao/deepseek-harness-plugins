@@ -50,6 +50,7 @@ packages:
   - packages/terminal/*
   - packages/mcp-connector
   - packages/mcp-connector/*
+  - packages/web-search-webcli
 
 # Mirrors deepseek-ai/deepseek-harness's own allowBuilds policy (pnpm 10+
 # denies any dependency's install/build script until explicitly reviewed
