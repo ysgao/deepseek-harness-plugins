@@ -6,10 +6,12 @@
 # (web, headless, acp, sdk); install this layer into one of those, not
 # sdk-minimal.
 #
-# Also mounts @deepseek-ai/dsh-authorization itself: confirmed against a
-# pristine deepseek-ai/deepseek-harness checkout that no shipped bundle
-# mounts this seam by default (yga/deepseek-harness's own base bundle does
-# — that's a fork-only addition, not upstream). Booting without it leaves
+# No longer mounts @deepseek-ai/dsh-authorization itself: as of vendor pin
+# 477b4f42 packages/bundle/base/cordis.patch.yml ships that seam as its own
+# `authorization` row, so inserting it here too was a second mount of one
+# service name — a hard Cordis conflict. Before that pin no shipped bundle
+# mounted it by default (yga/deepseek-harness's own base bundle did — a
+# fork-only addition, not upstream). Booting without it leaves
 # this row (and dsh-llm-pi-ai's dormant flow registration) waiting forever
 # on a service nothing provides. If a future dsh-base starts shipping this
 # row itself, drop this insert — a duplicate mount of the same service
@@ -45,9 +47,6 @@
 # own documented install-order requirement).
 
 - insert:
-    - id: authorization-seam
-      name: '@deepseek-ai/dsh-authorization'
-
     - id: authorization-controller
       name: 'dsh-plugins-api-authorization-controller'
 

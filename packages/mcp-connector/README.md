@@ -65,14 +65,11 @@ bundle carries **no replacement-parity obligation**.
 ./dsh --profile web
 ```
 
-Install it **after** any other bundle in this repo that inserts the
-`authorization-seam` row (`bundle-anthropic-subscription`, `cli-login-app`).
-This bundle's patch disables that row id and re-inserts it, so exactly one
-`@deepseek-ai/dsh-authorization` mount survives either way — but
-`cordis.patch.yml` layers apply in the profile's own bundle-list order, so the
-disable only finds an earlier layer's row, never a later one. A duplicate
-mount of one service name is a hard Cordis conflict; a disable matching
-nothing is a logged no-op.
+No install-order requirement applies to the `authorization` seam any more. As
+of vendor pin `477b4f42`, `@deepseek-ai/dsh-base` mounts
+`@deepseek-ai/dsh-authorization` itself, so no bundle in this repo inserts it
+— inserting it alongside base's own row is a duplicate mount of one service
+name, which conflicts.
 
 For the CLI, its own profile:
 

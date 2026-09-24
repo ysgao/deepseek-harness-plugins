@@ -4,25 +4,17 @@
 # ../../anthropic-subscription/cli-login-app/cordis.patch.yml for the same
 # reasoning applied to the credential-login CLI.
 #
-# Mounts @deepseek-ai/dsh-authorization itself: confirmed against a pristine
-# deepseek-ai/deepseek-harness checkout that no shipped bundle mounts this
-# seam by default. Without it, `login` has no flow to run. The disable
-# immediately before it is what makes this layer safe to stack on a profile
-# where another bundle in this repo already inserted the same row — a
-# duplicate mount of one service name is a hard Cordis conflict, while a
-# disable that matches nothing is a logged no-op. If a future dsh-base ships
-# this row itself, drop both lines.
+# No longer mounts @deepseek-ai/dsh-authorization itself: this is the case the
+# previous comment named — as of vendor pin 477b4f42 dsh-base ships that seam
+# as its own `authorization` row, so the disable-then-reinsert pair here became
+# a second mount of one service name, a hard Cordis conflict that left the seam
+# inactive and `login` with no flow to run. The seam is still required and
+# still present — it is the base bundle's row now, not ours.
 #
 # The connector registry itself needs a settings provider and a credential
 # provider, both of which dsh-base already mounts.
 
-- id: authorization-seam
-  disabled: true
-
 - insert:
-    - id: authorization-seam
-      name: '@deepseek-ai/dsh-authorization'
-
     - id: mcp-connector
       name: 'dsh-plugins-mcp-connector-registry'
 
