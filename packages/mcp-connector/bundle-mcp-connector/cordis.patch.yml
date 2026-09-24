@@ -24,10 +24,20 @@
 # repo's other bundles already document. If a future dsh-base ships this row
 # itself, drop both operations.
 #
-# mcp-connector-registry: owns the `mcp-connector` settings section and mounts
-# one dsh-plugins-mcp-client-oauth instance per enabled connector. Connectors
-# are reconciled live, so one added from the Settings page or the CLI is
-# mounted without a restart.
+# mcp-connector: owns the `mcp-connector` settings section and mounts one
+# dsh-plugins-mcp-client-oauth instance per enabled connector. Connectors are
+# reconciled live, so one added from the Settings page or the CLI is mounted
+# without a restart.
+#
+# The row id is load-bearing and must stay `mcp-connector`. Since vendor pin
+# 477b4f42 a settings section is addressed by the *profile entry id* that owns
+# it — `ctx.settings.replace(ns, …)` resolves `ns` against `entry.options.id`,
+# and there is no longer a `register(namespace, …)` call that could name it
+# something else. The same id is what the vendor's one-time import of a
+# pre-0.1.7 `$DSH_HOME/settings.yaml` looks for: it moves each section into the
+# entry whose id matches the section name, so an id of `mcp-connector-registry`
+# (what this row was called before the pin bump) would strand every configured
+# connector in the renamed `settings.yaml.imported` instead of migrating it.
 #
 # mcp-connector-controller: the `mcpConnectors` Remote namespace, discovered
 # by @deepseek-ai/dsh-typert-loader (part of every dsh-base-derived profile:
@@ -55,7 +65,7 @@
     - id: authorization-seam
       name: '@deepseek-ai/dsh-authorization'
 
-    - id: mcp-connector-registry
+    - id: mcp-connector
       name: 'dsh-plugins-mcp-connector-registry'
 
     - id: mcp-connector-controller

@@ -16,16 +16,16 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { McpConnectorRegistry } from './registry.ts'
-import type { McpConnectorSection } from './registry.ts'
+import type { McpConnectorConfig } from './registry.ts'
 import type { McpConnectorDefinition } from './types.ts'
 // Side-effect type import: declaration-merges `ctx.settings` onto Context.
 import type {} from '@deepseek-ai/dsh-settings'
 
 export {
   McpConnectorRegistry, McpConnectorInvalidError, McpConnectorNotFoundError, buildClientConfig, resolveEnvFrom,
-  signInFailure,
+  signInFailure, SETTINGS_NAMESPACE,
 } from './registry.ts'
-export type { McpConnectorSection } from './registry.ts'
+export type { McpConnectorSection, McpConnectorConfig } from './registry.ts'
 export type * from './types.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -42,9 +42,6 @@ export const name = 'mcp-connector-registry'
  * entry — in a composition that has none.
  */
 export const inject = ['settings', 'credentials']
-
-/** The settings namespace this plugin owns. */
-export const SETTINGS_NAMESPACE = 'mcp-connector'
 
 const Definition: z<McpConnectorDefinition> = z.object({
   id: z.string().required(),
@@ -76,9 +73,9 @@ const Definition: z<McpConnectorDefinition> = z.object({
  * server's API token is named by `envFrom` rather than written by `env`, so
  * this document stays safe to read, print, diff, and copy.
  */
-export const Config: z<McpConnectorSection> = z.object({
-  connectors: z.array(Definition).default([]),
-}) as unknown as z<McpConnectorSection>
+export const Config: z<McpConnectorConfig> = z.object({
+  connectors: z.array(Definition).default([]).volatile(),
+}) as unknown as z<McpConnectorConfig>
 
 /**
  * Register the settings section, publish `ctx.mcpConnectors`, and mount every
@@ -91,15 +88,19 @@ export const Config: z<McpConnectorSection> = z.object({
  * `@deepseek-ai/dsh-mcp-client` gives a `cordis.yml`-mounted server.
  *
  * @param ctx - host context carrying `ctx.settings` and `ctx.credentials`.
- * @param config - composition-layer connectors, resolved below the user layer.
+ * @param config - this entry's resolved config; `connectors` is a volatile
+ *   reference the loader commits later edits into, composition and user layers
+ *   already merged.
  * @returns startup readiness once every enabled connector has been mounted.
  */
-export async function apply(ctx: Context, config: McpConnectorSection): Promise<void> {
-  const scope = ctx.settings.register(SETTINGS_NAMESPACE, Config, { base: config, applies: 'live' })
+export async function apply(ctx: Context, config: McpConnectorConfig): Promise<void> {
+  // No `ctx.settings.register` any more: the exported `Config` schema above is
+  // what the settings surface reads, straight off this plugin entry, and its
+  // `volatile` field is what makes the section editable without a remount.
   // Constructing the Service is what publishes `ctx.mcpConnectors`: Cordis's
   // own `Service` constructor calls `ctx.reflect.provide`, and unregisters it
   // with this fiber. No separate `ctx.set` — that would be a second provision
   // of the same name and Cordis refuses those.
   const registry = new McpConnectorRegistry(ctx)
-  await registry.start(scope)
+  await registry.start(config)
 }

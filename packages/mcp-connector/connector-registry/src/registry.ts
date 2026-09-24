@@ -21,7 +21,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { Fiber } from '@deepseek-ai/cordis'
+import type { Fiber, Volatile } from '@deepseek-ai/cordis'
 import * as mcpClientOAuth from 'dsh-plugins-mcp-client-oauth'
 import {
   assertConnectorIdUnfolded, connectorCredentialKey, grantedScopes, McpOAuthStore, portableGrant,
@@ -29,7 +29,8 @@ import {
 import type { Config as McpClientConfig } from 'dsh-plugins-mcp-client-oauth'
 import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
-import type { SettingsScope } from '@deepseek-ai/dsh-settings'
+// Side-effect type import: declaration-merges `ctx.settings` onto Context.
+import type {} from '@deepseek-ai/dsh-settings'
 import type {
   McpClonedAuthorization, McpConnectorDefinition, McpConnectorEntry, McpConnectorHealth,
 } from './types.ts'
@@ -41,11 +42,27 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** The settings section this registry owns. */
+/** The settings section this registry owns, as a surface reads and writes it. */
 export interface McpConnectorSection {
   /** Every configured connector, in the order a surface should list them. */
   connectors: McpConnectorDefinition[]
 }
+
+/**
+ * The same section as the running plugin holds it.
+ *
+ * `connectors` is a `volatile` field, so the loader commits an edit into this
+ * reference in place instead of restarting the fiber — which is what keeps a
+ * connector added at runtime from tearing down every mount already running.
+ * Read it through `get()` at the moment of use; never capture the array.
+ */
+export interface McpConnectorConfig {
+  /** Every configured connector, in the order a surface should list them. */
+  connectors: Volatile<readonly McpConnectorDefinition[]>
+}
+
+/** The profile entry id this registry's settings section is stored under. */
+export const SETTINGS_NAMESPACE = 'mcp-connector'
 
 /** A connector's `id` grammar, matching `mcp-client-oauth`'s own `serverName` pattern. */
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/
@@ -252,7 +269,7 @@ export class McpConnectorRegistry extends Service {
   private readonly mounts = new Map<string, Mount>()
   /** Serializes reconciles so two settings commits cannot interleave their mount swaps. */
   private reconciling: Promise<void> = Promise.resolve()
-  private scope: SettingsScope<McpConnectorSection> | undefined
+  private config: McpConnectorConfig | undefined
 
   /** @param ctx - host context carrying `ctx.settings` and `ctx.credentials`. */
   constructor(ctx: Context) {
@@ -260,14 +277,20 @@ export class McpConnectorRegistry extends Service {
   }
 
   /**
-   * Adopt the settings scope this registry reconciles from, and mount what it
+   * Adopt the running config this registry reconciles from, and mount what it
    * already holds.
-   * @param scope - the registered `mcp-connector` settings scope.
+   *
+   * The loader commits a settings edit into `config.connectors` and then emits
+   * `loader/volatile-update` on this fiber, which is the seam that replaced the
+   * removed per-scope `watch()`. The event is already filtered to this fiber,
+   * so every firing is this section's own change.
+   *
+   * @param config - this plugin entry's resolved config.
    */
-  async start(scope: SettingsScope<McpConnectorSection>): Promise<void> {
-    this.scope = scope
+  async start(config: McpConnectorConfig): Promise<void> {
+    this.config = config
     this.ctx.effect(() => {
-      const unwatch = scope.watch(() => { void this.reconcile() })
+      const unwatch = this.ctx.on('loader/volatile-update', () => { void this.reconcile() })
       return () => {
         unwatch()
         // Disposal order matters: stop reacting to settings first, then take
@@ -279,9 +302,15 @@ export class McpConnectorRegistry extends Service {
     await this.reconcile()
   }
 
-  /** Every configured connector's stored definition, in document order. */
+  /**
+   * Every configured connector's stored definition, in document order.
+   *
+   * The volatile snapshot is deeply frozen and typed deeply readonly; the cast
+   * narrows it back to this package's definition type at the single boundary
+   * where it enters, and nothing downstream mutates it.
+   */
   definitions(): readonly McpConnectorDefinition[] {
-    return this.scope?.get().connectors ?? []
+    return (this.config?.connectors.get() ?? []) as readonly McpConnectorDefinition[]
   }
 
   /**
@@ -473,9 +502,8 @@ export class McpConnectorRegistry extends Service {
 
   /** Commit the next connector list and reconcile the mounts against it. */
   private async write(connectors: readonly McpConnectorDefinition[]): Promise<void> {
-    const scope = this.scope
-    if (scope === undefined) throw new Error('mcp-connector: the registry has not started yet')
-    await scope.replace({ connectors: [...connectors] })
+    if (this.config === undefined) throw new Error('mcp-connector: the registry has not started yet')
+    await this.ctx.settings.replace(SETTINGS_NAMESPACE, { connectors: [...connectors] })
     // The settings watcher reconciles too, but awaiting it here is what lets
     // a caller — the CLI most concretely — return only once the connector it
     // just added is actually mounted.

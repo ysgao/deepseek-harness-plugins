@@ -26,7 +26,7 @@ Verified composition in a `web`-derived profile that also carries
 # == dsh-plugins-bundle-mcp-connector
 - id: authorization-seam
   name: '@deepseek-ai/dsh-authorization'
-- id: mcp-connector-registry
+- id: mcp-connector
 - id: mcp-connector-controller
 - id: remotes-mcp-connector
 - id: ui-settings-mcp-connector

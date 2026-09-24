@@ -12,7 +12,7 @@
     { "path": "../../_vendor/deepseek-harness/packages/client/ui-settings-models" },
     { "path": "../../_vendor/deepseek-harness/packages/client/ui-primitives" },
     { "path": "../../_vendor/deepseek-harness/packages/client/ui-slots" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-settings" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-settings/tsconfig.client.json" },
     { "path": "../../_vendor/deepseek-harness/packages/client/ui-renderer" },
     { "path": "../../_vendor/deepseek-harness/packages/client/store" },
     { "path": "../../_vendor/deepseek-harness/packages/credentials/authorization" },

@@ -23,7 +23,7 @@
     - id: authorization-seam
       name: '@deepseek-ai/dsh-authorization'
 
-    - id: mcp-connector-registry
+    - id: mcp-connector
       name: 'dsh-plugins-mcp-connector-registry'
 
     - id: mcp-connector-cli
