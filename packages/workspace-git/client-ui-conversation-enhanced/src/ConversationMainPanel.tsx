@@ -26,7 +26,7 @@
  * match the SAME compiled CSS Modules scope their own selectors are
  * compiled against.
  */
-import type { InjectFace, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { conversationPhase } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/snapshot.ts'
 import { ConversationWidthControls } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/ConversationWidthControls.tsx'
 import css from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/ConversationRoot.module.css'
@@ -39,6 +39,7 @@ import type { ConversationRootInjected } from './apply.ts'
  */
 export type EnhancedConversationMainPanelProps =
   PropsRuntime<'main.conversation'>
+  & PropsRenderSlots<'conversation.header'>
   & PropsRenderFactories
   & InjectFace<ConversationRootInjected>
 

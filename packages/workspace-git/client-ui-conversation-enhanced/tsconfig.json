@@ -36,6 +36,7 @@
     { "path": "../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" },
     { "path": "../../_vendor/deepseek-harness/packages/interaction/permission-presets" },
     { "path": "../../_vendor/deepseek-harness/packages/util/crypto" },
-    { "path": "../../_vendor/deepseek-harness/packages/util/workspace-path" }
+    { "path": "../../_vendor/deepseek-harness/packages/util/workspace-path" },
+    { "path": "../../_vendor/deepseek-harness/packages/context/file-reference" }
   ]
 }
