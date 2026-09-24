@@ -15,8 +15,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  Button, IconCheckOutline14, IconCloseFill14, IconFolderClose16, IconFolderOpen16,
-  IconRefreshOutline14, IconTriangleRightFill14, Modal, StateDot,
+  Button, IconCheckOutlineRegular, IconCloseFillRegular, IconFolderCloseRegular, IconFolderOpenRegular,
+  IconRefreshOutlineRegular, IconTriangleRightFillRegular, Modal, StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   IconArrowDownOutline14, IconArrowUpOutline14, IconChevronDuoUpOutline14,
@@ -205,7 +205,7 @@ function GitStatusSummary({
         <>
           {pullPending && (
             <button type="button" className={css.gitRefreshButton} title={t('files.git.cancel')} onClick={onCancelPull}>
-              <IconCloseFill14 />
+              <IconCloseFillRegular size={14} />
             </button>
           )}
           <button
@@ -224,7 +224,7 @@ function GitStatusSummary({
         <>
           {pushPending && (
             <button type="button" className={css.gitRefreshButton} title={t('files.git.cancel')} onClick={onCancelPush}>
-              <IconCloseFill14 />
+              <IconCloseFillRegular size={14} />
             </button>
           )}
           <button
@@ -246,7 +246,7 @@ function GitStatusSummary({
         disabled={fetchPending}
         onClick={onRefresh}
       >
-        <IconRefreshOutline14 />
+        <IconRefreshOutlineRegular size={14} />
       </button>
     </span>
   )
@@ -283,7 +283,7 @@ function GitCommitInput({ message, onMessageChange, onSubmit, onCancel, pending,
         disabled={pending || message.trim() === ''}
         onClick={onSubmit}
       >
-        <IconCheckOutline14 />
+        <IconCheckOutlineRegular size={14} />
       </button>
       <button
         type="button"
@@ -292,7 +292,7 @@ function GitCommitInput({ message, onMessageChange, onSubmit, onCancel, pending,
         disabled={pending}
         onClick={onCancel}
       >
-        <IconCloseFill14 />
+        <IconCloseFillRegular size={14} />
       </button>
     </span>
   )
@@ -361,7 +361,7 @@ function CreateEntryInput({ kind, name, onNameChange, onSubmit, onCancel, pendin
         disabled={pending || name.trim() === ''}
         onClick={onSubmit}
       >
-        <IconCheckOutline14 />
+        <IconCheckOutlineRegular size={14} />
       </button>
       <button
         type="button"
@@ -370,7 +370,7 @@ function CreateEntryInput({ kind, name, onNameChange, onSubmit, onCancel, pendin
         disabled={pending}
         onClick={onCancel}
       >
-        <IconCloseFill14 />
+        <IconCloseFillRegular size={14} />
       </button>
     </span>
   )
@@ -489,10 +489,10 @@ function DirectoryRow({ entry, depth, onOpenFile, listWorkspaceEntries, gitStatu
         }}
       >
         <span className={clsx(css.slot, css.chevron)}>
-          <IconTriangleRightFill14 className={clsx(css.arrow, expanded && css.arrowOpen)} />
+          <IconTriangleRightFillRegular size={14} className={clsx(css.arrow, expanded && css.arrowOpen)} />
         </span>
         <span className={css.slot}>
-          {expanded ? <IconFolderOpen16 /> : <IconFolderClose16 />}
+          {expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
         </span>
         <span className={css.name}>{entry.name}</span>
         <GitStatusFolderDot dirPath={entry.path} gitStatusFiles={gitStatusFiles} t={t} />
@@ -850,10 +850,10 @@ export function FilesNode({
           onClick={toggleExpanded}
         >
           <span className={clsx(css.slot, css.chevron)}>
-            <IconTriangleRightFill14 className={clsx(css.arrow, expanded && css.arrowOpen)} />
+            <IconTriangleRightFillRegular size={14} className={clsx(css.arrow, expanded && css.arrowOpen)} />
           </span>
           <span className={css.slot}>
-            {expanded ? <IconFolderOpen16 /> : <IconFolderClose16 />}
+            {expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
           </span>
           <span className={css.name}>{t('files.label')}</span>
         </button>

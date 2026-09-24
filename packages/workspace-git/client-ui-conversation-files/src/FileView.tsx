@@ -187,6 +187,12 @@ export function FileView({
   const filePreviewLabels: FilePreviewLabels = useMemo(() => ({
     markdown: { code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('markdown.footnotes') },
     read: {
+      // ReadBlockLabels extends CodeToolbarLabels as of vendor pin 477b4f42;
+      // these three are the toolbar's own copy, from the shared namespace the
+      // rest of this block already reads.
+      codeLabel: t('codeBlock.title'),
+      wrapLabel: t('codeBlock.wrap'),
+      unwrapLabel: t('codeBlock.unwrap'),
       window: (shown, total) => t('read.window', { shown, total }),
       copy: t('copy'),
       copied: t('copied'),
