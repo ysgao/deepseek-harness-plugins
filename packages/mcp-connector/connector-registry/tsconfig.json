@@ -10,6 +10,7 @@
   "references": [
     { "path": "../mcp-client-oauth" },
     { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
+    { "path": "../../_vendor/deepseek-harness/vendor/loader" },
     { "path": "../../_vendor/deepseek-harness/vendor/schemastery" },
     { "path": "../../_vendor/deepseek-harness/packages/credentials/credentials" },
     { "path": "../../_vendor/deepseek-harness/packages/settings/settings" },

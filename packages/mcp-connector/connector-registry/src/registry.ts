@@ -31,6 +31,9 @@ import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 // Side-effect type import: declaration-merges `ctx.settings` onto Context.
 import type {} from '@deepseek-ai/dsh-settings'
+// Side-effect type import: declares `loader/volatile-update`, the event this
+// registry watches its own settings section through.
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {
   McpClonedAuthorization, McpConnectorDefinition, McpConnectorEntry, McpConnectorHealth,
 } from './types.ts'
