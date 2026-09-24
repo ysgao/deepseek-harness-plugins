@@ -66,6 +66,17 @@ export default defineConfig(({ env }) => {
     fixedExtension: false,
     dts: false,
     clean: false,
+    // `@deepseek-ai/dsh-api-workspace-files` publishes its internals only as
+    // `./src/*` — raw TypeScript. A Client bundle can consume that (rolldown
+    // compiles it on the way in), but a Host package is loaded by Node as
+    // emitted, and a surviving `import '.../src/changes.ts'` fails at boot
+    // with "TypeScript parameter property is not supported in strip-only
+    // mode" — the row then never activates, taking `remote.workspace-files`
+    // with it. Bundling that one module in compiles it here instead. Its own
+    // runtime imports (`@deepseek-ai/dsh-deque`, `@deepseek-ai/dsh-typert-
+    // protocol`) stay external, which is what keeps `RemoteError` identity
+    // shared for the `instanceof` checks in the controller's catch.
+    deps: client ? undefined : { alwaysBundle: [/^@deepseek-ai\/dsh-api-workspace-files\/src\//] },
     plugins: client ? [] : [typertPlugin({ mode: 'workspace', faces: ['host'] })],
   }
 })
