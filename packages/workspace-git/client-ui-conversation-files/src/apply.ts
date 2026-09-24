@@ -34,7 +34,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import { fileDocumentTabInfoFactory } from './document-seat.ts'
+import { FileActions, type FileActionsProps } from './FileActions.tsx'
 import { FileView, type FileViewInjected } from './FileView.tsx'
+import { FileModeStores } from './mode-store.ts'
 import { en, zh } from './locales.ts'
 
 /** Dictionary namespace owned by this plugin. */
@@ -61,6 +63,31 @@ async function unwrap<T>(promise: Promise<RemoteResult<T>>): Promise<T> {
 export function apply(ctx: Context): void {
   ctx.locale.register(NS, { zh, en })
   const tFiles = ctx.locale.bind(NS)
+
+  // One toolbar state per session, shared by the two entries below: the File
+  // view publishes into it, and the document-toolbar entry reads it back.
+  // Held here, in apply(), because both entries resolve their session's store
+  // from the same instance — see ./mode-store.ts.
+  const modeStores = new FileModeStores()
+
+  // The File tab's own controls, drawn inside the relocated preview engine's
+  // header toolbar: upstream declares `sidebar.right.tab.document.actions`
+  // for exactly this ("contributions acting on the previewed file"), so the
+  // file gets one row of controls rather than the engine's above this tab's.
+  //
+  // Through `slots.inject`, so a composition without
+  // `dsh-plugins-client-ui-document-host` — where nothing declares this slot
+  // — simply never mounts it, and `FileView` keeps drawing the controls in
+  // its own header. That is the fallback, not a degraded mode.
+  ctx.slots.inject('sidebar.right.tab.document.actions', () => ctx.slots.register({
+    name: 'sidebar.right.tab.document.actions',
+    id: 'conversation-files.mode',
+    inject: (sessionId: SessionId): Omit<FileActionsProps, 't'> & { t: typeof tFiles } => ({
+      store: modeStores.for(sessionId),
+      owner: 'engine',
+      t: tFiles,
+    }),
+  }, FileActions))
 
   // Re-fetched on every call, not cached at apply() time: `workspaces` is an
   // optional cross-package service that may not have registered yet when
@@ -138,6 +165,9 @@ export function apply(ctx: Context): void {
       // a document body reads its file through this address, and the file's
       // workspace is resolved Host-side from that session.
       fileAddress: path => fileAddressFor(sessionId, undefined, path),
+      // The same instance the document-toolbar entry above resolves for this
+      // session: that is what makes the two mounts one control.
+      modeStore: modeStores.for(sessionId),
       tFiles,
     }),
   }, FileView))

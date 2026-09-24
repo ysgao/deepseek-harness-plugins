@@ -29,7 +29,7 @@
  * on-disk change surfaces as an inline conflict notice rather than
  * overwriting it.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InjectFace, PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { FileEditor, FilePreview, isContentMismatch, isTextKind, SideBySideDiff } from 'dsh-plugins-client-ui-file-editing'
@@ -48,6 +48,8 @@ import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 // dsh-plugins-client-ui-document-host when that package is composed in; this
 // tab draws its own preview when it is not.
 import type { FileDocumentHookContext } from './document-seat.ts'
+import { FileActions } from './FileActions.tsx'
+import type { FileModeStore, FileSavePhase, FileViewMode } from './mode-store.ts'
 import type { SidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { parseFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import { langFromPath, viewerKindFor } from './classify.ts'
@@ -83,6 +85,13 @@ export interface FileViewInjected {
    * session id lives, rather than derived from props here.
    */
   fileAddress: (path: string) => string
+  /**
+   * This session's shared toolbar state. The tab publishes what it is
+   * showing into it on every render; whichever mount of `FileActions` is
+   * live — the preview engine's own header toolbar, or this tab's header —
+   * reads it back. See `./mode-store.ts`.
+   */
+  modeStore: FileModeStore
   /** Bound `conversation-files` locale translate function (this package's own namespace — see `../ARCHITECTURE.md`). */
   tFiles: TranslateNS<'conversation-files'>
 }
@@ -98,8 +107,8 @@ interface OpenFileFocus {
   readonly workspaceId?: WorkspaceId
 }
 
-/** Which body the tab shows for the opened path: the plain preview, the in-app editor, or the git diff. */
-type FileViewMode = 'view' | 'edit' | 'diff'
+// `FileViewMode` (view | edit | diff) lives in ./mode-store.ts, with the
+// store that carries it to whichever toolbar is drawing this tab's controls.
 
 /**
  * Page operations a document body binds while it is mounted (its own reload,
@@ -213,7 +222,7 @@ function stateFromError(error: unknown): FilePreviewState {
  */
 export function FileView({
   viewRequest, completeViewRequest, readFile, openPath, getGitStatus, getFileDiff, writeFile, fileAddress,
-  renderSlot, tFiles, t,
+  modeStore, renderSlot, tFiles, t,
 }: FileViewProps) {
   const filePreviewLabels: FilePreviewLabels = useMemo(() => ({
     markdown: { code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('markdown.footnotes') },
@@ -486,6 +495,39 @@ export function FileView({
     setReloadToken(token => token + 1)
   }, [openedFileId])
 
+  // Every text kind edits and diffs the same way, whatever its View-mode body
+  // makes of that text: one CodeMirror buffer over the file's raw text, and
+  // `SideBySideDiff`'s two-column diff of that same text. `isTextKind` is
+  // what decides, so Markdown, ontology, delimited and RTF files are all
+  // editable here without being enumerated.
+  //
+  // Derived up here, above the resting early return, because the publish
+  // effect below needs them and a hook cannot run after a return.
+  const textKind = isTextKind(kind) ? kind : null
+  const readyText = state.phase === 'ready' && state.content.kind === 'text' ? state.content.text : null
+  const canEdit = textKind !== null && readyText !== null
+  const canDiff = textKind !== null && changed
+
+  // What the toolbar draws. The store compares before notifying, so
+  // publishing on every render (including every keystroke, which moves
+  // `hasDraft` exactly once) does not re-render the toolbar for nothing.
+  useEffect(() => {
+    modeStore.publish(
+      { path: openedPath, mode, canEdit, canDiff, dirty: hasDraft, save: saveState.phase },
+      { setMode, save: handleSave, discardAndReload: handleDiscardAndReload },
+    )
+  }, [modeStore, openedPath, mode, canEdit, canDiff, hasDraft, saveState.phase, handleSave, handleDiscardAndReload])
+
+  // A closed tab leaves no controls behind in a toolbar that outlives it.
+  useEffect(() => () => { modeStore.clear() }, [modeStore])
+
+  // Whether the preview engine's own toolbar is drawing the controls. When
+  // it is, this tab must not draw a second copy; when it is not — Edit and
+  // Diff replace the engine's body, and a composition without
+  // `dsh-plugins-client-ui-document-host` has no engine at all — this tab's
+  // header is where they live.
+  const hostedByEngine = useSyncExternalStore(modeStore.subscribeHosted, modeStore.getHosted, modeStore.getHosted)
+
   if (openedPath === null) {
     return <div className={css.empty}>{tFiles('files.empty')}</div>
   }
@@ -497,13 +539,6 @@ export function FileView({
   // Modal-based viewer).
   const showsExternalOnly = kind === 'external' || state.phase === 'error' || state.phase === 'too-large' || isContentMismatch(kind, state)
 
-  // Every text kind edits and diffs the same way, whatever its View-mode body
-  // makes of that text: one CodeMirror buffer over the file's raw text, and
-  // `SideBySideDiff`'s two-column diff of that same text.
-  const textKind = isTextKind(kind) ? kind : null
-  const readyText = state.phase === 'ready' && state.content.kind === 'text' ? state.content.text : null
-  const showsEditToggle = textKind !== null && readyText !== null
-  const showsDiffToggle = textKind !== null && changed
   const sameText = diffState.phase === 'ready' && diffState.diff.oldText === diffState.diff.newText
   const draft = openedFileId === null ? undefined : draftsRef.current.get(openedFileId)
   const editorText = draft?.text ?? readyText ?? ''
@@ -538,40 +573,12 @@ export function FileView({
           {hasDraft && <span className={css.unsaved} aria-hidden> •</span>}
         </span>
         <div className={css.headerActions}>
-          {mode === 'edit' && (
-            <>
-              {saveState.phase === 'conflict' && (
-                <span className={css.conflict} role="alert">
-                  {tFiles('files.edit.conflict')}
-                  {' '}
-                  <button type="button" className={css.conflictReload} onClick={handleDiscardAndReload}>
-                    {tFiles('files.edit.reload')}
-                  </button>
-                </span>
-              )}
-              {saveState.phase === 'error' && <span className={css.conflict} role="alert">{tFiles('files.edit.saveError')}</span>}
-              <Button variant="primary" disabled={!hasDraft || saveState.phase === 'saving'} onClick={handleSave}>
-                {saveState.phase === 'saving' ? tFiles('files.edit.saving') : tFiles('files.edit.save')}
-              </Button>
-            </>
-          )}
-          {(showsDiffToggle || showsEditToggle) && (
-            <div className={css.modeToggle}>
-              <Button variant={mode === 'view' ? 'primary' : 'ghost'} onClick={() => { setMode('view') }}>
-                {tFiles('files.diff.view')}
-              </Button>
-              {showsEditToggle && (
-                <Button variant={mode === 'edit' ? 'primary' : 'ghost'} onClick={() => { setMode('edit') }}>
-                  {tFiles('files.edit.edit')}
-                </Button>
-              )}
-              {showsDiffToggle && (
-                <Button variant={mode === 'diff' ? 'primary' : 'ghost'} onClick={() => { setMode('diff') }}>
-                  {tFiles('files.diff.diff')}
-                </Button>
-              )}
-            </div>
-          )}
+          {/* The same controls the preview engine's toolbar draws, drawn here
+              instead whenever that toolbar is not on screen to draw them —
+              Edit and Diff modes, and any composition without the document
+              host. `FileActions` reads the store this tab publishes to, so
+              the two mounts are never out of step. */}
+          {!hostedByEngine && <FileActions store={modeStore} owner="tab" t={tFiles} />}
         </div>
       </div>
       {mode === 'diff' && (
@@ -592,7 +599,7 @@ export function FileView({
           )}
         </div>
       )}
-      {mode === 'edit' && showsEditToggle && textKind !== null && (
+      {mode === 'edit' && canEdit && textKind !== null && (
         <FileEditor
           key={openedFileId}
           path={openedPath}
