@@ -32,6 +32,8 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the 'conversation.view' SlotMap row.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
+import { fileDocumentTabInfoFactory } from './document-seat.ts'
 import { FileView, type FileViewInjected } from './FileView.tsx'
 import { en, zh } from './locales.ts'
 
@@ -86,6 +88,19 @@ export function apply(ctx: Context): void {
     order: 5,
     label: () => tFiles('view.file'),
     locale: 'conversation',
+    // The document seat: where `dsh-plugins-client-ui-document-host` puts the
+    // vendored preview engine's own renderers, so a file previews in the
+    // middle of the app instead of the right Sidebar. Declared here because
+    // this entry is the parent that draws it, and a slot has exactly one
+    // declaring entry. Nothing registering into it is a normal state — the
+    // tab then draws its own `FilePreview`, as it always has.
+    children: {
+      'conversation.file.document': {
+        kind: 'single',
+        scope: 'session',
+        inject: { hooks: { tabInfo: fileDocumentTabInfoFactory } },
+      },
+    },
     inject: (sessionId: SessionId): FileViewInjected => ({
       readFile: (workspaceId, path, signal) => {
         const owner = resolveWorkspaceId(sessionId, workspaceId)
@@ -119,6 +134,10 @@ export function apply(ctx: Context): void {
         return unwrap(ctx.remote['workspace-files'].writeFile({ workspaceId: owner, path, content, expectedVersion }, signal))
           .then(value => value.version)
       },
+      // The session the tab is drawn for is the session the address names:
+      // a document body reads its file through this address, and the file's
+      // workspace is resolved Host-side from that session.
+      fileAddress: path => fileAddressFor(sessionId, undefined, path),
       tFiles,
     }),
   }, FileView))

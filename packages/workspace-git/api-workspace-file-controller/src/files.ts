@@ -161,6 +161,19 @@ function hashContent(bytes: Uint8Array): WorkspaceFileVersion {
 }
 
 /**
+ * Natural, case-insensitive name order, so `file2` precedes `file10` and
+ * `README` sorts beside `readme.md` rather than in a separate uppercase
+ * block. A plain `localeCompare` gets both of those wrong, and a directory
+ * listing is read by a human scanning for a name, not by a machine.
+ */
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+
+/** Compare two entries by name under {@link collator}. */
+function byName(left: { name: string }, right: { name: string }): number {
+  return collator.compare(left.name, right.name)
+}
+
+/**
  * List one directory level: subdirectories and regular files together,
  * directories first, then name-sorted within each group. Symlinks to a
  * directory are followed and reported as `type: 'directory'`; symlinks to a
@@ -250,8 +263,8 @@ export async function listWorkspaceEntries(
     // way, a second close attempt is not this function's concern.
     await dir.close().catch(() => {})
   }
-  directories.sort((a, b) => a.name.localeCompare(b.name))
-  files.sort((a, b) => a.name.localeCompare(b.name))
+  directories.sort(byName)
+  files.sort(byName)
   return { path, entries: [...directories, ...files], truncated }
 }
 

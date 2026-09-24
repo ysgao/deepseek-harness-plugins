@@ -14738,9 +14738,15 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-api-workspace-files':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/api/workspace-files
       '@deepseek-ai/dsh-brand':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/util/brand
+      '@deepseek-ai/dsh-fs':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/fs/fs
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants
@@ -14796,6 +14802,9 @@ importers:
       dsh-plugins-client-ui-conversation-files:
         specifier: workspace:^
         version: link:../client-ui-conversation-files
+      dsh-plugins-client-ui-document-host:
+        specifier: workspace:^
+        version: link:../client-ui-document-host
       dsh-plugins-client-ui-file-editing:
         specifier: workspace:^
         version: link:../client-ui-file-editing
@@ -14947,15 +14956,24 @@ importers:
       '@deepseek-ai/dsh-client-locale':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/client/locale
+      '@deepseek-ai/dsh-client-shortcuts':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/shortcuts
       '@deepseek-ai/dsh-client-ui-conversation':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/client/ui-conversation
+      '@deepseek-ai/dsh-client-ui-dockkit':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-dockkit
       '@deepseek-ai/dsh-client-ui-primitives':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/client/ui-primitives
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-sidebar-right':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-sidebar-right
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/client/ui-slots
@@ -14968,6 +14986,9 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/typert/protocol
+      '@deepseek-ai/dsh-util-workspace-path':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/util/workspace-path
       '@deepseek-ai/dsh-workspace':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/workspace/workspace
@@ -14977,6 +14998,81 @@ importers:
       '@types/react-dom':
         specifier: ~18.3.0
         version: 18.3.7(@types/react@18.3.31)
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/workspace-git/client-ui-document-host:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-api-gateway':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/api/gateway
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/api/remotes
+      '@deepseek-ai/dsh-api-workspace-files':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/api/workspace-files
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/locale
+      '@deepseek-ai/dsh-client-resources':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/resources
+      '@deepseek-ai/dsh-client-store':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/store
+      '@deepseek-ai/dsh-client-ui-dockkit':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-dockkit
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-session':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-session
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-settings
+      '@deepseek-ai/dsh-client-ui-sidebar-documentpreview':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-sidebar-documentpreview
+      '@deepseek-ai/dsh-client-ui-sidebar-right':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-sidebar-right
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-slots
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/core/session
+      '@deepseek-ai/dsh-util-workspace-path':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/util/workspace-path
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ~18.3.0
+        version: 18.3.7(@types/react@18.3.31)
+      dsh-plugins-client-ui-conversation-enhanced:
+        specifier: workspace:^
+        version: link:../client-ui-conversation-enhanced
+      dsh-plugins-client-ui-file-editing:
+        specifier: workspace:^
+        version: link:../client-ui-file-editing
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -15157,6 +15253,12 @@ importers:
       '@deepseek-ai/dsh-client-locale':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/client/locale
+      '@deepseek-ai/dsh-client-shortcuts':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/shortcuts
+      '@deepseek-ai/dsh-client-ui-layout':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/client/ui-layout
       '@deepseek-ai/dsh-client-ui-primitives':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/client/ui-primitives

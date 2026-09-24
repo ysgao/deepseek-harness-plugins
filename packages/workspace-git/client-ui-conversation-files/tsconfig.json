@@ -8,6 +8,10 @@
     "src"
   ],
   "references": [
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-sidebar-right" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/ui-dockkit" },
+    { "path": "../../_vendor/deepseek-harness/packages/client/shortcuts/tsconfig.client.json" },
+    { "path": "../../_vendor/deepseek-harness/packages/util/workspace-path" },
     { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
     { "path": "../../_vendor/deepseek-harness/packages/client/ui-slots" },
     { "path": "../../_vendor/deepseek-harness/packages/client/ui-primitives" },

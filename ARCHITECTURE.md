@@ -133,6 +133,36 @@ function; `PLATFORM_MODULES`/`PRELOADED_CLIENT_EXTERNALS` via
 `dsh-client-web`'s own declared `./src/*` export) rather than the
 internals.
 
+That reproduction is incremental by design: a piece of `clientConfig()` is
+ported the first time a package here genuinely needs it, not speculatively.
+Three were added for `dsh-plugins-client-ui-document-host` (see "Document
+preview: relocate the seat, never the renderers"), and each generalizes
+beyond it:
+
+- **`.css?inline` and plain `.css` imports.** The CSS Modules transform was
+  the only stylesheet shape this repo had needed. A package that inlines
+  another package's component tree inherits *its* stylesheet imports, and a
+  third-party library's stylesheet is neither a CSS Module nor optional
+  (`@fortune-sheet/react/dist/index.css?inline` is the spreadsheet grid's
+  entire appearance). `?inline` hands the text to the importer; a plain
+  `.css` import is a global side-effect stylesheet and injects itself.
+- **Package-local lazy chunks** (`codeSplitting`, `clientBanner`, and
+  `asyncChunkRequirePlugin`). Off by default — one file, one request, no
+  loader cooperation — because that is right for a package whose whole graph
+  is small. A package inlining deliberately-lazy heavy bodies (a PDF
+  runtime, a spreadsheet grid) needs the opposite, or megabytes land on
+  every boot. The rewrite is the load-bearing half: without turning the
+  generated `Promise.resolve().then(() => require('./client.pdf.js'))` into
+  `require.async('./client.pdf.js')`, the chunk is built and served and
+  *never fetched*.
+
+Nothing about the loader's chunk route is in-tree-only, which is what makes
+the second one work out of tree at all: `graphRow` gives every plugin row
+its own single-resource URL (`/??<id>/client.js&rev=…`), which is exactly
+what `system.ts`'s `chunkUrl` requires to resolve a sibling, and the server's
+`chunkResponse` serves any `client.<name>.js` sitting beside a registered
+plugin's own `clientPath`.
+
 No shipped bundle mounts `@deepseek-ai/dsh-authorization` by default in a
 pristine `deepseek-ai/deepseek-harness` checkout, so both bundles here
 mount it themselves (`id: authorization-seam`) — each is self-sufficient
@@ -284,13 +314,14 @@ row being replaced is genuinely absent, not merely out-shadowed.
 | Package | Role |
 |---|---|
 | `dsh-plugins-api-workspace-git-controller` | Typert Host controller: status, commit-all, fetch, pull --rebase, push, discard-all |
-| `dsh-plugins-api-workspace-file-controller` | Typert Host controller: list/read/write/create/diff (no delete) |
+| `dsh-plugins-api-workspace-file-controller` | Typert Host controller: list/read/write/create/diff (no delete), plus `watchDirectory`, a **workspace-scoped** directory-change stream |
 | `dsh-plugins-client-ui-file-editing` | Standalone file editor/preview/side-by-side-diff components, no shared-package dependency |
-| `dsh-plugins-client-ui-workspace-files` | Sidebar Files tree; declares the optional `workspaceFilesNode` Context service — see "Files tree: why an optional service, not a slot" |
+| `dsh-plugins-client-ui-workspace-files` | Sidebar Files tree (live directory watch, auto-refresh toggle, reload, git status, create file/folder) and the `workspace.files` command; declares the optional `workspaceFilesNode` Context service — see "Files tree: why an optional service, not a slot" |
 | `dsh-plugins-client-remotes-workspace-git` | Mounts the two controllers' generated `/remote` Client contributions — see "Plugin isolation" |
 | `dsh-plugins-client-ui-workspace-enhanced` | Replaces `dsh-client-ui-workspace`'s own `sidebar.workspaces`/`conversation.hero.workspace` registrations; renders `workspaceFilesNode`'s `Component` as a Files sibling row — see "Replace, don't patch" |
 | `dsh-plugins-client-ui-conversation-files` | Registers a `'file'` entry into `dsh-client-ui-conversation`'s pristine `conversation.view` slot; populated through `conversationFileOpener` — see "File tab: a pristine slot, but a fork-only trigger" |
 | `dsh-plugins-client-ui-conversation-enhanced` | Replaces `dsh-client-ui-conversation`'s own conversation-shell registration; provides the `conversationFileOpener` cross-session bridge |
+| `dsh-plugins-client-ui-document-host` | Replaces `dsh-client-ui-sidebar-documentpreview` by running its own `apply()` and redirecting one registration: the preview engine draws in the File tab instead of the right Sidebar. Adds the Sidebar hand-off and two renderers upstream lacks — see "Document preview: relocate the seat, never the renderers" |
 | `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle: does NOT mount `@deepseek-ai/dsh-workspace` itself (relies on the target profile's own `web-app` bundle — see "Two findings worth knowing" in the bundle's own README); disables and replaces the `ui-workspace`/`ui-conversation` rows |
 
 ### `packages/anthropic-subscription/` — Anthropic subscription authorization
@@ -431,6 +462,97 @@ session, or this package installed without the File-tab package
 (`dsh-plugins-client-ui-conversation-files`) — `FilesNode` falls back to its
 own in-app preview modal in both cases, so the two packages remain
 independently useful.
+
+#### Document preview: relocate the seat, never the renderers
+
+Upstream `0.1.7-rc.2` ships its own file browsing and previewing in the
+right Sidebar: `ui-sidebar-files` (a file tree tab) opens
+`dsh-resource://file/...` addresses, and `ui-sidebar-documentpreview` claims
+them with a renderer per format — text, code, Markdown, HTML, image, PDF
+(pdf.js, zoom, text layer), Office, and an interactive spreadsheet grid
+(FortuneSheet). That duplicates this bundle's Files tree, and puts the
+preview somewhere this bundle's own design does not want it: the tree
+belongs in the left Sidebar and the preview in the conversation's main area
+as the File tab, where editing, saving and side-by-side git diff already
+live.
+
+Two things about the core implementation are worth keeping rather than
+competing with. Its **renderer registry is a real extension point** —
+`ctx.documentPreviews.register({ id, extensions, priority, … })`, where
+`priority: 'extension'` outranks every builtin, alongside three public
+slots (`sidebar.right.tab.document` for bodies, `.actions` for toolbar
+contributions receiving the file's `absolutePath`, `.unpreviewable` for the
+empty state). And its **renderer bodies are contract components** —
+`DocumentPreviewProps` plus locale and an optional store, nothing
+dock-specific — published through that package's own `"./src/*"` export.
+
+**One slot name, one declaring parent.** `ui-slots` permits exactly one
+entry to declare a given child slot (`slot "x" is already declared (by …)`).
+The document bodies therefore render *only* inside whichever entry declares
+`sidebar.right.tab.document`, which today is the `text` tab seat, reached
+through `rightbar → rightbar.session → sidebar.right.pane.tab`. That single
+constraint eliminates the obvious approaches:
+
+- **Fork the renderers into `dsh-plugins-client-ui-file-editing`.** Owning
+  pdf.js, a spreadsheet grid and HTML sandboxing permanently, and gaining
+  nothing from any future release. Rejected on maintenance cost alone.
+- **Mirror the bodies under a second slot family.** Works, but every
+  renderer must be re-registered by hand under the parallel name, so a
+  renderer upstream adds is invisible here until someone notices. Rejected:
+  the failure mode is silence.
+- **Move the dock itself** by forking `ui-layout`'s `AppFrame`, which
+  declares `rightbar`. That is the app frame — column math, drag handles,
+  responsive and fullscreen behaviour — and the most release-sensitive file
+  in the UI. Rejected outright; this bundle forks no frame.
+
+What remains is to **move the seat and keep the engine**:
+`dsh-plugins-client-ui-document-host` disables the `ui-sidebar-documentpreview`
+row and re-runs *that package's own `apply()`* through a context shim that
+re-points one registration — the top-level seat — into a parent this package
+declares inside the File tab, supplying a synthesized `SidebarRightTabInfo`
+(tab record, `?line=` navigation params, abort signal, `bindCommands`) in
+place of the dock's. Every builtin body registers itself into the relocated
+seat exactly as before, **including renderers added in future releases**,
+because nothing here enumerates them. A `text` tab type stays registered for
+the right Sidebar so `openResource` — which *throws* for an address no type
+claims, and is how conversation file links and tool line references navigate
+— still resolves, and hands off to the main-area tab.
+
+This bundle's own editing and git then ride the same rails with no fork at
+all: `FileEditor` and `SideBySideDiff` register at `priority: 'extension'`
+(outranking the builtin code/Markdown viewers for editable text, which stay
+one click away in the viewer switcher), and Save/Edit/Git diff/Commit
+register into `sidebar.right.tab.document.actions`.
+
+**Where it ended up.** `dsh-plugins-client-ui-document-host` holds the
+redirect and the hand-off; `dsh-plugins-client-ui-conversation-files` holds
+the seat, because a slot has exactly one declaring entry and that entry is
+the File tab. The contract lives with the declarer
+(`client-ui-conversation-files/src/document-seat.ts`), so the host registers
+into it by name and imports nothing from it — deliberately: a value import
+the other way would have pulled the whole preview engine into the File tab's
+own bundle.
+
+**What Phase 0 established.** The design rests on a build claim, so it was
+tested before anything else was written (`packages/workspace-git/
+client-ui-document-host/README.md` has the full table). The engine bundles
+out of tree at 287.10 kB against the vendor's own 280.79 kB for the same
+graph; its heavy bodies stay lazy at 7.11 MB (`client.pdf.js`) and 7.05 MB
+(`client.excel.js`), matching the vendor's artifacts; the generated requires
+are rewritten to `require.async(...)`; `__DSH_PDFJS_ASSETS__` is fully
+substituted; and the bundled pdf.js and spreadsheet license notices are
+emitted into the chunks that carry that code.
+
+**The maintenance surface is a build config, not a component tree.** Zero
+renderer code is owned here. What is owned is `client-ui-document-host`'s
+own `tsdown.config.ts`: the pdf worker embedded as source text (a closure
+factory has no module URL to resolve a `Worker` file against), the
+`__DSH_PDFJS_ASSETS__` define, the Excel worker sub-rolled to an IIFE
+string, and two license banners. Every one of those resolves from the
+**vendor package's** directory rather than this one, so `pdfjs-dist`,
+`exceljs` and `xlsx` cannot drift to a second copy of a library whose build
+output is embedded verbatim. A pin bump that renames one of those raw
+specifiers stops the build rather than shipping a dead renderer.
 
 ### `packages/mcp-connector/` — MCP connectors with OAuth 2.0
 
@@ -687,7 +809,7 @@ it is just *less* than the thing it replaced.
 `scripts/replacement-parity.json` declares each replacement above — the row
 it disables, the vendor plugin's apply entry, its own apply entry, its
 forked files, what it deliberately adds, and what it deliberately does
-differently. `pnpm run check:parity` reads it and enforces five things:
+differently. `pnpm run check:parity` reads it and enforces six things:
 
 1. **Row.** The bundle patch really disables that row id and really inserts
    the replacement, *and that row id still exists in a vendored bundle*. An
@@ -704,6 +826,17 @@ differently. `pnpm run check:parity` reads it and enforces five things:
    dictionary it stands in for, key for key, in both `en` and `zh`.
 5. **Forks.** Every vendor file this repo forked still hashes to the
    revision the fork was last synced against.
+6. **Retired rows.** A row this repo switches off with *nothing* inserted in
+   its place is declared under `retirements` instead, and answers the
+   questions that still have answers: the disable is real, the row still
+   exists upstream (same no-op trap as check 1), the entry names the surface
+   that now carries the capability (`covers`), and it names what was given
+   up (`divergences`, which may not be empty — a disabled row always costs
+   something, at minimum its own entry point). Checks 2-4 are skipped for
+   these, because there is no replacement plugin to compare against; that is
+   what makes the entry's own prose the record, and why the check insists it
+   exists. `ui-sidebar-files` is the first: see "Document preview: relocate
+   the seat, never the renderers".
 
 Check 5 is the one that carries the weight. The first four are textual and
 cannot prove a forked React component still renders every branch the
@@ -921,6 +1054,7 @@ signal as a bug here.
 | Colliding style-tag ids (above) | A fork's own CSS Module silently losing its injection race against a same-named vendor CSS Module reached through a fallback import — passes `tsc -b`, `pnpm run build`, and `--dump-config` alike, and requires reading the *built* bundle's content, not just its existence, to catch |
 | Fault injection | Whether a plugin failing takes the rest of `dsh` down with it — no other check exercises this |
 | `pnpm run check:vendor` | A modified vendor submodule (Article II), in either of its two shapes: a dirty vendor working tree, and a submodule pin that has moved away from `vendorPin` in `scripts/replacement-parity.json` — the second being what a commit made *inside* the submodule looks like, since it leaves the vendor's own `status` clean. Runs from the `pre-commit` hook, so it catches these before they land rather than after. Note it deliberately *skips* the working-tree half where the submodule is not checked out (a plain `git worktree add` does not populate submodules) — a vendor that is not on disk cannot have been edited, and the pin half still runs there because it reads the index |
+| `pnpm run check:parity` (retired rows) | A row switched off with nothing put in its place whose upstream row id has since been renamed — the same silent no-op as a replacement's, but with no replacement plugin whose duplicate registration would make the problem loud. Also refuses an entry that does not say what now covers the capability, or claims the removal cost nothing |
 | `pnpm run check:parity` | A replacement that no longer covers the vendor row it disables — a slot, entry id, injected service or locale key the original registered and it doesn't; a disabled row id upstream renamed out from under it; a forked file whose vendor original has moved since the fork was last synced. Every one of these passes `tsc -b` and `pnpm run build` unnoticed, because a replacement that silently dropped a feature is still perfectly type-correct |
 
 ## Explicitly out of scope
@@ -931,6 +1065,59 @@ PR against `deepseek-ai/deepseek-harness`.
 
 ## Open items
 
+- **Consolidating with the upstream Sidebar file browsing and preview**
+  (see "Document preview: relocate the seat, never the renderers"), staged
+  so each step is usable and reviewable on its own:
+  1. ~~*Left tree absorbs the core tree.*~~ **Done.** `FilesNode` gained live
+     per-directory watching, the auto-refresh pause/resume toggle, reload,
+     per-directory failure lines, directories-first natural order and the
+     shared `FileTypeIcon` glyphs; `workspace-files.watchDirectory` was added
+     to `dsh-plugins-api-workspace-file-controller` as a **workspace-scoped**
+     stream (reusing `@deepseek-ai/dsh-api-workspace-files`'s own
+     `WorkspaceChangeFeed` through its `./src/*` export) so the tree still
+     watches with **no Session started**, which the Session-scoped core tree
+     cannot. The `ui-sidebar-files` row is disabled, `workspace.files` (Cmd+P)
+     re-registered against the left tree, and the whole trade recorded under
+     `retirements` in `scripts/replacement-parity.json`.
+  2. ~~*Relocate the preview engine*~~ **Done.** `dsh-plugins-client-ui-
+     document-host` replaces the `ui-sidebar-documentpreview` row by running
+     that plugin's own `apply()` through `relocatingContext`, which redirects
+     the seat registration into `conversation.file.document` — the slot
+     `dsh-plugins-client-ui-conversation-files` declares in the File tab and
+     answers `useTabInfo()` for. The vacated Sidebar seat now holds a
+     hand-off body, so `openResource` still resolves and forwards the file to
+     the middle.
+  3. **Partly done.** The two formats upstream genuinely lacks — OWL/RDF
+     ontologies and `.rtf` — are registered into `ctx.documentPreviews` at
+     the `extension` band. Editing, saving and side-by-side git diff stay in
+     the File tab's own header rather than moving into
+     `sidebar.right.tab.document.actions`: with the preview now in the middle
+     beside them, that slot would move controls *away* from where the reader
+     already is. Still open: `FileView` keeps its own read of the file (the
+     Edit and Diff modes need the text anyway), so a previewed file is read
+     twice — once by the tab, once by the engine.
+  4. *Parity and proof*: fork hashes and divergence records, `check:vendor`,
+     `check:parity`, typecheck, build, and the real-boot pass below.
+  5. Afterwards and separately: relocate the **core** terminal
+     (`ui-sidebar-terminal` — shell picker, process recovery across reload,
+     tab rename, completion) into the bottom-panel position
+     `packages/terminal/` occupies today, using the same seat-relocation
+     kit, and retire that fork once it is proven at parity.
+- **The document host has not been watched rendering in a browser.** What
+  *has* been checked, on a disposable profile cloned per "Test `dsh plugin
+  add`/`remove`" below: the composed profile boots with no activation
+  warning; the served boot manifest carries `dsh-plugins-client-ui-document-
+  host` and no longer carries the two disabled rows; the entry bundle it
+  serves asks for both lazy chunks through `require.async`; and the server
+  serves `client.pdf.js` (7.11 MB) and `client.excel.js` (7.05 MB) on
+  demand, each registering itself under its own `chunk:` name. What remains
+  is the one thing HTTP cannot answer — that a PDF, a spreadsheet and an
+  image actually draw in the File tab.
+- **A previewed file is read twice.** `FileView` keeps its own read (Edit
+  and Diff need the text regardless), and the relocated engine performs its
+  own paged read of the same file. Harmless but wasteful; collapsing them
+  means the tab taking its text from the document owner's content, which is
+  a bigger change than Phase 3 was worth.
 - **Bundle install order.** `scripts/install-plugins.mjs`'s `BUNDLES` array
   is where this order is now written down and applied (`pnpm run build`
   runs it; it appends only what a profile is missing, and warns rather than

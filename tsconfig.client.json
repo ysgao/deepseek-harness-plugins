@@ -11,6 +11,7 @@
     { "path": "packages/workspace-git/client-ui-conversation-files" },
     { "path": "packages/workspace-git/client-ui-workspace-enhanced" },
     { "path": "packages/workspace-git/client-ui-conversation-enhanced" },
+    { "path": "packages/workspace-git/client-ui-document-host" },
     { "path": "packages/workspace-git/client-remotes-workspace-git" },
     { "path": "packages/anthropic-subscription/client-remotes-anthropic-subscription" },
     { "path": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription" },

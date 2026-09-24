@@ -21,6 +21,10 @@
  *                 still exists in a vendored bundle (a renamed row upstream
  *                 makes `disabled: true` a silent no-op, which is worse than
  *                 an error: both plugins then register the same slots).
+ *              A replacement that DELEGATES (declares `delegated`: it runs
+ *              the vendor plugin's own apply instead of re-registering its
+ *              surface) is checked differently for 2-4 — see
+ *              `checkDelegated`.
  *   2. INJECT   — the replacement's `inject` array covers the vendor plugin's,
  *                 so it cannot activate in a composition the original would
  *                 have refused to activate in.
@@ -28,6 +32,11 @@
  *                 plugin's apply appears in the replacement's apply.
  *   4. LOCALE   — the replacement's copy dictionary is a superset of the
  *                 vendor dictionary it stands in for, key for key.
+ *   6. RETIRED  — for a row this repo switches off WITHOUT inserting a
+ *                 replacement (the capability moved to a surface this repo
+ *                 already owns): the disable is real, the row still exists
+ *                 upstream, and the entry names both what covers it now and
+ *                 what was given up.
  *   5. FORK     — every vendor file this repo forked still hashes to the
  *                 revision the fork was last synced against. A mismatch is
  *                 the pin bump saying "re-read this file and port what
@@ -139,6 +148,38 @@ function checkRow(entry) {
   }
 }
 
+/**
+ * 2-4, for a replacement that DELEGATES: one that does not re-register the
+ * vendor row's surface itself, but runs the vendor plugin's own `apply()`
+ * and redirects part of the result.
+ *
+ * Comparing registration literals is meaningless for this shape — there are
+ * none to compare, because nothing was re-written — and would report a
+ * replacement that is a superset *by construction* as missing everything.
+ * What has to be true instead is that the delegation is really there: the
+ * vendor apply is imported from the exact path recorded here, and it is
+ * called. A pin bump that moves or renames that entry point then fails this
+ * check rather than silently leaving a replacement that registers nothing.
+ *
+ * The surface itself stays covered by check 5: the vendor apply file is
+ * recorded as a fork original, so any change to what it registers stops the
+ * build until a human has read it beside the redirect.
+ * @param entry - one `replacements` entry carrying `delegated`.
+ */
+function checkDelegated(entry) {
+  const source = read(join(entry.replacementPackage, entry.replacementApply))
+  if (source === undefined) return
+  const { importedFrom, call } = entry.delegated
+  if (!source.includes(importedFrom)) {
+    failures.push(
+      `[${entry.row}] delegating replacement does not import the vendor apply from '${importedFrom}' — `
+      + 'either the delegation is gone, or upstream moved that entry point')
+  }
+  if (!new RegExp(`\\b${call}\\s*\\(`).test(source)) {
+    failures.push(`[${entry.row}] delegating replacement never calls ${call}(), so it registers nothing the vendor row did`)
+  }
+}
+
 /** 2-4. The replacement's plugin surface covers the row it stands in for. */
 function checkSurface(entry) {
   const vendorApply = read(join(entry.vendorPackage, entry.vendorApply))
@@ -177,6 +218,47 @@ function checkSurface(entry) {
   }
 }
 
+/**
+ * 6. RETIRED — a row switched off with no replacement package standing in
+ * for it. Checks 2-4 have nothing to compare, because nothing re-registers
+ * what the row registered: the capability moved to a surface this repo
+ * already owns. What is checkable is that the removal is real, deliberate
+ * and written down:
+ *
+ * - the bundle patch really disables the row;
+ * - a vendored bundle still mounts it, so the disable is not a silent no-op
+ *   against a row upstream has already renamed or dropped;
+ * - the entry names the surface that now carries the capability (`covers`)
+ *   and what was genuinely given up (`divergences`). An empty `divergences`
+ *   fails here by design: a disabled row always costs something, and an
+ *   entry claiming otherwise has not been thought through.
+ * @param entry - one `retirements` entry from the manifest.
+ */
+function checkRetirement(entry) {
+  const patch = read(entry.bundlePatch)
+  if (patch !== undefined && !new RegExp(`- id: ${entry.row}\\s*\\n\\s*disabled: true`).test(patch)) {
+    failures.push(`[${entry.row}] ${entry.bundlePatch} does not disable it`)
+  }
+  const bundles = join(ROOT, VENDOR, 'packages/bundle')
+  const mounted = existsSync(bundles) && readdirSync(bundles).some((name) => {
+    const file = join(bundles, name, 'cordis.patch.yml')
+    return existsSync(file)
+      && new RegExp(`- id: ${entry.row}\\s*\\n\\s*name: '${entry.vendorPlugin}'`)
+        .test(readFileSync(file, 'utf8'))
+  })
+  if (!mounted) {
+    failures.push(
+      `[${entry.row}] no vendored bundle mounts this row as '${entry.vendorPlugin}' any more — `
+      + 'the disable is a silent no-op, and whatever replaced it upstream is unaccounted for here')
+  }
+  if (!Array.isArray(entry.covers) || entry.covers.length === 0) {
+    failures.push(`[${entry.row}] retired without naming what covers it now (\`covers\`)`)
+  }
+  if (!Array.isArray(entry.divergences) || entry.divergences.length === 0) {
+    failures.push(`[${entry.row}] retired with no recorded divergence — a disabled row always costs something`)
+  }
+}
+
 /** 5. Every forked file's vendor original still hashes to the synced revision. */
 function checkForks(entry) {
   for (const fork of entry.forks) {
@@ -195,7 +277,8 @@ function checkForks(entry) {
 
 for (const entry of manifest.replacements) {
   checkRow(entry)
-  checkSurface(entry)
+  if (entry.delegated === undefined) checkSurface(entry)
+  else checkDelegated(entry)
   checkForks(entry)
 }
 
@@ -208,6 +291,14 @@ for (const entry of manifest.replacements) {
 // prevent.
 for (const entry of manifest.forkOnly ?? []) {
   checkForks({ ...entry, row: entry.package })
+}
+
+// Retired rows: switched off, nothing inserted in their place. The capability
+// they carried lives on a surface this repo already owned, which is why there
+// is no replacement package to compare against — and exactly why the entry
+// has to say so out loud.
+for (const entry of manifest.retirements ?? []) {
+  checkRetirement(entry)
 }
 
 if (UPDATE) {
@@ -225,4 +316,5 @@ if (failures.length > 0) {
 }
 console.log(
   `replacement parity: ${manifest.replacements.length} replacement(s) OK`
-  + `, ${String((manifest.forkOnly ?? []).length)} fork-only package(s) OK`)
+  + `, ${String((manifest.forkOnly ?? []).length)} fork-only package(s) OK`
+  + `, ${String((manifest.retirements ?? []).length)} retired row(s) OK`)

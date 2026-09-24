@@ -68,6 +68,35 @@
 # stay pending on their `remote.workspace-files`/`remote.workspace-git`
 # inject if it never mounts, degrading only the Files/git-status feature.
 
+# ui-sidebar-files is the upstream file tree in the RIGHT Sidebar. It is the
+# one row here that is retired rather than replaced — switched off with
+# nothing inserted in its place — because this bundle already draws a file
+# tree, in the left Sidebar, and two trees disagreeing about one directory is
+# not a feature. Everything that row carried now lives in
+# dsh-plugins-client-ui-workspace-files: live directory watching, the
+# auto-refresh pause/resume toggle, reload, per-directory failure lines,
+# directories-first natural order, the shared file-type glyphs, and the
+# `workspace.files` command itself, re-registered under the same id and the
+# same Cmd+P / Ctrl+Alt+P defaults so the keystroke keeps working and now
+# reveals the left tree. That inventory, and what was genuinely given up with
+# the row (its tab type and its Start-page guide tile), is recorded in
+# scripts/replacement-parity.json's `retirements`, where `pnpm run
+# check:parity` also verifies the row still exists upstream — so this disable
+# can never quietly decay into a no-op after a pin bump.
+- id: ui-sidebar-files
+  disabled: true
+
+# ui-sidebar-documentpreview owns the file preview engine — text, code,
+# Markdown, HTML, image, PDF, Office and the spreadsheet grid — and draws it
+# in the right Sidebar. document-host below replaces the row by RUNNING that
+# plugin's own apply() and redirecting exactly one of its registrations, so
+# the engine itself (and every renderer a later release adds to it) is
+# registered unchanged, in the conversation's File tab instead. Nothing here
+# forks a renderer; see ARCHITECTURE.md's "Document preview: relocate the
+# seat, never the renderers".
+- id: ui-sidebar-documentpreview
+  disabled: true
+
 - id: ui-workspace
   disabled: true
 
@@ -86,6 +115,13 @@
 
     - id: conversation-files
       name: 'dsh-plugins-client-ui-conversation-files'
+
+    # After conversation-files, which declares the File tab's document seat:
+    # this row registers into it. Order is not load-bearing for correctness
+    # (the slot framework's own `inject` waits for a declaration rather than
+    # failing on its absence), but it matches how the two read.
+    - id: document-host
+      name: 'dsh-plugins-client-ui-document-host'
 
     - id: workspace-files-node
       name: 'dsh-plugins-client-ui-workspace-files'

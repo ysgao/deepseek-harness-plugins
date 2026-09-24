@@ -12,3 +12,4 @@ dist/
 # only works if the directory itself is not the thing ignored.
 .claude/*
 !.claude/settings.json
+.dsh-verify/

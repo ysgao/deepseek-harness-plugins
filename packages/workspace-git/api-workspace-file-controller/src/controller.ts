@@ -13,6 +13,14 @@ import { isAbsolute, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+// The observation feed behind `@deepseek-ai/dsh-api-workspace-files`'s own
+// `changes`, reused verbatim through that package's `./src/*` export rather
+// than reimplemented: target watches, queued `fs/observed` invalidations and
+// generation teardown are exactly the same problem here, and the only thing
+// this namespace needs to differ on is whose root the path is resolved
+// against (a Workspace's, not a Session's). Importing it is not a fork — no
+// file is copied and nothing in the vendor tree is edited.
+import { WorkspaceChangeFeed } from '@deepseek-ai/dsh-api-workspace-files/src/changes.ts'
 import { GitNotARepositoryError, requireWorkspacePath, workspaceFileAtHead } from 'dsh-plugins-api-workspace-git-controller'
 import {
   createWorkspaceDirectory, createWorkspaceFile, DEFAULT_MAX_ENTRIES, DEFAULT_MAX_READ_BYTES, isReallyWithinWorkspace,
@@ -24,10 +32,12 @@ import type {
   WorkspaceCreateDirectoryValue,
   WorkspaceCreateEntryRequest,
   WorkspaceCreateFileValue,
+  WorkspaceDirectoryWatchFrame,
   WorkspaceFileDiff,
   WorkspaceGitFileDiffRequest,
   WorkspaceListEntriesRequest,
   WorkspaceReadFileRequest,
+  WorkspaceWatchDirectoryRequest,
   WorkspaceWriteFileRequest,
   WorkspaceWriteFileValue,
 } from './types.ts'
@@ -76,7 +86,9 @@ function mapFileError(error: unknown): never {
  * Host service backing the generated `ctx.remote['workspace-files']` namespace.
  */
 export class WorkspaceFileController extends TypertRemoteService {
-  static inject = ['workspaceRegistry']
+  // `fs` joins `workspaceRegistry` for `watchDirectory` alone: the change
+  // feed resolves and watches targets through it.
+  static inject = ['workspaceRegistry', 'fs']
 
   static Config: z<Config> = z.object({
     maxEntries: z.natural().default(DEFAULT_MAX_ENTRIES),
@@ -85,15 +97,21 @@ export class WorkspaceFileController extends TypertRemoteService {
 
   private readonly maxEntries: number | undefined
   private readonly maxReadBytes: number | undefined
+  private readonly feed: WorkspaceChangeFeed
 
   /**
-   * @param ctx - Host context carrying the Workspace registry.
+   * @param ctx - Host context carrying the Workspace registry and the filesystem.
    * @param config - Files-tree listing and read/write byte bounds.
    */
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'workspaceFileController', { namespace: 'workspace-files' })
     this.maxEntries = config.maxEntries
     this.maxReadBytes = config.maxReadBytes
+    // Its own feed instance, not a borrowed one: the feed registers this
+    // fiber's `fs/observed` listener and disposes every open generation with
+    // this plugin, so sharing another plugin's instance would tie this
+    // namespace's watches to that plugin's lifetime.
+    this.feed = new WorkspaceChangeFeed(ctx)
   }
 
   /**
@@ -199,6 +217,45 @@ export class WorkspaceFileController extends TypertRemoteService {
       }
     }
     return { oldText, newText }
+  }
+
+  /**
+   * Watches one directory level under a workspace root for as long as the
+   * caller's stream lives.
+   *
+   * Direct entries only — no descent — matching what the tree draws: a level
+   * is re-listed when it changes, and a change deeper down belongs to
+   * whichever level is watching it.
+   * @param request - workspace identity and target directory.
+   * @param signal - stream lifetime; abort releases the underlying watch.
+   * @returns `ready` once the watch is active, then one frame per change.
+   * @throws RemoteError `workspace-files/watch-unsupported` when the
+   * filesystem cannot watch the target, `workspace-files/outside-workspace`
+   * when the path escapes the workspace.
+   */
+  @Remote({ mode: 'stream' })
+  async *watchDirectory(request: WorkspaceWatchDirectoryRequest, signal: AbortSignal): AsyncIterable<WorkspaceDirectoryWatchFrame> {
+    const root = requireWorkspacePath(this.ctx, request.workspaceId)
+    const path = await this.requireContainedPath(request.workspaceId, request.path)
+    try {
+      for await (const frame of this.feed.follow(root, path, signal)) {
+        // The change detail the feed carries (absolute path, version, or
+        // absence) is dropped deliberately — see WorkspaceDirectoryWatchFrame.
+        yield frame.kind === 'ready' ? { kind: 'ready' } : { kind: 'change' }
+      }
+    } catch (error) {
+      // The feed reports through the namespace it was written for. Re-code
+      // its failures into this one rather than leaking `workspace-file/*`
+      // out of a `workspace-files` endpoint, where no client would have a
+      // reason to look for them.
+      if (error instanceof RemoteError && error.code === 'workspace-file/watch-unsupported') {
+        throw new RemoteError('workspace-files/watch-unsupported', error.message, { path })
+      }
+      if (error instanceof RemoteError && error.code === 'workspace-file/outside-workspace') {
+        throw new RemoteError('workspace-files/outside-workspace', error.message, { path })
+      }
+      throw error
+    }
   }
 
   /**

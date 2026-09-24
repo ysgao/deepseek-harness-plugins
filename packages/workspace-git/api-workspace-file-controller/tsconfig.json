@@ -14,6 +14,8 @@
     { "path": "../../_vendor/deepseek-harness/packages/util/brand" },
     { "path": "../../_vendor/deepseek-harness/packages/workspace/workspace" },
     { "path": "../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" },
+    { "path": "../../_vendor/deepseek-harness/packages/api/workspace-files/tsconfig.host.json" },
+    { "path": "../../_vendor/deepseek-harness/packages/fs/fs" },
     { "path": "../api-workspace-git-controller" }
   ]
 }

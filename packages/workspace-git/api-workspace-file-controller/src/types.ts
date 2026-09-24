@@ -25,6 +25,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace-files/parent-missing': { readonly path: string }
     /** `gitFileDiff`'s workspace directory is outside any git working tree. */
     'workspace-files/not-a-repository': { readonly path: string }
+    /** The filesystem cannot initialize a watch for this directory. */
+    'workspace-files/watch-unsupported': { readonly path: string }
   }
 }
 
@@ -75,6 +77,34 @@ export interface WorkspaceCreateFileValue {
 export interface WorkspaceCreateDirectoryValue {
   readonly path: string
 }
+
+/**
+ * `workspace-files.watchDirectory` request: one directory level under a
+ * workspace root, observed for as long as the caller's stream lives.
+ *
+ * Workspace-scoped, not Session-scoped, which is the whole reason this
+ * namespace carries a watch at all when `@deepseek-ai/dsh-api-workspace-
+ * files` already has `changes`: that one resolves its root from a Session
+ * identity on the wire, so it cannot answer for a Workspace the user has
+ * selected but started no Session in — precisely the state the left
+ * Sidebar's Files tree is in every time it opens a new Workspace.
+ */
+export interface WorkspaceWatchDirectoryRequest {
+  readonly workspaceId: WorkspaceId
+  readonly path: string
+}
+
+/**
+ * One `workspace-files.watchDirectory` frame: the watch became active, or
+ * the directory changed and its listing is stale.
+ *
+ * Deliberately carries no change detail. The tree re-lists the level it
+ * already knows how to list, so naming the entry that moved would be a
+ * second, racier source of truth for the same fact.
+ */
+export type WorkspaceDirectoryWatchFrame =
+  | { readonly kind: 'ready' }
+  | { readonly kind: 'change' }
 
 /** `workspace-files.gitFileDiff` request: one file's `HEAD` vs. working-tree text under a workspace root. */
 export interface WorkspaceGitFileDiffRequest {

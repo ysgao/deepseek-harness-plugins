@@ -7,6 +7,39 @@ pull `--rebase`, push, add file/folder) — ported from
 `dsh-api-workspace-controller`, and `dsh-client-ui-primitives` into this
 out-of-tree package.
 
+## What it took over from `ui-sidebar-files`
+
+This bundle now disables upstream's own right-Sidebar file tree
+(`@deepseek-ai/dsh-client-ui-sidebar-files`), so everything that row did has
+to be here. What moved in:
+
+- **Live directory watching.** Each expanded level subscribes to
+  `workspace-files.watchDirectory` — this repo's own **workspace-scoped**
+  stream, not the Session-scoped `workspaceFiles.changes` the retired tree
+  used, because this tree is drawn for a selected Workspace whether or not a
+  Session was ever started in it.
+- **Auto-refresh pause/resume, and reload.** Tree-wide, not per level:
+  pausing is a statement about this tree's appetite for churn during a build
+  or a checkout, and a reader who pauses one level and forgets the other
+  three has paused nothing. Resuming re-reads immediately rather than making
+  the reader ask twice.
+- **Per-directory failure lines** instead of one generic "couldn't load".
+- **Directories-first natural name order** (`file2` before `file10`), moved
+  Host-side into `listWorkspaceEntries`' own collator, so the wire order is
+  already the reader's order.
+- **The shared `FileTypeIcon` glyph set**, so a file reads the same here as
+  in every other list of files in the app.
+- **The `workspace.files` command** — same id, same Cmd+P (Ctrl+Alt+P on
+  web) defaults, same regions — re-registered in this package's `apply()`.
+  It reveals this tree instead: `reveal.ts` broadcasts, every mounted tree
+  expands, the first focuses itself, and the Sidebar is opened first when no
+  tree could answer (never an unconditional `toggleSidebar()`, which would
+  close an open one and hide the thing being asked for).
+
+What was deliberately *not* taken over — the right-Sidebar tab type itself,
+and its Start-page guide tile — is recorded with reasons under `retirements`
+in `../../../scripts/replacement-parity.json`.
+
 ## Design
 
 - The package's default `.` export (`src/index.ts`) is a Host-safe no-op;

@@ -42,6 +42,14 @@ import type { WorkspaceGitStatus } from 'dsh-plugins-api-workspace-git-controlle
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
+// The seat this tab declares (./document-seat.ts) is filled by
+// dsh-plugins-client-ui-document-host when that package is composed in; this
+// tab draws its own preview when it is not.
+import type { FileDocumentHookContext } from './document-seat.ts'
+import type { SidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import { parseFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import { langFromPath, viewerKindFor } from './classify.ts'
 import css from './FileView.module.css'
 
@@ -65,6 +73,16 @@ export interface FileViewInjected {
   writeFile: (
     workspaceId: WorkspaceId | undefined, path: string, content: string, expectedVersion: WorkspaceFileVersion, signal?: AbortSignal,
   ) => Promise<WorkspaceFileVersion>
+  /**
+   * Compose the `dsh-resource://file/session/<id>/<path>` address for a path
+   * this tab has open, in this tab's own session.
+   *
+   * That address is the identity every document renderer reads its file
+   * through (`useResource`, the paged read, the byte read), so the tab has
+   * to speak it to host one. Built in the entry's `inject`, where the
+   * session id lives, rather than derived from props here.
+   */
+  fileAddress: (path: string) => string
   /** Bound `conversation-files` locale translate function (this package's own namespace — see `../ARCHITECTURE.md`). */
   tFiles: TranslateNS<'conversation-files'>
 }
@@ -82,6 +100,14 @@ interface OpenFileFocus {
 
 /** Which body the tab shows for the opened path: the plain preview, the in-app editor, or the git diff. */
 type FileViewMode = 'view' | 'edit' | 'diff'
+
+/**
+ * Page operations a document body binds while it is mounted (its own reload,
+ * chiefly). Read off the actions contract rather than imported by name: the
+ * command set is the Sidebar's to grow, and this tab only has to hold
+ * whatever it is handed.
+ */
+type DocumentCommands = Parameters<SidebarRightTabInfo['tab']['actions']['bindCommands']>[0]
 
 /** Fetch state for the currently diffed path. */
 type DiffFetchState =
@@ -103,7 +129,11 @@ type SaveState =
   | { phase: 'error' }
 
 /** Full File-view component props: runtime & injected & the pristine `conversation`-namespace locale seat. */
-export type FileViewProps = ConvViewProps & InjectFace<FileViewInjected> & PropsLocale<'conversation'>
+export type FileViewProps =
+  & ConvViewProps
+  & InjectFace<FileViewInjected>
+  & PropsLocale<'conversation'>
+  & PropsRenderSlots<'conversation.file.document'>
 
 /**
  * Parse the File view's own opaque `focus` payload — a JSON-encoded
@@ -182,7 +212,8 @@ function stateFromError(error: unknown): FilePreviewState {
  * @returns the tab's body element.
  */
 export function FileView({
-  viewRequest, completeViewRequest, readFile, openPath, getGitStatus, getFileDiff, writeFile, tFiles, t,
+  viewRequest, completeViewRequest, readFile, openPath, getGitStatus, getFileDiff, writeFile, fileAddress,
+  renderSlot, tFiles, t,
 }: FileViewProps) {
   const filePreviewLabels: FilePreviewLabels = useMemo(() => ({
     markdown: { code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('markdown.footnotes') },
@@ -260,6 +291,75 @@ export function FileView({
   // See `fileIdentityOf`'s own doc comment: `path` alone conflates two
   // different workspaces' same-named files into one draft/editor identity.
   const openedFileId = openedPath === null ? null : fileIdentityOf(openedWorkspaceId, openedPath)
+
+  // One lifetime per opened file, handed to a document body as the signal
+  // its own reads ride on. Aborting it on change is what stops the previous
+  // file's paged read from landing in the new file's body.
+  const documentLifetimeRef = useRef<AbortController | null>(null)
+  const [documentLifetime, setDocumentLifetime] = useState<AbortController | null>(null)
+  useEffect(() => {
+    if (openedFileId === null) return
+    const controller = new AbortController()
+    documentLifetimeRef.current = controller
+    setDocumentLifetime(controller)
+    return () => { controller.abort() }
+  }, [openedFileId])
+  // Counted, not derived from the path: a second open of the SAME file (a
+  // re-click in the tree) is still a navigation, and a body that acts on
+  // "navigated again" — scrolling to a line, reloading — must see it.
+  const [navigationRevision, setNavigationRevision] = useState(1)
+  useEffect(() => { setNavigationRevision(value => value + 1) }, [openedFileId])
+  // A document body binds its page operations here (its own reload, chiefly)
+  // for as long as it is mounted. Held in a ref, not state: binding is not a
+  // reason to re-render the tab around it.
+  const documentCommandsRef = useRef<DocumentCommands | null>(null)
+
+  // What a relocated document body is told about the tab it is drawn in.
+  // Every field is settled from this tab's own state; see
+  // `dsh-plugins-client-ui-document-host`'s `contract.ts` for why a body can
+  // be answered this way at all.
+  const documentContext = useMemo<FileDocumentHookContext | null>(() => {
+    if (openedPath === null || openedFileId === null || documentLifetime === null) return null
+    const address = fileAddress(openedPath)
+    return {
+      tab: { id: `conversation-file:${openedFileId}` as TabId, kind: 'text', contentId: address, title: basename(openedPath) },
+      // No params: the File tab is opened with a path, never yet with a line.
+      // A body reads `revision` alone to know it was navigated to again.
+      navigation: { address, params: undefined, revision: navigationRevision },
+      // The seat is only rendered in View mode, and View mode is only
+      // rendered while this tab is the conversation's selected view.
+      visible: true,
+      signal: documentLifetime.signal,
+      actions: {
+        bindCommands: (commands) => {
+          documentCommandsRef.current = commands
+          return () => {
+            // Never clear a newer body's binding: an unmounting body's
+            // disposer can run after its replacement has already bound.
+            if (documentCommandsRef.current === commands) documentCommandsRef.current = null
+          }
+        },
+        openResource: (next) => {
+          const file = parseFileAddress(next)
+          // A body following a link inside a document (an HTML href, a
+          // Markdown relative link) stays in this tab, which is where the
+          // reader is looking. An address this tab cannot show — another
+          // session's file, a non-file resource — is declined rather than
+          // silently opening somewhere else.
+          if (file?.scope === 'session') setOpenedPath(file.path)
+        },
+        // Page types are a right-Sidebar concept: there are no pages to open
+        // in a File tab, and a body asking for one gets nothing rather than
+        // an exception thrown through the renderer.
+        openTab: () => {},
+        close: () => { setOpenedPath(null) },
+      },
+      // The refresh keybinding belongs to the right Sidebar's page chrome;
+      // this tab has its own controls, so a body that labels a refresh
+      // shortcut simply finds none.
+      shortcuts: [],
+    }
+  }, [openedPath, openedFileId, documentLifetime, navigationRevision, fileAddress])
 
   // A newly opened (path, workspaceId) pair always starts in plain-view mode
   // with a clean save state — deliberately keyed on `openedFileId`, not
@@ -408,6 +508,28 @@ export function FileView({
   const draft = openedFileId === null ? undefined : draftsRef.current.get(openedFileId)
   const editorText = draft?.text ?? readyText ?? ''
 
+  // This tab's own preview: what View mode has always drawn, and what it
+  // still draws whenever the document seat is empty — `dsh-plugins-client-ui-
+  // document-host` not composed in, or composed in and declining this file.
+  const ownPreview = (
+    <FilePreview
+      className={css.body}
+      path={openedPath}
+      kind={kind}
+      state={state}
+      lang={langFromPath(openedPath)}
+      labels={filePreviewLabels}
+      loadingLabel={tFiles('files.viewer.loading')}
+      loadErrorLabel={tFiles('files.viewer.loadError')}
+      externalLabel={tFiles('files.viewer.openExternally')}
+      tooLargeLabel={maxMB => tFiles('files.viewer.tooLarge', { maxMB })}
+      xlsxTruncatedLabel={(rows, cols) => tFiles('files.viewer.xlsxTruncated', { rows, cols })}
+      xlsxEmptyLabel={tFiles('files.viewer.xlsxEmpty')}
+      pptxSlideLabel={index => tFiles('files.viewer.pptxSlide', { index })}
+      pptxEmptyLabel={tFiles('files.viewer.pptxEmpty')}
+    />
+  )
+
   return (
     <div className={css.root}>
       <div className={css.header}>
@@ -485,22 +607,9 @@ export function FileView({
         />
       )}
       {mode === 'view' && (
-        <FilePreview
-          className={css.body}
-          path={openedPath}
-          kind={kind}
-          state={state}
-          lang={langFromPath(openedPath)}
-          labels={filePreviewLabels}
-          loadingLabel={tFiles('files.viewer.loading')}
-          loadErrorLabel={tFiles('files.viewer.loadError')}
-          externalLabel={tFiles('files.viewer.openExternally')}
-          tooLargeLabel={maxMB => tFiles('files.viewer.tooLarge', { maxMB })}
-          xlsxTruncatedLabel={(rows, cols) => tFiles('files.viewer.xlsxTruncated', { rows, cols })}
-          xlsxEmptyLabel={tFiles('files.viewer.xlsxEmpty')}
-          pptxSlideLabel={index => tFiles('files.viewer.pptxSlide', { index })}
-          pptxEmptyLabel={tFiles('files.viewer.pptxEmpty')}
-        />
+        documentContext === null
+          ? ownPreview
+          : renderSlot('conversation.file.document', {}, { hookContext: documentContext, fallback: ownPreview })
       )}
       {mode === 'view' && showsExternalOnly && (
         <div className={css.footer}>

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readFile as readFileAsync } from 'node:fs/promises'
+import { readFile as readFileAsync, stat, utimes } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, resolve as resolvePath, sep } from 'node:path'
-import type { UserConfig } from 'tsdown'
+import { Rolldown, type UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 import { INLINE_SAFE, requestedExternals } from './packages/_vendor/deepseek-harness/packages/client/tsdown.client.ts'
 import { PLATFORM_MODULES, PRELOADED_CLIENT_EXTERNALS } from './packages/_vendor/deepseek-harness/packages/client/web/src/platform.ts'
@@ -40,6 +40,29 @@ import { PLATFORM_MODULES, PRELOADED_CLIENT_EXTERNALS } from './packages/_vendor
 
 const CSS_VIRTUAL_PREFIX = '\0dsh-plugin-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
+
+/**
+ * The other two stylesheet shapes `clientConfig()` handles, ported for the
+ * same reason its CSS Modules plugin was: a package that inlines another
+ * package's component tree inherits every stylesheet import in it, and a
+ * third-party library's stylesheet is neither a CSS Module nor optional
+ * (`@fortune-sheet/react/dist/index.css?inline` is the spreadsheet grid's
+ * entire appearance). `?inline` yields the stylesheet TEXT to the importer,
+ * which then owns where it goes; a plain `.css` import is a global
+ * side-effect stylesheet and injects itself, exactly like a CSS Module's
+ * companion injection.
+ */
+const INLINE_CSS_VIRTUAL_PREFIX = '\0dsh-plugin-inline-css:'
+const GLOBAL_CSS_VIRTUAL_PREFIX = '\0dsh-plugin-global-css:'
+const INLINE_CSS_QUERY = '?inline'
+
+/** Published package-local chunk names, matching the client module loader's own on-demand route. */
+const CLIENT_CHUNK = /^client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js$/
+
+/** Escape a specifier for embedding in the generated-require match pattern. */
+function escapeSpecifier(specifier: string): string {
+  return specifier.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`)
+}
 
 /** Same closed allowlist `clientConfig()` uses for a rescoped vendored library with no shared runtime identity. */
 const VENDORED_LIBRARY = /^@deepseek-ai\/(cosmokit|schemastery)(\/|$)/
@@ -139,6 +162,57 @@ function tscSourceMapPlugin() {
   }
 }
 
+/**
+ * Render package-local dynamic imports through the Client module loader's
+ * asynchronous operation — the port of `clientConfig()`'s own
+ * `asyncChunkRequirePlugin`. Without it a split bundle's `import()` compiles
+ * to `Promise.resolve().then(() => require('./client.pdf.js'))`, and the
+ * closure factory's synthetic `require` has no registered factory under that
+ * name: the chunk exists on disk and is served, but nothing ever fetches it.
+ * @returns the rolldown plugin rewriting those calls to `require.async(...)`.
+ */
+function asyncChunkRequirePlugin() {
+  return {
+    name: 'dsh-plugin-async-chunk-require',
+    renderChunk(
+      code: string,
+      chunk: { dynamicImports: readonly string[] },
+      outputOptions: { format?: string },
+    ) {
+      if (outputOptions.format !== 'cjs') return null
+      const transformed = new Rolldown.RolldownMagicString(code)
+      for (const dynamicImport of chunk.dynamicImports) {
+        const fileName = dynamicImport.startsWith('./') ? dynamicImport.slice(2) : dynamicImport
+        if (!CLIENT_CHUNK.test(fileName)) continue
+        const specifier = `./${fileName}`
+        const call = new RegExp(
+          `Promise\\.resolve\\(\\)\\.then\\(\\(\\)\\s*=>\\s*require\\((['"])${escapeSpecifier(specifier)}\\1\\)\\)`,
+          'gu',
+        )
+        const matches = [...code.matchAll(call)]
+        if (matches.length === 0) {
+          throw new Error(`client plugin bundle: dynamic chunk ${JSON.stringify(specifier)} has no generated import expression`)
+        }
+        for (const match of matches) {
+          transformed.overwrite(match.index, match.index + match[0].length, `require.async(${JSON.stringify(specifier)})`)
+        }
+      }
+      return transformed.hasChanged() ? transformed : null
+    },
+    async writeBundle(
+      outputOptions: { dir?: string },
+      bundle: Record<string, { type: string; isEntry?: boolean; fileName: string }>,
+    ) {
+      const entry = Object.values(bundle).find(output => output.type === 'chunk' && output.isEntry === true)
+      if (entry === undefined || outputOptions.dir === undefined) return
+      const entryPath = resolvePath(outputOptions.dir, entry.fileName)
+      const current = await stat(entryPath)
+      const completedAt = new Date(Math.max(Date.now(), current.mtimeMs + 1))
+      await utimes(entryPath, current.atime, completedAt)
+    },
+  }
+}
+
 /** Options a caller passes instead of what `workspaceManifest()` would have read from an in-tree package.json. */
 export interface ClientPluginBundleOptions {
   /** This package's own `dsh.client.external` array, verbatim from its package.json (absent when it declares none). */
@@ -155,6 +229,29 @@ export interface ClientPluginBundleOptions {
    * the gate otherwise protects against).
    */
   extraInlineSafe?: RegExp
+  /**
+   * Emit package-local lazy chunks (`client.<name>.js`) for `import()` calls
+   * instead of packing them into the single entry bundle, reproducing
+   * `clientConfig()`'s own chunked output.
+   *
+   * Off by default, which is the right default for a plugin whose whole
+   * graph is small: one file, one request, no loader cooperation needed.
+   * Turn it on for a package inlining a component tree with deliberately
+   * lazy heavy bodies (a PDF runtime, a spreadsheet grid), where packing
+   * them into the entry would move megabytes onto every boot. The client
+   * module loader serves these on demand for ANY registered plugin id, out
+   * of tree included — see `packages/client/modules/src/index.ts`'s
+   * `CLIENT_CHUNK` route in the vendored harness.
+   */
+  codeSplitting?: boolean
+  /**
+   * Text prepended to one emitted file, by name — the port of
+   * `clientBundle()`'s own `clientBanner`. Used to keep a bundled library's
+   * license notice in the artifact that actually carries its code.
+   * @param fileName - the emitted file's name (`client.js`, `client.pdf.js`, …).
+   * @returns the banner text, or undefined to prepend nothing.
+   */
+  clientBanner?: (fileName: string) => string | undefined
 }
 
 /**
@@ -247,23 +344,62 @@ export function clientPluginBundle(id: string, entry: string, options: ClientPlu
         }
         return styleInjectionModule(id, fileId, code.toString(), classMap)
       },
-    }],
+    }, {
+      name: 'dsh-plugin-css-text-inline',
+      resolveId(source: string, importer: string | undefined) {
+        if (!source.endsWith(`.css${INLINE_CSS_QUERY}`)) return null
+        const stylesheet = source.slice(0, -INLINE_CSS_QUERY.length)
+        const abs = importer !== undefined ? sourceAssetPath(stylesheet, importer) : stylesheet
+        return INLINE_CSS_VIRTUAL_PREFIX + abs + CSS_VIRTUAL_SUFFIX
+      },
+      async load(virtualId: string) {
+        if (!virtualId.startsWith(INLINE_CSS_VIRTUAL_PREFIX)) return null
+        const fileId = virtualId.slice(INLINE_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+        this.addWatchFile(fileId)
+        const source = await readFileAsync(fileId)
+        const { code } = transform({ filename: fileId, code: source, minify: true })
+        return `export default ${JSON.stringify(code.toString())};`
+      },
+    }, {
+      name: 'dsh-plugin-css-global-inline',
+      resolveId(source: string, importer: string | undefined) {
+        if (!source.endsWith('.css') || source.endsWith('.module.css')) return null
+        const abs = importer !== undefined ? sourceAssetPath(source, importer) : source
+        return GLOBAL_CSS_VIRTUAL_PREFIX + abs + CSS_VIRTUAL_SUFFIX
+      },
+      async load(virtualId: string) {
+        if (!virtualId.startsWith(GLOBAL_CSS_VIRTUAL_PREFIX)) return null
+        const fileId = virtualId.slice(GLOBAL_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+        this.addWatchFile(fileId)
+        const source = await readFileAsync(fileId)
+        const { code } = transform({ filename: fileId, code: source, minify: true })
+        return styleInjectionModule(id, fileId, code.toString())
+      },
+    }, ...(options.codeSplitting === true ? [asyncChunkRequirePlugin()] : [])],
     outputOptions: {
       entryFileNames: 'client.js',
+      ...(options.codeSplitting === true ? { chunkFileNames: 'client.[name].js' } : {}),
       sourcemapExcludeSources: false,
       // A dynamic import() inside plugin source (e.g. a replacement
       // plugin's own lazy pristine-apply fallback) must stay physically
-      // inside this one output file: the closure-factory `require` the
-      // banner below receives only resolves this bundle's declared
-      // externals, not a second chunk file this bundler would otherwise
-      // split off — no browser-side loader here ever fetches or registers
-      // that second file. Disabling code splitting keeps rolldown's
-      // evaluation laziness (the imported module's top-level code still
-      // only runs the first time the import() expression executes) while
-      // packing it into the single `client.js` this preset's
-      // `entryFileNames` promises.
-      codeSplitting: false,
-      banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (require) => {`,
+      // inside this one output file UNLESS the caller opts into
+      // `codeSplitting`: the closure-factory `require` the banner below
+      // receives only resolves this bundle's declared externals, not a
+      // second chunk file this bundler would otherwise split off. Off,
+      // rolldown's evaluation laziness is kept (the imported module's
+      // top-level code still only runs the first time the import()
+      // expression executes) while packing it into the single `client.js`
+      // this preset's `entryFileNames` promises. On, the emitted chunks are
+      // named the way the loader's package-local route expects and every
+      // generated require of one is rewritten to `require.async(...)` by
+      // `asyncChunkRequirePlugin` above — which is what actually fetches it.
+      codeSplitting: options.codeSplitting === true,
+      banner: (chunk: { isEntry: boolean; fileName: string }) => {
+        const registration = `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, `
+          + `${chunk.isEntry ? '' : `chunk: ${JSON.stringify(chunk.fileName)}, `}factory: (require) => {`
+        const prefix = options.clientBanner?.(chunk.fileName)
+        return prefix === undefined ? registration : `${prefix}\n${registration}`
+      },
       footer: 'return module.exports; } });',
       intro: 'var module = { exports: {} }; var exports = module.exports;',
     },

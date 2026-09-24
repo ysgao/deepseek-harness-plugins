@@ -1,0 +1,9 @@
+/* The one line this body ever draws: shown only when no File tab accepted
+   the file, so it is a dead end being explained, not a loading state. */
+.refusal {
+  margin: 0;
+  padding: 16px;
+  color: var(--dsh-color-text-secondary, #6b7280);
+  font-size: 13px;
+  line-height: 1.5;
+}

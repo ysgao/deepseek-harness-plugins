@@ -15,12 +15,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  Button, IconCheckOutlineRegular, IconCloseFillRegular, IconFolderCloseRegular, IconFolderOpenRegular,
-  IconRefreshOutlineRegular, IconTriangleRightFillRegular, Modal, StateDot,
+  Button, FileTypeIcon, IconCheckOutlineRegular, IconCloseFillRegular, IconFolderCloseRegular, IconFolderOpenRegular,
+  IconPauseOutlineRegular, IconPlayOutlineRegular, IconRefreshOutlineRegular, IconTriangleRightFillRegular,
+  Modal, StateDot, Tooltip, classifyFileType,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import {
   IconArrowDownOutline14, IconArrowUpOutline14, IconChevronDuoUpOutline14,
-  IconFilePlaceholder16, IconNewFile16, IconNewFolder16, IconUndoOutline14,
+  IconNewFile16, IconNewFolder16, IconUndoOutline14,
 } from './icons.tsx'
 import type { WorkspaceEntry, WorkspaceEntryListing, WorkspaceFileContent } from 'dsh-plugins-api-workspace-file-controller/types'
 import type { WorkspaceGitStatus } from 'dsh-plugins-api-workspace-git-controller/types'
@@ -28,6 +30,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { FilesKey } from './locales.ts'
+import type { FilesReveal } from './reveal.ts'
 import { FileViewer } from './FileViewer.tsx'
 import css from './FilesNode.module.css'
 
@@ -40,6 +43,16 @@ export interface FilesNodeProps {
   rootPath: string
   /** List one directory level (directories AND files). */
   listWorkspaceEntries: (workspaceId: WorkspaceId, path: string, signal?: AbortSignal) => Promise<WorkspaceEntryListing>
+  /**
+   * Observe one expanded directory level, yielding once the watch is live
+   * and again whenever that directory's own entries changed on disk.
+   *
+   * Optional, and absence is a normal state, not an error: without it every
+   * level simply stays at what it last read until something re-reads it (the
+   * header's own Reload, a collapse-then-reopen, or a commit/create), which
+   * is exactly how this tree behaved before watching existed.
+   */
+  watchWorkspaceDirectory?: ((workspaceId: WorkspaceId, path: string, signal: AbortSignal) => AsyncIterable<'ready' | 'change'>) | undefined
   /** Read one file's content for in-app preview. */
   readWorkspaceFile: (workspaceId: WorkspaceId, path: string, signal?: AbortSignal) => Promise<WorkspaceFileContent>
   /** Report the Workspace's current git branch and pending file changes, if its directory is inside a git working tree. */
@@ -80,6 +93,12 @@ export interface FilesNodeProps {
    * falls back to the in-app preview modal.
    */
   openFileInSession: (sessionId: SessionId, workspaceId: WorkspaceId, path: string) => boolean
+  /**
+   * Reveal requests from the `workspace.files` keyboard command. Optional:
+   * without it this tree is opened by clicking it, which is how it was
+   * opened before that command existed.
+   */
+  reveal?: FilesReveal | undefined
   t: FilesTranslate
 }
 
@@ -409,6 +428,46 @@ function hasChangesUnder(dirPath: string, files: Readonly<Record<string, string>
   return Object.keys(files).some(path => isUnderDirectory(path, dirPath))
 }
 
+/**
+ * The expanded tree's own two controls: pause/resume automatic re-reading,
+ * and re-read now.
+ *
+ * Only rendered while the tree is expanded — both act on levels, and a
+ * collapsed tree has none. Neither participates in `busy`: neither touches
+ * the working tree or the index, so neither can race a commit, a discard, or
+ * a create the way the git actions beside them can.
+ */
+function LevelControls({ autoRefresh, onToggleAutoRefresh, onReload, watching, t }: {
+  autoRefresh: boolean
+  onToggleAutoRefresh: () => void
+  onReload: () => void
+  /** Whether directory observation exists at all; without it there is nothing to pause. */
+  watching: boolean
+  t: FilesTranslate
+}) {
+  return (
+    <>
+      {watching && (
+        <Tooltip label={autoRefresh ? t('files.autoRefresh.pause') : t('files.autoRefresh.resume')}>
+          <button
+            type="button"
+            className={css.gitRefreshButton}
+            aria-pressed={!autoRefresh}
+            onClick={onToggleAutoRefresh}
+          >
+            {autoRefresh ? <IconPauseOutlineRegular size={14} /> : <IconPlayOutlineRegular size={14} />}
+          </button>
+        </Tooltip>
+      )}
+      <Tooltip label={t('files.reload')}>
+        <button type="button" className={css.gitRefreshButton} onClick={onReload}>
+          <IconRefreshOutlineRegular size={14} />
+        </button>
+      </Tooltip>
+    </>
+  )
+}
+
 /** A directory row's aggregate dirty marker: shown when any file under it, at any depth, has a pending git change. */
 function GitStatusFolderDot({ dirPath, gitStatusFiles, t }: {
   dirPath: string
@@ -427,32 +486,86 @@ function GitStatusFolderDot({ dirPath, gitStatusFiles, t }: {
 type LevelState =
   | { phase: 'loading' }
   | { phase: 'ready'; entries: readonly WorkspaceEntry[]; truncated: boolean }
-  | { phase: 'error' }
+  | { phase: 'error'; line: FilesKey }
 
 /**
- * Fetch one directory level and report its settled state, aborting on
- * unmount or path change. The caller mounts `FilesLevel` (and therefore this
- * hook) only while its own row is expanded — there is no `open` flag here
- * because there is no live instance to hold one while closed.
+ * Say why a level could not be listed, in terms of the directory rather than
+ * the transport. A code this endpoint does not document folds to the generic
+ * line: an unrecognized failure is still a failure to show, never a blank row.
+ */
+function failureLine(reason: unknown): FilesKey {
+  switch (remoteErrorOf(reason)?.code) {
+    // `listEntries` answers `directory-unreadable` for both a missing
+    // directory and an unreadable one; "no longer exists" is the case a
+    // reader of a live tree is overwhelmingly in, since the row they clicked
+    // was on screen a moment ago.
+    case 'workspace-files/directory-unreadable': return 'files.error.notFound'
+    case 'workspace-files/outside-workspace': return 'files.error.outsideWorkspace'
+    default: return 'files.loadError'
+  }
+}
+
+/**
+ * Fetch one directory level, keep it current while it is on screen, and
+ * report its settled state — aborting on unmount or path change. The caller
+ * mounts `FilesLevel` (and therefore this hook) only while its own row is
+ * expanded, so there is no `open` flag here: there is no live instance to
+ * hold one while closed, and no watch running for a level nobody is looking
+ * at.
+ *
+ * Two effects, deliberately separate. The listing reads once per
+ * (path, generation); the watch subscribes once per path and only bumps the
+ * generation. Folding them together would tear the watch down and open a new
+ * one on every re-read, which is both wasteful and a window in which a change
+ * arriving mid-reload is missed entirely.
+ * @param path - absolute directory path this level draws.
+ * @param list - the listing call, already bound to the workspace.
+ * @param watch - directory observation, absent when the Remote has none.
+ * @param autoRefresh - whether an observed change re-reads the level.
+ * @returns the level's state and a manual re-read.
  */
 function useLevel(
   path: string,
   list: (path: string, signal?: AbortSignal) => Promise<WorkspaceEntryListing>,
-): LevelState {
+  watch: ((path: string, signal: AbortSignal) => AsyncIterable<'ready' | 'change'>) | undefined,
+  autoRefresh: boolean,
+): readonly [LevelState, () => void] {
   const [state, setState] = useState<LevelState>({ phase: 'loading' })
+  const [generation, setGeneration] = useState(0)
+  const reload = useCallback(() => { setGeneration(value => value + 1) }, [])
   useEffect(() => {
-    setState({ phase: 'loading' })
+    // A re-read holds the rows already on screen rather than flashing the
+    // level back to its loading line: this runs on every observed change,
+    // and a tree that blinks whenever a build touches a file is unusable.
+    setState(current => (generation === 0 ? { phase: 'loading' } : current))
     const controller = new AbortController()
     list(path, controller.signal).then((listing) => {
       if (controller.signal.aborted) return
       setState({ phase: 'ready', entries: listing.entries, truncated: listing.truncated })
-    }).catch(() => {
+    }).catch((reason: unknown) => {
       if (controller.signal.aborted) return
-      setState({ phase: 'error' })
+      setState({ phase: 'error', line: failureLine(reason) })
     })
     return () => { controller.abort() }
-  }, [path, list])
-  return state
+  }, [path, list, generation])
+  useEffect(() => {
+    if (watch === undefined || !autoRefresh) return
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        for await (const frame of watch(path, controller.signal)) {
+          if (controller.signal.aborted) return
+          if (frame === 'change') reload()
+        }
+      } catch {
+        // A watch this filesystem cannot provide costs the level nothing it
+        // had before: it keeps its listing, and Reload keeps working. The
+        // tree does not surface a failure the user cannot act on.
+      }
+    })()
+    return () => { controller.abort() }
+  }, [path, watch, autoRefresh, reload])
+  return [state, reload] as const
 }
 
 /**
@@ -463,11 +576,16 @@ function useLevel(
  * affordance, so a folder does not need to stay expanded to remain the
  * target of a later Add action.
  */
-function DirectoryRow({ entry, depth, onOpenFile, listWorkspaceEntries, gitStatusFiles, selectedDirPath, onSelectDir, t }: {
+function DirectoryRow({
+  entry, depth, onOpenFile, listWorkspaceEntries, watchWorkspaceDirectory, autoRefresh,
+  gitStatusFiles, selectedDirPath, onSelectDir, t,
+}: {
   entry: WorkspaceEntry
   depth: number
   onOpenFile: (path: string) => void
   listWorkspaceEntries: (path: string, signal?: AbortSignal) => Promise<WorkspaceEntryListing>
+  watchWorkspaceDirectory: ((path: string, signal: AbortSignal) => AsyncIterable<'ready' | 'change'>) | undefined
+  autoRefresh: boolean
   gitStatusFiles: Readonly<Record<string, string>> | undefined
   selectedDirPath: string | null
   onSelectDir: (path: string) => void
@@ -503,6 +621,8 @@ function DirectoryRow({ entry, depth, onOpenFile, listWorkspaceEntries, gitStatu
           depth={depth + 1}
           onOpenFile={onOpenFile}
           listWorkspaceEntries={listWorkspaceEntries}
+          watchWorkspaceDirectory={watchWorkspaceDirectory}
+          autoRefresh={autoRefresh}
           gitStatusFiles={gitStatusFiles}
           selectedDirPath={selectedDirPath}
           onSelectDir={onSelectDir}
@@ -534,7 +654,11 @@ function FileRow({ entry, depth, onOpen, gitStatusFiles, t }: {
     >
       <span className={css.slot} />
       <span className={css.slot}>
-        <IconFilePlaceholder16 />
+        {/* The shared per-extension glyph set, so a file reads the same here
+            as everywhere else in the app that lists files. `other` is what
+            `classifyFileType` itself answers for an unrecognized name, and
+            its glyph is the generic page this row used to draw directly. */}
+        <FileTypeIcon kind={classifyFileType(entry.name)} size={16} />
       </span>
       <span className={css.name}>{entry.name}</span>
       <GitStatusBadge code={gitStatusFiles?.[entry.path]} t={t} />
@@ -543,23 +667,28 @@ function FileRow({ entry, depth, onOpen, gitStatusFiles, t }: {
 }
 
 /** One fetched level's rows: loading/error/empty states, else directory rows before file rows. */
-function FilesLevel({ path, depth, onOpenFile, listWorkspaceEntries, gitStatusFiles, selectedDirPath, onSelectDir, t }: {
+function FilesLevel({
+  path, depth, onOpenFile, listWorkspaceEntries, watchWorkspaceDirectory, autoRefresh,
+  gitStatusFiles, selectedDirPath, onSelectDir, t,
+}: {
   path: string
   depth: number
   onOpenFile: (path: string) => void
   listWorkspaceEntries: (path: string, signal?: AbortSignal) => Promise<WorkspaceEntryListing>
+  watchWorkspaceDirectory: ((path: string, signal: AbortSignal) => AsyncIterable<'ready' | 'change'>) | undefined
+  autoRefresh: boolean
   gitStatusFiles: Readonly<Record<string, string>> | undefined
   selectedDirPath: string | null
   onSelectDir: (path: string) => void
   t: FilesTranslate
 }) {
-  const state = useLevel(path, listWorkspaceEntries)
+  const [state] = useLevel(path, listWorkspaceEntries, watchWorkspaceDirectory, autoRefresh)
   const indent = 8 + depth * 22
   if (state.phase === 'loading') {
     return <div className={css.notice} style={{ paddingLeft: indent }}>{t('files.viewer.loading')}</div>
   }
   if (state.phase === 'error') {
-    return <div className={css.notice} role="alert" style={{ paddingLeft: indent }}>{t('files.loadError')}</div>
+    return <div className={css.notice} role="alert" style={{ paddingLeft: indent }}>{t(state.line)}</div>
   }
   if (state.entries.length === 0) {
     return <div className={css.notice} style={{ paddingLeft: indent }}>{t('files.empty')}</div>
@@ -575,6 +704,8 @@ function FilesLevel({ path, depth, onOpenFile, listWorkspaceEntries, gitStatusFi
               depth={depth}
               onOpenFile={onOpenFile}
               listWorkspaceEntries={listWorkspaceEntries}
+              watchWorkspaceDirectory={watchWorkspaceDirectory}
+              autoRefresh={autoRefresh}
               gitStatusFiles={gitStatusFiles}
               selectedDirPath={selectedDirPath}
               onSelectDir={onSelectDir}
@@ -596,11 +727,19 @@ function FilesLevel({ path, depth, onOpenFile, listWorkspaceEntries, gitStatusFi
  * @returns the node's rows (header plus, while expanded, its fetched level).
  */
 export function FilesNode({
-  workspaceId, rootPath, listWorkspaceEntries, readWorkspaceFile, listWorkspaceGitStatus,
+  workspaceId, rootPath, listWorkspaceEntries, watchWorkspaceDirectory, readWorkspaceFile, listWorkspaceGitStatus,
   createWorkspaceFile, createWorkspaceFolder,
-  commitAllChanges, discardAllChanges, fetchRemote, pullRebase, push, openPath, currentSessionId, openFileInSession, t,
+  commitAllChanges, discardAllChanges, fetchRemote, pullRebase, push, openPath, currentSessionId, openFileInSession,
+  reveal, t,
 }: FilesNodeProps) {
   const [expanded, setExpanded] = useState(false)
+  const headerRef = useRef<HTMLButtonElement | null>(null)
+  // Tree-wide, not per level: pausing is a statement about this tree's
+  // appetite for churn (a running build, a checkout, an install), and a
+  // reader who pauses one level and forgets the other three has paused
+  // nothing useful. Defaults on — a file tree that silently shows a deleted
+  // file is worse than one that moves.
+  const [autoRefresh, setAutoRefresh] = useState(true)
   const [previewPath, setPreviewPath] = useState<string | null>(null)
   const [gitStatus, refreshGitStatus] = useGitStatus(workspaceId, listWorkspaceGitStatus)
   // Bumped after a successful commit, discard, or create to force the
@@ -812,6 +951,43 @@ export function FilesNode({
     (path: string, signal?: AbortSignal): Promise<WorkspaceEntryListing> => listWorkspaceEntries(workspaceId, path, signal),
     [listWorkspaceEntries, workspaceId],
   )
+  // Stays `undefined` — never a wrapper around nothing — when the Remote has
+  // no watch: `useLevel` distinguishes "no watching available" from "watching
+  // that yields nothing" by identity, and only the former is allowed to skip
+  // the subscription entirely.
+  const watch = useCallback(
+    (path: string, signal: AbortSignal): AsyncIterable<'ready' | 'change'> => {
+      // `watchWorkspaceDirectory`'s presence is re-checked by the caller
+      // below, which is what decides whether this closure is passed at all.
+      return watchWorkspaceDirectory!(workspaceId, path, signal)
+    },
+    [watchWorkspaceDirectory, workspaceId],
+  )
+  const watchLevel = watchWorkspaceDirectory === undefined ? undefined : watch
+  // Remounts every expanded level, which refetches each of them: the one
+  // gesture that answers "I changed something outside this tree" without
+  // needing to know which directory it landed in.
+  const reloadLevels = useCallback(() => { setLevelRefreshKey(key => key + 1) }, [])
+  useEffect(() => reveal?.subscribe(() => {
+    setExpanded(true)
+    // Focus lands on whichever tree the browser scrolls to first, which for
+    // one Workspace — the ordinary case — is the only one there is. A
+    // keystroke that expands a row off screen and leaves focus behind has
+    // not revealed anything.
+    const header = headerRef.current
+    if (header === null) return
+    header.scrollIntoView({ block: 'nearest' })
+    header.focus({ preventScroll: true })
+  }), [reveal])
+  const toggleAutoRefresh = useCallback(() => {
+    setAutoRefresh((value) => {
+      // Resuming re-reads immediately: whatever changed while paused is
+      // exactly what the reader stopped seeing, and making them click Reload
+      // straight after Resume would be asking twice for one intent.
+      if (!value) reloadLevels()
+      return !value
+    })
+  }, [reloadLevels])
   const readFile = useCallback(
     (path: string, signal?: AbortSignal): Promise<WorkspaceFileContent> => readWorkspaceFile(workspaceId, path, signal),
     [readWorkspaceFile, workspaceId],
@@ -843,10 +1019,17 @@ export function FilesNode({
     <>
       <div className={css.headerRow}>
         <button
+          ref={headerRef}
           type="button"
           className={clsx(css.row, css.headerToggle)}
           style={{ paddingLeft: 8 }}
           aria-expanded={expanded}
+          // The workspace's own root path. The right-Sidebar file tab this
+          // row replaces devotes a header line to it, because that tab is a
+          // standalone page with no workspace around it to say where it is;
+          // here the enclosing Workspace group already names it, so the path
+          // is available on hover instead of spending a row to repeat it.
+          title={rootPath}
           onClick={toggleExpanded}
         >
           <span className={clsx(css.slot, css.chevron)}>
@@ -882,6 +1065,15 @@ export function FilesNode({
             )
             : (
               <>
+                {expanded && (
+                  <LevelControls
+                    autoRefresh={autoRefresh}
+                    onToggleAutoRefresh={toggleAutoRefresh}
+                    onReload={reloadLevels}
+                    watching={watchLevel !== undefined}
+                    t={t}
+                  />
+                )}
                 <AddEntryButtons
                   onAddFile={() => { startCreate('file') }}
                   onAddFolder={() => { startCreate('folder') }}
@@ -918,6 +1110,8 @@ export function FilesNode({
           depth={1}
           onOpenFile={handleOpenFile}
           listWorkspaceEntries={list}
+          watchWorkspaceDirectory={watchLevel}
+          autoRefresh={autoRefresh}
           gitStatusFiles={gitStatus?.files}
           selectedDirPath={selectedDirPath}
           onSelectDir={setSelectedDirPath}

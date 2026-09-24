@@ -18,11 +18,13 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { WorkspaceDirectoryWatchFrame } from 'dsh-plugins-api-workspace-file-controller/types'
 // Type-only: pulls the conversationFileOpener optional-service Context merge.
 import type {} from 'dsh-plugins-client-ui-conversation-enhanced/client'
 import { FilesNode } from './FilesNode.tsx'
 import type { FilesNodeProps } from './FilesNode.tsx'
 import type { WorkspaceFilesNodeProps, WorkspaceFilesNodeService } from './service.ts'
+import type { FilesReveal } from './reveal.ts'
 import { WORKSPACE_FILES_NS } from './locale-ns.ts'
 
 /** Unwrap a generated Remote call's result, rejecting with its typed `RemoteError` on failure — restores throw semantics for `FilesNode`'s Promise-based callback props. */
@@ -35,9 +37,10 @@ async function unwrap<T>(promise: Promise<RemoteResult<T>>): Promise<T> {
 /**
  * Build the `workspaceFilesNode` service for one Client Context.
  * @param ctx - Client root Context (its `remote`/`locale` services back every closure below).
+ * @param reveal - the `workspace.files` command's broadcast, when that command is registered.
  * @returns the service the upstream-ready `WorkspaceBrowser` diff resolves through `ctx.get('workspaceFilesNode')`.
  */
-export function createWorkspaceFilesNodeService(ctx: Context): WorkspaceFilesNodeService {
+export function createWorkspaceFilesNodeService(ctx: Context, reveal?: FilesReveal): WorkspaceFilesNodeService {
   const t = ctx.locale.bind(WORKSPACE_FILES_NS)
   // Defined once per service (not per render): each closes only over `ctx`,
   // never over the adapter's own props, so identity survives every re-render
@@ -49,6 +52,30 @@ export function createWorkspaceFilesNodeService(ctx: Context): WorkspaceFilesNod
   // back to its loading state on every tick.
   const listWorkspaceEntries: FilesNodeProps['listWorkspaceEntries'] = (id, path, signal) =>
     unwrap(ctx.remote['workspace-files'].listEntries({ workspaceId: id, path }, signal))
+  const watchWorkspaceDirectory: FilesNodeProps['watchWorkspaceDirectory'] = async function* (id, path, signal) {
+    // `$stream` is the supervised carrier every Remote stream rides: it owns
+    // reconnection and disposal, and `accept()` on the opening frame is how
+    // a supervised stream reports that its generation started cleanly (the
+    // same handshake `dsh-client-ui-sidebar-files` performs for the
+    // Session-scoped `workspaceFiles.changes` watch).
+    const stream = ctx.remote.$stream<WorkspaceDirectoryWatchFrame>({
+      name: `workspace directory ${path}`,
+      open: lifetime => ctx.remote['workspace-files'].watchDirectory({ workspaceId: id, path }, lifetime),
+      ended: () => new Error(`Directory watch ended: ${path}`),
+    })
+    const abort = (): void => { void stream.dispose() }
+    signal.addEventListener('abort', abort, { once: true })
+    try {
+      for await (const item of stream) {
+        if (signal.aborted) return
+        if (item.value.kind === 'ready') item.accept()
+        yield item.value.kind
+      }
+    } finally {
+      signal.removeEventListener('abort', abort)
+      await stream.dispose()
+    }
+  }
   const readWorkspaceFile: FilesNodeProps['readWorkspaceFile'] = (id, path, signal) =>
     unwrap(ctx.remote['workspace-files'].readFile({ workspaceId: id, path }, signal))
   const listWorkspaceGitStatus: FilesNodeProps['listWorkspaceGitStatus'] = (id, signal) =>
@@ -79,6 +106,7 @@ export function createWorkspaceFilesNodeService(ctx: Context): WorkspaceFilesNod
         workspaceId={workspaceId}
         rootPath={rootPath}
         listWorkspaceEntries={listWorkspaceEntries}
+        watchWorkspaceDirectory={watchWorkspaceDirectory}
         readWorkspaceFile={readWorkspaceFile}
         listWorkspaceGitStatus={listWorkspaceGitStatus}
         createWorkspaceFile={createWorkspaceFile}
@@ -91,6 +119,7 @@ export function createWorkspaceFilesNodeService(ctx: Context): WorkspaceFilesNod
         openPath={openPath}
         currentSessionId={currentSessionId}
         openFileInSession={openFileInSession}
+        reveal={reveal}
         t={t}
       />
     )
