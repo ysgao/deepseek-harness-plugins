@@ -14889,12 +14889,18 @@ importers:
       '@deepseek-ai/dsh-client-ui-workspace':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/client/ui-workspace
+      '@deepseek-ai/dsh-file-reference':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/context/file-reference
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants
       '@deepseek-ai/dsh-session':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/core/session
+      '@deepseek-ai/dsh-util-workspace-path':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/util/workspace-path
       '@deepseek-ai/dsh-workspace':
         specifier: workspace:^
         version: link:../../_vendor/deepseek-harness/packages/workspace/workspace
