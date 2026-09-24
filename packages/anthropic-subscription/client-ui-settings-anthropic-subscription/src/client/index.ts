@@ -4,61 +4,61 @@
  * onboarding dialogs, whose UI shares this package's modal wrapper. The Host
  * settings and credential contracts stay behind their existing wire APIs.
  *
- * A full replacement for `@deepseek-ai/dsh-client-ui-settings-models`'s own
- * `settings.section`/`settings.onboarding` registrations — "unplug the
+ * A full replacement for @deepseek-ai/dsh-client-ui-settings-models's own
+ * settings.section/settings.onboarding registrations -- "unplug the
  * original plugin row, plug in an enhanced one" (see
- * `../../../../ARCHITECTURE.md`'s "Why replace the plugin instead of
- * patching it", the same pattern
- * `dsh-plugins-client-ui-workspace-enhanced`/`dsh-plugins-client-ui-
- * conversation-enhanced` already use). `ui-settings-models` has no extension
- * slot that reaches where sign-in needs to render (`settings.models.provider-
- * card`/`settings.models.footer` don't reach inside `ProviderEditor`'s own
- * card body — see that package's own `slot-contract.ts` doc comment), so the
- * only options were a vendor patch (forbidden) or this: fork the three files
- * that actually change (`ModelsSection.tsx`, `ProviderEditor.tsx`, this
- * file, plus `locales.ts` for the four new copy keys) and reuse everything
- * else — `CustomProviderCard`, `DeepSeekModelsEditor`, `DeepSeekOnboarding
- * Dialog`, `WelcomeNotice`, `welcome-store`, `store`, `operations`,
- * `schema-operations`, `slot-contract`, `EditorFooter`, `ModelListEditor`,
- * `apiKey`, `ModelsSection.module.css`, `onboarding-copy` — unchanged,
- * imported as real values from that package's own `./src/*` export (its own
- * convention; `"./src/*": "./src/*"` in its `exports` map), not copied.
+ * ../../../../ARCHITECTURE.md's "Why replace the plugin instead of
+ * patching it", the same pattern dsh-plugins-client-ui-workspace-enhanced/
+ * dsh-plugins-client-ui-conversation-enhanced already use). ui-settings-models
+ * has no extension slot that reaches where sign-in needs to render
+ * (settings.models.provider-card/settings.models.footer don't reach inside
+ * ProviderEditor's own card body -- see that package's own slot-contract.ts
+ * doc comment), so the only options were a vendor patch (forbidden) or
+ * this: fork the three files that actually change (ModelsSection.tsx,
+ * ProviderEditor.tsx, this file, plus locales.ts for the four new copy
+ * keys) and reuse everything else -- CustomProviderCard,
+ * DeepSeekModelsEditor, DeepSeekOnboardingDialog, WelcomeNotice,
+ * welcome-store, store, operations, schema-operations, slot-contract,
+ * EditorFooter, ModelListEditor, apiKey, ModelsSection.module.css,
+ * onboarding-copy, onboarding-config -- unchanged, imported as real values
+ * from that package's own ./src/* export (its own convention;
+ * "./src/*": "./src/*" in its exports map), not copied.
  *
- * `cordis.patch.yml` disables the original `ui-settings-models` row and
+ * cordis.patch.yml disables the original ui-settings-models row and
  * inserts this one instead, so no sibling instance of the reused files'
- * shared identity (React contexts, module-level singletons) ever coexists —
- * see `../../../../ARCHITECTURE.md` and this package's own README.
+ * shared identity (React contexts, module-level singletons) ever coexists --
+ * see ../../../../ARCHITECTURE.md and this package's own README.
  *
- * Resilience (see `../../../../ARCHITECTURE.md`'s "Plugin isolation"):
- * every `ctx.slots.register()` call below registers at `priority: -1`, one
- * lower than the pristine plugin's own default (0) — if a bundle
- * install-order violation ever leaves the pristine `ui-settings-models` row
+ * Resilience (see ../../../../ARCHITECTURE.md's "Plugin isolation"):
+ * every ctx.slots.register() call below registers at priority: -1, one
+ * lower than the pristine plugin's own default (0) -- if a bundle
+ * install-order violation ever leaves the pristine ui-settings-models row
  * active too, both registrations land instead of the second one throwing,
  * and this one wins deterministically (lowest priority renders). Each of
  * the three slot registrations is also individually try/catch-guarded: a
  * failure there degrades only that one row rather than crashing the app.
  *
- * Unlike `dsh-plugins-client-ui-workspace-enhanced`/`-conversation-
- * enhanced`, `apply()` does NOT fall back to calling the pristine
- * `ui-settings-models` plugin's own `apply(ctx)` if enhanced setup fails —
+ * Unlike dsh-plugins-client-ui-workspace-enhanced/-conversation-
+ * enhanced, apply() does NOT fall back to calling the pristine
+ * ui-settings-models plugin's own apply(ctx) if enhanced setup fails --
  * it logs and gives up instead, leaving the Models section entirely absent
  * (still never crashing the whole app). That fallback is deliberately not
- * implemented here: this package's own `declare module` merge widens
- * `LocaleNamespaceMap['settings.models']` with four extra `signIn*` keys
- * (see `locales.ts`), and the pristine package's own `apply` is defined
- * directly in its `./src/client/index.ts` — the same file that declares
- * *its own*, narrower version of that exact merge. Importing that file for
- * its `apply` value, by any static import form, pulls its ambient
- * `declare module` block into this program too, and TypeScript rejects two
+ * implemented here: this package's own declare module merge widens
+ * LocaleNamespaceMap['settings.models'] with four extra signIn* keys
+ * (see locales.ts), and the pristine package's own apply is defined
+ * directly in its ./src/client/index.ts -- the same file that declares
+ * ITS OWN, narrower version of that exact merge. Importing that file for
+ * its apply value, by any static import form, pulls its ambient
+ * declare module block into this program too, and TypeScript rejects two
  * non-identical declarations of the same augmented property
- * (`LocaleNamespaceMap['settings.models']`) as a compile error — there is
+ * (LocaleNamespaceMap['settings.models']) as a compile error -- there is
  * no value-only import that avoids this for an ambient declaration. A
- * dynamic `import()` with a non-literal specifier sidesteps the type
+ * dynamic import() with a non-literal specifier sidesteps the type
  * conflict but is not a real fix: this package ships as a browser
- * closure-factory bundle (`window.__ModuleLoader__.load({id, factory})`,
- * `../../../../tsdown.client-plugin-preset.ts`), which has no bare-specifier
- * or `.ts`-extension resolution mechanism at runtime for an arbitrary
- * module path — only for this bundle's own statically-known dependencies.
+ * closure-factory bundle (window.__ModuleLoader__.load({id, factory}),
+ * ../../../../tsdown.client-plugin-preset.ts), which has no bare-specifier
+ * or .ts-extension resolution mechanism at runtime for an arbitrary
+ * module path -- only for this bundle's own statically-known dependencies.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // Type-only: pulls the shell's SlotMap merge (the 'settings.section' entry).
@@ -69,32 +69,28 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the ctx.remote merge and the forwarded-event key face
 // (settings/credentials invalidations ride the allowlist) into this program.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-// Type-only: pulls the generated ctx.remote.authorization namespace merge —
+// Type-only: pulls the generated ctx.remote.authorization namespace merge --
 // mounted at runtime by the independent dsh-plugins-client-remotes-
 // anthropic-subscription plugin, not by this package (see that package's
 // own README for why mounting lives in its own dedicated plugin).
 import type {} from 'dsh-plugins-api-authorization-controller/remote'
 // Type-only: pulls @deepseek-ai/dsh-authorization's own Events merge (the
-// Host-side `authorization/settled` declaration) into this program — without
+// Host-side authorization/settled declaration) into this program -- without
 // it, dsh-plugins-api-authorization-controller's own TypertRemoteEventSelection
-// merge below has nothing to Extract against and `authorization/settled`
+// merge below has nothing to Extract against and authorization/settled
 // never becomes a legal ctx.remote.$on key.
 import type {} from '@deepseek-ai/dsh-authorization'
 import { AuthorizationRuntime } from './authorization-runtime.ts'
 import type { IAuthorization } from './authorization-runtime.ts'
 import { ModelsSection } from './ModelsSection.tsx'
 import type { ModelsSectionInjected } from './ModelsSection.tsx'
-import {
-  DeepSeekOnboardingDialog,
-} from '@deepseek-ai/dsh-client-ui-settings-models/src/client/DeepSeekOnboardingDialog.tsx'
+import { DeepSeekOnboardingDialog } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/DeepSeekOnboardingDialog.tsx'
 import type {
   DeepSeekOnboardingInjected,
 } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/DeepSeekOnboardingDialog.tsx'
 import { WelcomeNotice } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/WelcomeNotice.tsx'
 import type { WelcomeNoticeInjected } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/WelcomeNotice.tsx'
-import {
-  decodeWelcomeSection, WelcomeNoticeStore,
-} from '@deepseek-ai/dsh-client-ui-settings-models/src/client/welcome-store.ts'
+import { WelcomeNoticeStore } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/welcome-store.ts'
 import { ModelsSettingsStore } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/store.ts'
 import { createModelsOperations } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/operations.ts'
 import {
@@ -102,6 +98,9 @@ import {
 } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/schema-operations.ts'
 import { en, zh, type ModelsKey } from './locales.ts'
 import { WELCOME_NOTICE_SETTINGS_NAMESPACE } from '@deepseek-ai/dsh-client-ui-settings-models/src/onboarding-copy.ts'
+import {
+  Config as OnboardingConfig, ONBOARDING_CONFIG_GLOBAL,
+} from '@deepseek-ai/dsh-client-ui-settings-models/src/onboarding-config.ts'
 
 export type { ModelsSectionInjected, ModelsSectionProps } from './ModelsSection.tsx'
 export type {
@@ -119,6 +118,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Dictionary namespace owned by this plugin. */
 const NS = 'settings.models'
+
 export type {
   ModelsSettingsState, ProviderDirectoryEntry, ProviderRow,
 } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/store.ts'
@@ -139,32 +139,32 @@ export function refreshIfLoaded(controller: ModelsSettingsStore): void {
 /**
  * Required services (cordis fiber inject). The target slot is declared by
  * ui-settings' apply, whose activation order relative to this one is NOT
- * constrained; registration depends on each slot through `slots.inject()`.
+ * constrained; registration depends on each slot through slots.inject().
  *
- * Deliberately NOT listed here: `remote.authorization`. This plugin is
- * itself a top-level loader entry (inserted by `bundle-anthropic-
- * subscription`'s own `cordis.patch.yml`), and this repo's Client boot
- * (`@deepseek-ai/dsh-client-web`'s `assertEntriesActive`) treats ANY
+ * Deliberately NOT listed here: remote.authorization. This plugin is
+ * itself a top-level loader entry (inserted by bundle-anthropic-
+ * subscription's own cordis.patch.yml), and this repo's Client boot
+ * (@deepseek-ai/dsh-client-web's assertEntriesActive) treats ANY
  * top-level entry left "pending" at the end of boot as a FATAL error for
- * the whole app — not a silently-degraded feature — exactly like a thrown
+ * the whole app -- not a silently-degraded feature -- exactly like a thrown
  * exception. A fiber merely nested inside an already-active entry's own
- * `apply()` is invisible to that check, so `remote.authorization` is instead
- * required by a nested `ctx.inject()` call inside `apply()` below, which can
+ * apply() is invisible to that check, so remote.authorization is instead
+ * required by a nested ctx.inject() call inside apply() below, which can
  * stay pending forever (dsh-plugins-client-remotes-anthropic-subscription
  * never installed, or its own mount failed and was caught rather than
  * thrown) without blocking this plugin's own activation. This was
  * discovered by deliberately breaking the mount during development and
  * observing "web boot: 1 entry did not activate" as a second, independent
- * fatal-boot path even after the mounting plugin's own throw was fixed —
- * see `dsh-plugins-client-remotes-anthropic-subscription`'s own README.
+ * fatal-boot path even after the mounting plugin's own throw was fixed --
+ * see dsh-plugins-client-remotes-anthropic-subscription's own README.
  */
 export const inject = [
-  'slots', 'locale', 'remote', 'remote.credentials', 'remote.llm', 'remote.settings',
-  'settingsScope', 'settingsSchema',
+  'slots', 'locale', 'remote', 'remote.credentials', 'remote.llm', 'remote.settings', 'remote.session',
+  'configForms', 'settingsSchema',
 ]
 
 /**
- * Register the Models section once the `settings.section` declaration is on
+ * Register the Models section once the settings.section declaration is on
  * the ledger, wire its store to the connection, and keep it fresh on every
  * pushed invalidation (settings, credentials, or provider topology).
  * @param ctx - client root context.
@@ -174,14 +174,19 @@ export function apply(ctx: ClientContext): void {
   let deepSeekOnboardingInjected: () => DeepSeekOnboardingInjected
   let welcomeInjected: () => WelcomeNoticeInjected
   let t: ModelsSectionInjected['t']
+  let credentialOnboarding = false
   try {
+    const page = globalThis as Partial<Record<typeof ONBOARDING_CONFIG_GLOBAL, unknown>>
+    const payload = page[ONBOARDING_CONFIG_GLOBAL]
+    const configured = OnboardingConfig(payload === undefined ? {} : payload)
+    credentialOnboarding = configured.credentialOnboarding && !('dshDesktop' in globalThis)
     ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-anthropic-subscription: copy dictionaries')
 
-    // Optional: see the `inject` doc comment above for why `remote.authorization`
+    // Optional: see the inject doc comment above for why remote.authorization
     // is required here, nested, instead of in this plugin's own top-level
-    // `inject`. `injected()` below reads this mutable capture on every call, so
+    // inject. injected() below reads this mutable capture on every call, so
     // the sign-in panel appears once (if) this nested inject activates, and
-    // simply never appears if it doesn't — the rest of the Models section
+    // simply never appears if it doesn't -- the rest of the Models section
     // renders and functions normally either way.
     let authorization: IAuthorization | undefined
     void ctx.inject(['remote.authorization'], (scope) => {
@@ -203,9 +208,9 @@ export function apply(ctx: ClientContext): void {
 
     const schema = createSettingsSchemaOperations(ctx.settingsSchema)
     // Bound once here, where the Remote namespaces are declared in this plugin's
-    // own `inject`; the cards receive callbacks and never a context.
+    // own inject; the cards receive callbacks and never a context.
     const operations = createModelsOperations(ctx)
-    const controller = new ModelsSettingsStore(ctx, schema, ctx.settingsScope.describe())
+    const controller = new ModelsSettingsStore(ctx, schema, ctx.configForms.describe())
     // Registration-time text (the nav label thunk) and the inject faces share
     // one bound translate; copy freshness rides the locale revision.
     t = ctx.locale.bind(NS) as ModelsSectionInjected['t']
@@ -218,6 +223,7 @@ export function apply(ctx: ClientContext): void {
       t,
     })
     deepSeekOnboardingInjected = (): DeepSeekOnboardingInjected => ({
+      automatic: credentialOnboarding,
       controller,
       hooks: { models: controller.store },
       operations,
@@ -226,10 +232,9 @@ export function apply(ctx: ClientContext): void {
     })
     // The scope's own memory mode is what keeps a remote browser process-local,
     // so the store needs no isLoopback branch of its own.
-    const welcomeController = new WelcomeNoticeStore(ctx.settingsScope.bind({
-      namespace: WELCOME_NOTICE_SETTINGS_NAMESPACE,
-      decode: decodeWelcomeSection,
-    }))
+    const welcomeController = new WelcomeNoticeStore(
+      ctx.configForms.get<Record<string, unknown>>(WELCOME_NOTICE_SETTINGS_NAMESPACE),
+    )
     welcomeInjected = (): WelcomeNoticeInjected => ({
       controller: welcomeController,
       hooks: { welcome: welcomeController.store },
@@ -237,7 +242,7 @@ export function apply(ctx: ClientContext): void {
     })
 
     // Pushed invalidations converge every open surface without polling. The
-    // settingsScope injection makes ui-settings activate first, and remote
+    // configForms injection makes ui-settings activate first, and remote
     // dispatch preserves listener order; its listener therefore starts the
     // mirror refresh before this store joins that refresh. The welcome notice
     // follows its settings scope, so it needs no subscription here.
@@ -245,6 +250,7 @@ export function apply(ctx: ClientContext): void {
       const refreshModels = (): void => { refreshIfLoaded(controller) }
       const disposers = [
         ctx.remote.$on('settings/document-updated', () => { refreshModels() }),
+        ctx.remote.$on('credentials/record-updated', refreshModels),
         ctx.remote.$on('credentials/reference-updated', refreshModels),
         ctx.remote.$on('llm/adapters-updated', refreshModels),
         ctx.on('connection/reset', refreshModels),
@@ -255,11 +261,11 @@ export function apply(ctx: ClientContext): void {
       }
     }, 'ui-settings-anthropic-subscription: pushed invalidations')
   } catch (error) {
-    // No pristine-apply fallback is possible here — see this file's own
+    // No pristine-apply fallback is possible here -- see this file's own
     // doc comment. Logging and giving up still means only the Models
     // section is absent, never a crash of the whole Client boot.
     ctx.logger.error(
-      'dsh-plugins-client-ui-settings-anthropic-subscription: enhanced setup failed — the Models settings section will be unavailable',
+      'dsh-plugins-client-ui-settings-anthropic-subscription: enhanced setup failed -- the Models settings section will be unavailable',
     )
     ctx.logger.error(error)
     return
@@ -290,27 +296,30 @@ export function apply(ctx: ClientContext): void {
       return []
     }
   })
-  ctx.slots.inject('settings.onboarding', () => {
-    try {
-      return ctx.slots.register({
-        name: 'settings.onboarding',
-        id: 'welcome-notice',
-        priority: -1,
-        order: -100,
-        inject: welcomeInjected,
-      }, WelcomeNotice)
-    } catch (error) {
-      ctx.logger.error('dsh-plugins-client-ui-settings-anthropic-subscription: failed to register the welcome-notice onboarding entry')
-      ctx.logger.error(error)
-      return []
-    }
-  })
+  if (!('dshDesktop' in globalThis)) {
+    ctx.slots.inject('settings.onboarding', () => {
+      try {
+        return ctx.slots.register({
+          name: 'settings.onboarding',
+          id: 'welcome-notice',
+          priority: -1,
+          order: -100,
+          inject: welcomeInjected,
+        }, WelcomeNotice)
+      } catch (error) {
+        ctx.logger.error('dsh-plugins-client-ui-settings-anthropic-subscription: failed to register the welcome-notice onboarding entry')
+        ctx.logger.error(error)
+        return []
+      }
+    })
+  }
   ctx.slots.inject('settings.onboarding', () => {
     try {
       return ctx.slots.register({
         name: 'settings.onboarding',
         id: 'deepseek-official',
         priority: -1,
+        children: { 'settings.models.sign-in': { kind: 'single', scope: 'root' } },
         order: 0,
         inject: deepSeekOnboardingInjected,
       }, DeepSeekOnboardingDialog)

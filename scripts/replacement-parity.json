@@ -19,7 +19,7 @@
     "check (5) runs over these, which is the one that forces the by-hand re-read",
     "a pin bump needs."
   ],
-  "vendorPin": "0d1f50007f9bca3f52b06e1c3074fa14d5fb0720",
+  "vendorPin": "477b4f420553e8a52c2fbccc464d7561b239c443",
   "replacements": [
     {
       "row": "ui-workspace",
@@ -38,17 +38,17 @@
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-workspace/src/client/index.ts",
           "fork": "packages/workspace-git/client-ui-workspace-enhanced/src/apply.ts",
-          "sha256": "4d3da537f6e09e71"
+          "sha256": "7baf048011cf24cf"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx",
           "fork": "packages/workspace-git/client-ui-workspace-enhanced/src/WorkspaceBrowser.tsx",
-          "sha256": "0b0f6af453652771"
+          "sha256": "21549a2c39407538"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.module.css",
           "fork": "packages/workspace-git/client-ui-workspace-enhanced/src/WorkspaceBrowser.module.css",
-          "sha256": "1aca37fb6c3409d6"
+          "sha256": "208fe8d00ef6e428"
         }
       ]
     },
@@ -72,17 +72,17 @@
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/apply.ts",
           "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/apply.ts",
-          "sha256": "22edd7bd78a215fa"
+          "sha256": "cb02689e17f80dd8"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationMainPanel.tsx",
           "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/ConversationMainPanel.tsx",
-          "sha256": "419bca98d396d194"
+          "sha256": "8079942f608f4e9d"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/DefaultConversationViews.tsx",
           "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/DefaultConversationViews.tsx",
-          "sha256": "34e793d57eeb023c"
+          "sha256": "513f408c2b9adcac"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.tsx",
@@ -92,7 +92,12 @@
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationSession.tsx",
           "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/ConversationSession.tsx",
-          "sha256": "c64b0011e255c8a3"
+          "sha256": "a7eecaec5677b04f"
+        },
+        {
+          "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationHeader.tsx",
+          "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/ConversationHeader.tsx",
+          "sha256": "4d8eb123dfcda64d"
         }
       ]
     },
@@ -125,22 +130,22 @@
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/index.ts",
           "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/index.ts",
-          "sha256": "ecab37b6d846f5f4"
+          "sha256": "bd72851513f472f6"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/ModelsSection.tsx",
           "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/ModelsSection.tsx",
-          "sha256": "2ec7f8ef098c41e0"
+          "sha256": "6f0b8ce55adea7b9"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/ProviderEditor.tsx",
           "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/ProviderEditor.tsx",
-          "sha256": "3fcaf69a8fe9be38"
+          "sha256": "b4ee7cbf5ef55213"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/locales.ts",
           "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/locales.ts",
-          "sha256": "528f47fe1b652773"
+          "sha256": "d7949c08668c2459"
         }
       ]
     }
@@ -164,7 +169,7 @@
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/tools.ts",
           "fork": "packages/mcp-connector/mcp-client-oauth/src/tool-bridge.ts",
-          "sha256": "1c5d889df72f83b1"
+          "sha256": "59203150bda479a9"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/server-context.ts",

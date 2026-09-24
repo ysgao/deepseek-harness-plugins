@@ -1,108 +1,90 @@
 /**
- * Enhanced replacement for `dsh-client-ui-workspace`'s own browser/picker
- * plugin — "unplug the original plugin row, plug in an enhanced
+ * Enhanced replacement for dsh-client-ui-workspace's own browser/picker
+ * plugin -- "unplug the original plugin row, plug in an enhanced
  * replacement" (see ../ARCHITECTURE.md), not a patch to the vendored
- * submodule. `cordis.patch.yml` disables the original `ui-workspace` row
+ * submodule. cordis.patch.yml disables the original ui-workspace row
  * and inserts this package instead; this file is otherwise a near-verbatim
- * port of the original's own `apply()`, importing everything it doesn't
- * need to change — `UiWorkspaceService`, `createWorkspaceViewStore`,
- * `WorkspacePicker`, the `workspace` locale dictionaries — directly from
- * `@deepseek-ai/dsh-client-ui-workspace`'s own `./src/*` export, so none of
- * it is duplicated. Only `WorkspaceBrowser` itself is forked
- * (`./WorkspaceBrowser.tsx`), to add the Files sibling row.
+ * port of the original's own apply(), importing everything it doesn't
+ * need to change -- UiWorkspaceService, createWorkspaceViewStore,
+ * WorkspacePicker, the shipped Session row actions (pin/rename/fork/
+ * archive), the shortcut controls, the workspace locale dictionaries --
+ * directly from dsh-client-ui-workspace's own ./src/* export, so none of
+ * it is duplicated. Only WorkspaceBrowser itself is forked
+ * (./WorkspaceBrowser.tsx), to add the Files sibling row.
  *
  * Fails toward the pristine plugin, not toward a crashed app (see
- * `../../../../ARCHITECTURE.md`'s "Plugin isolation"): `apply()` below
- * catches any synchronous setup failure in `applyEnhanced()` — everything
- * before either slot is registered — and falls back to calling
- * `dsh-client-ui-workspace`'s own unmodified `apply(ctx)`, loaded through a
- * dynamic `import()` rather than a static one (this package's own `inject`
+ * ../../../../ARCHITECTURE.md's "Plugin isolation"): apply() below
+ * catches any synchronous setup failure in applyEnhanced() -- everything
+ * before any slot is registered -- and falls back to calling
+ * dsh-client-ui-workspace's own unmodified apply(ctx), loaded through a
+ * dynamic import() rather than a static one (this package's own inject
  * array is identical to the original's, so every service the fallback needs
- * is already guaranteed available) — see `apply()`'s own doc comment for why
- * the import must stay dynamic. A failure *inside* one of the two
- * `ctx.slots.inject(...)` callbacks — which can fire asynchronously, after
- * `applyEnhanced()` has already returned, making an outer try/catch unable
- * to see it — is caught at that call site instead; there is no clean way to
- * fall back to just the
- * pristine registration for one hole without re-running (and thus
- * double-registering) the whole original `apply()`, so that path logs and
- * leaves the one affected row unregistered, degrading only that feature
- * rather than the whole plugin or the whole app.
+ * is already guaranteed available) -- see apply()'s own doc comment for why
+ * the import must stay dynamic. A failure INSIDE one of the
+ * ctx.slots.inject(...) callbacks below -- which can fire asynchronously,
+ * after applyEnhanced() has already returned, making an outer try/catch
+ * unable to see it -- is caught at that call site instead; there is no clean
+ * way to fall back to just the pristine registration for one hole without
+ * re-running (and thus double-registering) the whole original apply(), so
+ * each of those paths logs and leaves the one affected row/entries
+ * unregistered, degrading only that feature rather than the whole plugin or
+ * the whole app.
  * @module dsh-plugins-client-ui-workspace-enhanced/apply
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { IWorkspaces } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type {
+  IWorkspaces, SessionActivity, WorkspaceArchiveError,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-// Type-only: pulls the Controller service merges.
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
-// Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-// Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-// Type-only: pulls the ctx.layout merge — UiWorkspaceService's openSession
-// dismisses the active layout panel through it, and its own inject array
-// requires 'layout' as a top-level service, mirrored below.
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-// Type-only: pulls the Session root standard-hook merge.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
-// Type-only: pulls the owner SlotMap merges for 'sidebar.workspaces' and
-// 'conversation.hero.workspace' (declared by these packages, not by
-// dsh-client-ui-workspace itself) plus the shell's wide/expandSidebar
-// GlobalStandardProps share.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-// Type-only: pulls the optional workspaceFilesNode Context service merge.
+import type {} from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { WorkspaceFilesNodeService } from 'dsh-plugins-client-ui-workspace-files/client'
-// Type-only: pulls the original package's own GlobalStandardProps.useWorkspaces
-// and LocaleNamespaceMap.workspace merges — these are pure type declarations,
-// unaffected by cordis.patch.yml disabling the original package's *runtime*
-// apply(); redeclaring them here would conflict, not duplicate safely.
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import type {
-  WorkspaceBrowserInjected, WorkspacePickerInjected,
+import {
+  menuOpenStateFactory,
+  type ArchiveSessionInjected, type ForkSessionInjected, type PinSessionInjected,
+  type RenameSessionInjected, type RowToast, type RowToastInjected, type RowToastState,
+  type SessionArchiveConfirmInjected, type SessionArchiveConfirmRequest, type SessionRenameDialogInjected,
+  type WorkspaceBrowserInjected, type WorkspacePickerInjected,
 } from '@deepseek-ai/dsh-client-ui-workspace/src/client/contract/slots.ts'
+import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from '@deepseek-ai/dsh-client-ui-workspace/src/client/shortcuts.ts'
 import { UiWorkspaceService } from '@deepseek-ai/dsh-client-ui-workspace/src/client/navigation.ts'
 import { createWorkspaceViewStore } from '@deepseek-ai/dsh-client-ui-workspace/src/client/stores.ts'
+import {
+  ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog,
+} from '@deepseek-ai/dsh-client-ui-workspace/src/client/session-actions/ArchiveSession.tsx'
+import { derive } from '@deepseek-ai/dsh-client-ui-workspace/src/client/session-actions/derived.ts'
+import { ForkSessionMenuItem } from '@deepseek-ai/dsh-client-ui-workspace/src/client/session-actions/ForkSession.tsx'
+import { PinSessionMenuItem, PinSessionRowButton } from '@deepseek-ai/dsh-client-ui-workspace/src/client/session-actions/PinSession.tsx'
+import { RenameSessionMenuItem, SessionRenameDialog } from '@deepseek-ai/dsh-client-ui-workspace/src/client/session-actions/RenameSession.tsx'
+import { RowActionToast } from '@deepseek-ai/dsh-client-ui-workspace/src/client/session-actions/RowActionToast.tsx'
 import { WorkspacePicker } from '@deepseek-ai/dsh-client-ui-workspace/src/client/WorkspacePicker.tsx'
 import { en, zh } from '@deepseek-ai/dsh-client-ui-workspace/src/client/locales.ts'
 import { EnhancedWorkspaceBrowser } from './WorkspaceBrowser.tsx'
 
-/** Dictionary namespace owned by this plugin — same namespace, same dictionaries, as the original it replaces. */
 const NS = 'workspace'
 
-/**
- * Required services (cordis fiber inject). Same as the original plugin —
- * see its own doc comment for why activation order relative to the slot
- * declarations is deliberately unconstrained.
- */
 export const inject = [
-  'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout',
+  'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts',
 ]
 
-/**
- * Register the enhanced browser and the unmodified picker once their slot
- * declarations are on the ledger, falling back to the pristine plugin if
- * enhanced setup fails before either registration begins. The fallback
- * loads vendor's `apply.ts` through a dynamic `import()`, not a static
- * top-level one: a static import would unconditionally evaluate (and
- * CSS-inject) vendor's whole `WorkspaceBrowser` component tree on every
- * load, including the overwhelmingly common path where this fallback never
- * fires, racing this package's own `WorkspaceBrowser.module.css` injection
- * for the same tag id (see `styleInjectionModule` in
- * `tsdown.client-plugin-preset.ts` and `dsh-plugins-client-ui-conversation-
- * enhanced`'s own `apply.ts` for the sibling collision this same pattern
- * caused there).
- * @param ctx - client root context.
- */
 export async function apply(ctx: Context): Promise<void> {
   try {
     applyEnhanced(ctx)
   } catch (error) {
     ctx.logger.error(
-      'dsh-plugins-client-ui-workspace-enhanced: enhanced setup failed — falling back to the pristine dsh-client-ui-workspace plugin',
+      'dsh-plugins-client-ui-workspace-enhanced: enhanced setup failed -- falling back to the pristine dsh-client-ui-workspace plugin',
     )
     ctx.logger.error(error)
     const { apply: pristineApply } = await import('@deepseek-ai/dsh-client-ui-workspace/src/client/index.ts')
@@ -113,10 +95,18 @@ export async function apply(ctx: Context): Promise<void> {
 function applyEnhanced(ctx: Context): void {
   const sessions = ctx.get('sessions') as ISessions
   const workspaces = ctx.get('workspaces') as IWorkspaces
+  const viewHandle = createWorkspaceViewStore()
+  const viewInstance = viewHandle.create()
+  const viewStore: typeof viewHandle = { ...viewHandle, create: () => viewInstance }
+  const rowToast = createSnapshotStore<RowToastState | null>(null)
+  let toastSeq = 0
+  const notify = (toast: RowToast): void => { rowToast.set({ ...toast, seq: ++toastSeq }) }
   const uiWorkspace = new UiWorkspaceService(
-    ctx, ctx.remote.directoryPicker, workspaces, sessions)
+    ctx, ctx.remote.directoryPicker, workspaces, sessions, viewInstance.actions, notify,
+  )
   ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } })
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace-enhanced: dictionaries')
+  const shortcutControls = createWorkspaceShortcutControls()
 
   const searchSessions: WorkspaceBrowserInjected['searchSessions'] = async (query, signal) => {
     const result = await sessions.search(query, signal)
@@ -137,36 +127,99 @@ function applyEnhanced(ctx: Context): void {
   const openSession: WorkspaceBrowserInjected['open'] = (sessionId) => {
     uiWorkspace.openSession(sessionId)
   }
+  const pinnedSet = derive(workspaces.list, snapshot => new Set<SessionId>(snapshot.pinnedSessionIds))
+  const archivedSet = derive(workspaces.list, snapshot => new Set<SessionId>(snapshot.archivedSessionIds))
+  const renameRequest = derive(shortcutControls.state, state => state.renameTarget)
+  const archiveRequest = createSnapshotStore<SessionArchiveConfirmRequest | null>(null)
+  const requestSessionRename = shortcutControls.rename
+  const unarchiveSession = (sessionId: SessionId): void => {
+    uiWorkspace.unarchiveSession(sessionId).catch((reason: unknown) => {
+      console.warn('session unarchive rejected:', reason)
+    })
+  }
+  const renameSession: SessionRenameDialogInjected['renameSession'] = async (sessionId, title) => {
+    const result = await sessions.using(
+      sessionId,
+      { source: 'workspaceOperation' },
+      reference => reference.binding.session.rename(title),
+    )
+    if (!result.ok) throw new Error(result.error.message)
+  }
+  const pinInjected = (): PinSessionInjected => ({
+    hooks: { pinned: pinnedSet, archived: archivedSet },
+    pinSession: (sessionId) => {
+      uiWorkspace.pinSession(sessionId).catch(() => { notify({ kind: 'pinFailed' }) })
+    },
+    unpinSession: (sessionId) => {
+      uiWorkspace.unpinSession(sessionId).catch(() => { notify({ kind: 'unpinFailed' }) })
+    },
+  })
+  const archiveInjected = (): ArchiveSessionInjected => ({
+    hooks: { archived: archivedSet },
+    archiveSession: (sessionId) => {
+      uiWorkspace.archiveSession(sessionId).then(() => {
+        notify({ kind: 'archived', sessionId })
+      }).catch((reason: unknown) => {
+        const activity = activeSessionRefusal(reason)
+        if (activity === undefined) {
+          console.warn('session archive rejected:', reason)
+          return
+        }
+        const displayTitle = sessions.list.getSnapshot().byId[sessionId]?.displayTitle ?? sessionId
+        archiveRequest.set({ sessionId, displayTitle, activity })
+      })
+    },
+    unarchiveSession,
+  })
+  installWorkspaceShortcuts(ctx, uiWorkspace, shortcutControls, archiveInjected().archiveSession)
+  const archiveConfirmInjected = (): SessionArchiveConfirmInjected => ({
+    hooks: { archiveRequest },
+    settleSessionArchive: () => { archiveRequest.set(null) },
+    stopAndArchiveSession: async (sessionId) => {
+      await uiWorkspace.archiveSession(sessionId, { stopActivity: true })
+      notify({ kind: 'stoppedAndArchived', sessionId })
+    },
+  })
+  const forkInjected = (): ForkSessionInjected => ({
+    forkSession: (sessionId) => {
+      uiWorkspace.forkSession(sessionId).catch(() => {
+      })
+    },
+  })
+  const renameInjected = (): RenameSessionInjected => ({ requestSessionRename })
+  const renameDialogInjected = (): SessionRenameDialogInjected => ({
+    hooks: { renameRequest },
+    settleSessionRename: shortcutControls.closeRename,
+    renameSession,
+  })
+  const rowToastInjected = (): RowToastInjected => ({
+    hooks: { toast: rowToast },
+    dismissToast: () => { rowToast.set(null) },
+    undoArchive: unarchiveSession,
+    showArchived: () => { viewInstance.actions.setArchivedFilter('show') },
+  })
   const browserInjected = (): WorkspaceBrowserInjected & {
-    /** Optional Files sibling row; `undefined` when `dsh-plugins-client-ui-workspace-files` isn't composed in. */
     filesNode: WorkspaceFilesNodeService | undefined
   } => ({
-    // Explicit group actions keep their target; unscoped New Session inherits
-    // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
     open: openSession,
     searchSessions,
     searchResultLimit: sessions.searchResultLimit,
-    renameSession: async (sessionId, title) => {
-      const session = sessions.binding(sessionId)?.session
-      if (session === undefined) throw new Error(`unknown session "${sessionId}"`)
-      const result = await session.rename(title)
-      if (!result.ok) throw new Error(result.error.message)
-    },
-    forkSession: (sessionId) => {
-      uiWorkspace.forkSession(sessionId)
-        .catch(() => {
-          // Fork or child-rename failure keeps the current selection.
-        })
-    },
+    requestSessionRename,
+    notifyArchivedNotOpenable: () => { notify({ kind: 'archivedNotOpenable' }) },
     renameWorkspace: async (workspaceId, title) => { await workspaces.rename(workspaceId, title) },
     deleteWorkspace: async (workspaceId) => { await workspaces.delete(workspaceId) },
     insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
       await workspaces.insertBefore(workspaceId, beforeWorkspaceId)
     },
-    archiveSession: async (sessionId) => { await uiWorkspace.archiveSession(sessionId) },
+    unarchiveSession: async (sessionId) => { await uiWorkspace.unarchiveSession(sessionId) },
     createWorkspace: input => workspaces.create(input),
-    hooks: { directoryFlow: browserFlowSource, hostInfo },
+    requestSearch: shortcutControls.search,
+    requestAddWorkspace: shortcutControls.add,
+    closeAddWorkspace: shortcutControls.closeAdd,
+    setDirectoryBusy: shortcutControls.directoryBusy,
+    dismissForkError: shortcutControls.dismissForkError,
+    hooks: { directoryFlow: browserFlowSource, hostInfo, workspaceShortcuts: shortcutControls.state, shortcuts: ctx.shortcuts.catalog },
     filesNode: ctx.get('workspaceFilesNode') as WorkspaceFilesNodeService | undefined,
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
@@ -178,32 +231,69 @@ function applyEnhanced(ctx: Context): void {
       return ctx.slots.register(
         {
           name: 'sidebar.workspaces',
-          // Lower than the pristine ui-workspace row's default priority
-          // (0): if a bundle install-order violation leaves that row active
-          // too (see ARCHITECTURE.md's "Plugin isolation"), both
-          // registrations land instead of the second one throwing — the
-          // slot's own shadowing rule (lowest priority renders) makes this
-          // one win deterministically, with no crash and no fallback logic
-          // needed for this specific case.
           priority: -1,
-          children: { 'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' } },
-          store: createWorkspaceViewStore(),
+          children: {
+            'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
+            'sidebar.workspaces.session.menu.item': {
+              kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory, shortcuts: ctx.shortcuts.catalog } },
+            },
+            'sidebar.workspaces.session.row.action': { kind: 'list', scope: 'root' },
+            'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
+            'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
+          },
+          store: viewStore,
           inject: browserInjected,
           locale: NS,
         },
         EnhancedWorkspaceBrowser,
       )
     } catch (error) {
-      // Priority above makes the one throw this used to guard against
-      // (slot already occupied) structurally impossible; this remains as a
-      // backstop against any other unexpected registration-time error,
-      // which — like any throw from this deferred ctx.slots.inject
-      // callback — is otherwise fatal to the whole Client boot per
-      // assertEntriesActive. There is no pristine per-hole fallback to call
-      // here without re-running (and duplicating) the whole original
-      // apply(), so this leaves the Workspace sidebar row unregistered
-      // rather than crashing the app.
       ctx.logger.error('dsh-plugins-client-ui-workspace-enhanced: failed to register the sidebar.workspaces row')
+      ctx.logger.error(error)
+      return []
+    }
+  })
+  ctx.slots.inject('sidebar.workspaces.session.menu.item', () => {
+    try {
+      return [
+        ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'pin', order: 100, locale: NS, inject: pinInjected }, PinSessionMenuItem),
+        ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'rename', order: 200, locale: NS, inject: renameInjected }, RenameSessionMenuItem),
+        ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'fork', order: 300, locale: NS, inject: forkInjected }, ForkSessionMenuItem),
+        ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'archive', order: 400, locale: NS, inject: archiveInjected }, ArchiveSessionMenuItem),
+      ].flat()
+    } catch (error) {
+      ctx.logger.error('dsh-plugins-client-ui-workspace-enhanced: failed to register the sidebar.workspaces.session.menu.item entries')
+      ctx.logger.error(error)
+      return []
+    }
+  })
+  ctx.slots.inject('sidebar.workspaces.session.row.action', () => {
+    try {
+      return [
+        ctx.slots.register({ name: 'sidebar.workspaces.session.row.action', id: 'archive', order: 100, locale: NS, inject: archiveInjected }, ArchiveSessionRowButton),
+        ctx.slots.register({ name: 'sidebar.workspaces.session.row.action', id: 'pin', order: 200, locale: NS, inject: pinInjected }, PinSessionRowButton),
+      ].flat()
+    } catch (error) {
+      ctx.logger.error('dsh-plugins-client-ui-workspace-enhanced: failed to register the sidebar.workspaces.session.row.action entries')
+      ctx.logger.error(error)
+      return []
+    }
+  })
+  ctx.slots.inject('shell.overlay', () => {
+    try {
+      return [
+        ctx.slots.register({
+          name: 'shell.overlay', id: 'workspace.session-rename', locale: NS, inject: renameDialogInjected,
+        }, SessionRenameDialog),
+        ctx.slots.register({
+          name: 'shell.overlay', id: 'workspace.session-archive', locale: NS, inject: archiveConfirmInjected,
+        }, SessionArchiveConfirmDialog),
+        ctx.slots.register({
+          name: 'shell.overlay', id: 'workspace.row-toast', locale: NS, store: viewStore, inject: rowToastInjected,
+        }, RowActionToast),
+      ].flat()
+    } catch (error) {
+      ctx.logger.error('dsh-plugins-client-ui-workspace-enhanced: failed to register the workspace shell.overlay entries')
       ctx.logger.error(error)
       return []
     }
@@ -226,4 +316,10 @@ function applyEnhanced(ctx: Context): void {
       return []
     }
   })
+}
+
+function activeSessionRefusal(reason: unknown): readonly SessionActivity[] | undefined {
+  if (!(reason instanceof Error) || reason.name !== 'WorkspaceArchiveError') return undefined
+  const { rpcError } = reason as WorkspaceArchiveError
+  return rpcError.code === 'workspace/session-active' ? rpcError.details.activity : undefined
 }

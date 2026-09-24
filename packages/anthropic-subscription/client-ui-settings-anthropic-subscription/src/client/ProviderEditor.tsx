@@ -45,6 +45,7 @@ import { AuthorizationPanel } from './AuthorizationPanel.tsx'
 import { EditorFooter } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/EditorFooter.tsx'
 import { ModelListEditor } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/ModelListEditor.tsx'
 import { deriveKeyRef, protocolChoices } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/store.ts'
+import { protocolLabel } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/protocol-label.ts'
 import type { ModelsOperations } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/operations.ts'
 import type { SettingsSchemaOperations } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/schema-operations.ts'
 import type { ModelsKey as VendorModelsKey } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/locales.ts'
@@ -106,6 +107,12 @@ export interface ProviderEditorProps {
   submitBusyLabelKey?: VendorModelsKey
   /** Close the editor; `changed` reports whether an Apply committed. */
   onClose: (changed: boolean) => void
+  /**
+   * Called once per change with whether the apply or the model list's
+   * endpoint interrogation is in flight, so the owner can hold its surface
+   * still.
+   */
+  onBusyChange?: (busy: boolean) => void
 }
 
 /** A user-section subtree as a plain draft object (absent → empty). */
@@ -192,7 +199,12 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const node = useMemo(() => schema.nodeAtPath(root, settingsPath), [root, schema, settingsPath])
   const fallback = schema.getPath(namespace.value, settingsPath)
   const disabled = props.readOnly || busy
-  const layout = layoutOf(namespace.ns)
+  const [listBusy, setListBusy] = useState(false)
+  const { onBusyChange } = props
+  useEffect(() => { onBusyChange?.(busy || listBusy) }, [busy, listBusy, onBusyChange])
+  const accountProvider = props.provider === 'deepseek-account'
+  // Account settings use a configurable Cordis entry id.
+  const layout = accountProvider ? 'deepseek' : layoutOf(namespace.ns)
   const keyRef = refFor(schema, namespace, settingsPath, props.provider)
   // The same schema read the create card makes, so the choices offered here
   // and there cannot drift apart: both come from the adapter's own `Config`.
@@ -229,6 +241,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   useEffect(() => {
     let stale = false
     setKeyState(undefined)
+    if (accountProvider) return
     // The key state is a placeholder hint, not a precondition for editing: a
     // refused describe leaves the card without the "already configured" hint.
     void operations.describeCredential(keyRef).then((described) => {
@@ -236,7 +249,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       setKeyState(described)
     })
     return () => { stale = true }
-  }, [operations, keyRef])
+  }, [operations, keyRef, accountProvider])
 
   const stringAt = (source: unknown, key: string): string | undefined => {
     const value = schema.getPath(source, [key])
@@ -390,6 +403,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
         ? t('keyStored')
         : family === 'pi-ai' ? t('keyPlaceholderNative') : t('keyPlaceholder')
     /** What both family editors take: the rows, whose layer owns them, and the two writes. */
+    const defaultInput = schema.getPath(fallback, ['defaultInput'])
     const catalogProps = {
       models,
       overridden: modelsOverridden,
@@ -400,6 +414,15 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       },
       onReset: () => { setDraft(current => schema.deletePath(current, ['models'])) },
     }
+    if (accountProvider) {
+      return (
+        <DeepSeekModelsEditor
+          {...catalogProps}
+          defaultContextWindow={typeof defaultContextWindow === 'number' ? defaultContextWindow : undefined}
+          defaultMaxTokens={typeof defaultMaxTokens === 'number' ? defaultMaxTokens : undefined}
+        />
+      )
+    }
     return (
       <>
         <div className={styles['field']}>
@@ -407,7 +430,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
           <input
             className={styles['input']}
             type="password"
-            autoComplete="off"
+            autoComplete="new-password"
             value={keyDraft}
             placeholder={keyPlaceholder}
             aria-label={t('keyInput')}
@@ -467,7 +490,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                 type="text"
                 value={stringAt(draft, 'baseURL') ?? ''}
                 placeholder={family === 'deepseek'
-                  ? t(stringAt(fallback, 'protocol') === 'messages' ? 'deepSeekMessagesBaseUrl' : 'deepSeekChatBaseUrl')
+                  ? t('deepSeekBaseUrl')
                   : stringAt(fallback, 'baseURL') ?? t('baseUrlDefault')}
                 aria-describedby={family === 'deepseek' ? `${props.provider}-endpoint-hint` : undefined}
                 aria-label={t('baseUrl')}
@@ -498,7 +521,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                         reader announces it either way, and an empty one is
                         announced as a choice with no identity. */}
                     {probeApi === undefined ? <option value="">{t('customApiUnset')}</option> : null}
-                    {protocols.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+                    {protocols.map(choice => <option key={choice} value={choice}>{protocolLabel(t, choice)}</option>)}
                   </select>
                 </div>
               )
@@ -522,6 +545,9 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                   probe={probe}
                   probeBlocked={keyFailure}
                   operations={operations}
+                  catalogProvider={props.declared === true ? undefined : props.provider}
+                  defaultInput={Array.isArray(defaultInput) ? defaultInput : undefined}
+                  onBusyChange={setListBusy}
                 />
               )}
           </div>
