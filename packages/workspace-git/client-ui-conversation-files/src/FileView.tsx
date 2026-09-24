@@ -49,7 +49,7 @@ import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 // tab draws its own preview when it is not.
 import type { FileDocumentHookContext } from './document-seat.ts'
 import { FileActions } from './FileActions.tsx'
-import type { FileModeStore, FileSavePhase, FileViewMode } from './mode-store.ts'
+import type { FileModeStore, FileViewMode } from './mode-store.ts'
 import type { SidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { parseFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import { langFromPath, viewerKindFor } from './classify.ts'

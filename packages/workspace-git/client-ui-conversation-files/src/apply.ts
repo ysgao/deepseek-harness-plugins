@@ -32,6 +32,12 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the 'conversation.view' SlotMap row.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: pulls the SlotMap rows the preview engine declares, chiefly
+// 'sidebar.right.tab.document.actions' — the toolbar seat the File tab's own
+// controls register into below. Types only; nothing from this package is
+// imported at runtime, and the engine itself is mounted by
+// dsh-plugins-client-ui-document-host, not by this one.
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/src/client/document/contract.ts'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import { fileDocumentTabInfoFactory } from './document-seat.ts'
 import { FileActions, type FileActionsProps } from './FileActions.tsx'
