@@ -593,8 +593,15 @@ export class McpConnectorRegistry extends Service {
       }
     }
 
-    for (const [id, { definition, signature }] of wanted) {
-      if (this.mounts.has(id)) continue
+    // Mounts run concurrently. Each mount is dominated by network I/O (an
+    // OAuth refresh, the MCP initialize handshake, tools/list), so a
+    // sequential loop made boot pay their sum: measured at ~2.6s for the eight
+    // configured connectors. `web-app` announces its URL only after the loader
+    // tree settles, so that sum landed directly on time-to-first-window.
+    // Each task keeps its own try/catch, so one refusing connector still lands
+    // as its own failed mount and this Promise.all never rejects.
+    await Promise.all([...wanted].map(async ([id, { definition, signature }]) => {
+      if (this.mounts.has(id)) return
       try {
         const fiber = this.ctx.plugin(mcpClientOAuth, await this.mountConfig(definition))
         this.mounts.set(id, { signature, fiber })
@@ -612,7 +619,7 @@ export class McpConnectorRegistry extends Service {
           error: error instanceof Error ? error.message : String(error),
         })
       }
-    }
+    }))
   }
 }
 
