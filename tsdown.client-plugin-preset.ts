@@ -176,9 +176,10 @@ function asyncChunkRequirePlugin() {
     name: 'dsh-plugin-async-chunk-require',
     renderChunk(
       code: string,
-      chunk: { dynamicImports: readonly string[] },
+      chunk: { dynamicImports: readonly string[]; fileName?: string },
       outputOptions: { format?: string },
     ) {
+      const chunkName = chunk.fileName ?? '(entry)'
       if (outputOptions.format !== 'cjs') return null
       const transformed = new Rolldown.RolldownMagicString(code)
       // Rolldown also emits a BARE `require("./client.<name>.js");` at the
@@ -238,11 +239,23 @@ function asyncChunkRequirePlugin() {
         .filter(match => CLIENT_CHUNK.test(match[2]!.slice(2)))
       if (remaining.length > 0) {
         const names = [...new Set(remaining.map(match => match[2]!))].join(', ')
+        // Thrown, not warned, and never rewritten away. The loader answers
+        // `require` from declared externals and its module table only, so a
+        // chunk named there is an import that WILL fail at load:
+        //
+        //   client-modules: require("./client.rolldown-runtime.js") missed
+        //   the module table
+        //
+        // — which is how a merely-larger entry silently stopped activating.
+        // Rewriting the reference instead (an earlier version replaced it
+        // with `void 0`) turns that loud failure into `clsx` being undefined
+        // somewhere unrelated, so the reference is preserved and the build
+        // stops here, naming the chunk.
         throw new Error(
-          `client plugin bundle: ${names} is required synchronously for its value. `
-          + 'The closure-factory loader cannot resolve a cross-chunk require — rolldown hoisted a module shared by '
-          + 'the entry and a lazy chunk. Keep it out of that shared position (move the sharing code into the chunk, '
-          + 'or stop the entry using it) rather than splitting it off.',
+          `client plugin bundle: ${names} is required synchronously for its value in ${chunkName}. `
+          + 'The closure-factory loader resolves only declared externals and materialized modules, so this fails '
+          + 'at load. Rolldown hoisted a module shared by this chunk and another; keep it out of that shared '
+          + 'position (or stop splitting this bundle) rather than rewriting the reference away.',
         )
       }
       return transformed.hasChanged() ? transformed : null
