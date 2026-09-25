@@ -38,11 +38,13 @@ belongs in this repo's own packages, using Article III.
 *Enforced by:* `pnpm run check:vendor`
 (`scripts/check-vendor-pristine.mjs`), run automatically by the `pre-commit`
 hook in `.githooks/`, which `postinstall` wires into every clone. It asserts
-both halves of "unmodified": that
-`git -C packages/_vendor/deepseek-harness status --porcelain` is empty, and
-that the submodule commit this repo's index would record still equals
-`vendorPin` in `scripts/replacement-parity.json` — a commit made *inside* the
-submodule moves the pin while dirtying nothing the first check would see.
+three ways of being "unmodified": that
+`git -C packages/_vendor/deepseek-harness status --porcelain` is empty; that
+the submodule commit this repo's index would record still equals `vendorPin`
+in `scripts/replacement-parity.json` — a commit made *inside* the submodule
+moves the pin while dirtying nothing the first check would see; and that the
+submodule's own on-disk `HEAD` equals `vendorPin` too, not merely the index —
+see Article VII for the failure that check closes.
 
 Ahead of that, `.claude/settings.json` denies `Edit`/`Write` under
 `packages/_vendor/**` for a session running under Claude Code specifically,
@@ -199,6 +201,49 @@ check cannot see whether a *local* commit landed on `main` before or after
 its build/boot checkpoint — that half is enforced by discipline (this
 article) and by the plain fact that a broken `main` is immediately felt in
 the next session's own `dsh`, not by an automated gate.
+
+## VII. A build trusts only a checkout it can prove matches the pin
+
+`vendorPin` in `scripts/replacement-parity.json` records the commit the
+vendor *should* be at. Nothing about recording that guarantees the vendor
+*is* at it: `git checkout` and `git submodule update` only ever touch tracked
+files. A submodule pin can move in the index — the ordinary, legitimate way,
+per Article IV — while the working tree that will actually be built still
+sits on the commit before, because the checkout step never ran on this
+machine or in this clone. Worse, a pin bump that deletes a package upstream
+leaves its directory behind here too, kept alive by nothing but its own
+`.gitignore`d contents (`node_modules/`, `lib/`) — invisible to `git status`,
+invisible to the pin check, and still exactly where the vendor's own build
+tooling will go looking for it.
+
+None of this is Article II. The tracked tree is untouched in every one of
+these states; `check:vendor` reports pristine. It is a different failure: a
+build run against a checkout that only *claims* to be the pin. Its symptom is
+a `tsc`/`tsdown` error shaped like a defect in the vendored code — a missing
+export, an unresolvable entry, a module nothing in this pin depends on — on
+whichever machine's local state happens to have drifted, while a machine
+whose stale files happen to still match the target sails through and gives
+no warning that the next pin bump, or the next clone, will not be so lucky.
+
+So a build gets no benefit of the doubt about the checkout under it. Before
+`pnpm run build:vendor` spawns anything, it proves, and refuses with the
+exact fix command the moment one does not hold:
+
+- the submodule's checked-out `HEAD` — not merely the index gitlink — equals
+  `vendorPin`;
+- the vendor's installed dependencies are not older than its own manifest and
+  lockfile;
+- no directory a vendor workspace glob matches is missing the `package.json`
+  every real member has, and no `lib/` inside one is older than this
+  checkout — both the signature of `.gitignore`d debris a pin bump left
+  behind rather than genuine build output.
+
+*Enforced by:* the preflight in `scripts/build-vendor.mjs`
+(`assertBuildEnvironment`), which runs before every `pnpm run build:vendor`
+and exits before any `pnpm` subprocess starts when one of the three does not
+hold. The first — the checkout — is also part of `pnpm run check:vendor`
+itself (`scripts/check-vendor-pristine.mjs`), so a stale checkout fails the
+`pre-commit` hook too, not just a build.
 
 ---
 

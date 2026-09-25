@@ -9,8 +9,8 @@
 // — but nothing executed it, so it was an intention rather than a gate. This
 // script is that command, plus the half it could not express.
 //
-// Two things are checked, because there are two distinct ways the vendor stops
-// being the pinned upstream tree:
+// Three things are checked, because there are three distinct ways the vendor
+// stops being the pinned upstream tree:
 //
 //   1. WORKING TREE. Someone edited a vendored file. `status --porcelain`
 //      catches it. This needs the submodule checked out; where it is not (a
@@ -27,10 +27,23 @@
 //      than the vendor's own HEAD is deliberate: it is what a commit would
 //      actually record, and it works even when the submodule is absent.
 //
+//   3. THE CHECKOUT. The index can already say `vendorPin` while the
+//      submodule's own working tree still sits on an older commit — `git
+//      submodule update`/`checkout` is what moves it there, and nothing
+//      forces that step to have run. Checks 1 and 2 both pass in this state:
+//      the vendor's own `status` is clean (there is nothing uncommitted to
+//      report), and the index gitlink already matches `vendorPin` (it was
+//      updated in the pin-bump commit, same as always). What's missing is a
+//      check that the files actually on disk are the files at that pin —
+//      `git -C packages/_vendor/deepseek-harness rev-parse HEAD` must equal
+//      `vendorPin` too. Skipped alongside check 1 when the submodule isn't
+//      checked out, for the same reason.
+//
 // A pin bump is a legitimate change, and it stays legitimate here: bumping the
 // submodule and updating `vendorPin` in the same commit is exactly what
 // CONSTITUTION.md's "a commit that moves the submodule pin" procedure already
-// requires. This check simply refuses to let the two drift apart silently.
+// requires. This check simply refuses to let any of the three drift apart
+// silently.
 //
 // Usage: node scripts/check-vendor-pristine.mjs
 // Exit 0 = pristine (or not checked out); exit 1 = Article II violated.
@@ -85,41 +98,65 @@ function real(path) {
 }
 
 /**
- * The vendor's own `status`, or undefined when the submodule is not checked
- * out here. The guard matters: `git -C <empty dir> status` does NOT fail, it
- * walks UP to the superproject and reports THIS repo's files, which would read
- * as "the vendor is dirty" for every unrelated edit. So only trust a status
- * whose toplevel really is the vendor directory.
+ * The `git()` options for running commands against the vendor's own
+ * repository, or undefined when the submodule is not checked out here. The
+ * guard matters: `git -C <empty dir> status` does NOT fail, it walks UP to
+ * the superproject and reports THIS repo's files, which would read as "the
+ * vendor is dirty" for every unrelated edit. So only trust a context whose
+ * toplevel really is the vendor directory.
  */
-function vendorStatus() {
+function vendorGitContext() {
   const vendorReal = real(VENDOR_ABS)
   if (vendorReal === undefined) return undefined
   const where = { cwd: VENDOR_ABS, inherited: false }
   const toplevel = git(['rev-parse', '--show-toplevel'], where)
   if (toplevel === undefined || real(toplevel) !== vendorReal) return undefined
-  return git(['status', '--porcelain'], where)
+  return where
 }
 
 const problems = []
+const parityPath = join(REPO, 'scripts', 'replacement-parity.json')
+const pinned = JSON.parse(readFileSync(parityPath, 'utf8')).vendorPin
 
-// 1. Working tree. Article II's own command, verbatim. `undefined` means the
-//    submodule is not checked out in this working tree.
-const status = vendorStatus()
-if (status === undefined) {
-  console.log(`check-vendor-pristine: ${VENDOR} is not checked out — skipping the working-tree check`)
-} else if (status !== '') {
-  problems.push(
-    'the vendor working tree is dirty (Article II: it must be empty in every commit):\n'
-    + status.split('\n').map(line => `      ${line}`).join('\n')
-    + '\n    Revert it — never commit it. What you wanted probably belongs in'
-    + "\n    this repo's own packages, via Article III (a replacement).",
-  )
+// 1 and 3 both need the vendor's own git context (undefined when the
+// submodule is not checked out in this working tree, which skips both).
+const vendorWhere = vendorGitContext()
+if (vendorWhere === undefined) {
+  console.log(`check-vendor-pristine: ${VENDOR} is not checked out — skipping the working-tree and checkout checks`)
+} else {
+  // 1. Working tree. Article II's own command, verbatim.
+  const status = git(['status', '--porcelain'], vendorWhere)
+  if (status === undefined) {
+    problems.push(`could not read \`git status\` for ${VENDOR}`)
+  } else if (status !== '') {
+    problems.push(
+      'the vendor working tree is dirty (Article II: it must be empty in every commit):\n'
+      + status.split('\n').map(line => `      ${line}`).join('\n')
+      + '\n    Revert it — never commit it. What you wanted probably belongs in'
+      + "\n    this repo's own packages, via Article III (a replacement).",
+    )
+  }
+
+  // 3. The checkout. The submodule's own on-disk HEAD must be the pinned
+  //    commit, not just recorded as such in the index (check 2, below) — a
+  //    `submodule update`/`checkout` that never ran leaves this mismatched
+  //    while checks 1 and 2 both read clean.
+  const head = git(['rev-parse', 'HEAD'], vendorWhere)
+  if (head === undefined) {
+    problems.push(`could not read \`git rev-parse HEAD\` for ${VENDOR}`)
+  } else if (head !== pinned) {
+    problems.push(
+      "the vendor working tree is checked out at a commit other than vendorPin — it was pinned but never actually moved there:"
+      + `\n      HEAD:      ${head}`
+      + `\n      vendorPin: ${pinned}`
+      + '\n    Run:'
+      + `\n      git submodule update --init --recursive ${VENDOR}`,
+    )
+  }
 }
 
 // 2. The pin. Compare the gitlink this repo's index would commit against the
 //    revision replacement-parity.json says every fork hash was read at.
-const parityPath = join(REPO, 'scripts', 'replacement-parity.json')
-const pinned = JSON.parse(readFileSync(parityPath, 'utf8')).vendorPin
 const staged = git(['rev-parse', `:${VENDOR}`])
 if (staged === undefined) {
   problems.push(`could not read the submodule gitlink for ${VENDOR} from the index`)
