@@ -122,6 +122,20 @@
     # failing on its absence), but it matches how the two read.
     - id: document-host
       name: 'dsh-plugins-client-ui-document-host'
+      # Upstream's spreadsheet defaults refuse more than they need to here.
+      # `maxCells` is a COMBINED RECTANGULAR AREA across worksheets, so its
+      # 250,000 default is spent by one 10,000-row sheet 30 columns wide, and
+      # a wide `.tsv` trips it just as easily — the reader gets "exceeds the
+      # preview size limit" for files a workstation opens without noticing.
+      # These are browser-memory and parse-time guards, not correctness ones,
+      # and `timeoutMs` still bounds the worker, so they are raised rather
+      # than removed. Settable at all only because this row re-exports the
+      # replaced row's Host half — see ../client-ui-document-host/README.md.
+      config:
+        excel:
+          maxBytes: 67108864
+          maxCells: 4000000
+          timeoutMs: 30000
 
     - id: workspace-files-node
       name: 'dsh-plugins-client-ui-workspace-files'
