@@ -37,12 +37,9 @@ import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 // on every boot to serve a fallback that, with the document host composed
 // in, almost never renders. `FileEditor` and `SideBySideDiff` are light
 // (CodeMirror and `diff`), and `./kinds.ts` holds no renderer at all.
-// All three bodies through ONE lazy module, never the barrel: it re-exports
-// the eager components, whose graph is CodeMirror + mammoth + pdfjs-dist +
-// jszip + xlsx. They must also share a single chunk rather than one each —
-// see `dsh-plugins-client-ui-file-editing/src/bodies.tsx`.
-// `./kinds.ts` holds no renderer and stays static.
-import { LazyFileEditor, LazyFilePreview, LazySideBySideDiff } from 'dsh-plugins-client-ui-file-editing/src/lazy.tsx'
+import { FileEditor } from 'dsh-plugins-client-ui-file-editing/src/FileEditor.tsx'
+import { LazyFilePreview } from 'dsh-plugins-client-ui-file-editing/src/LazyFilePreview.tsx'
+import { SideBySideDiff } from 'dsh-plugins-client-ui-file-editing/src/SideBySideDiff.tsx'
 import { isContentMismatch, isTextKind } from 'dsh-plugins-client-ui-file-editing/src/kinds.ts'
 import type {
   FileEditorResizeLabels, FilePreviewLabels, FilePreviewState, SideBySideDiffLabels,
@@ -627,7 +624,7 @@ export function FileView({
             sameText
               ? <p className={css.diffNotice}>{tFiles('files.diff.empty')}</p>
               : (
-                <LazySideBySideDiff
+                <SideBySideDiff
                   path={openedPath}
                   oldText={diffState.diff.oldText}
                   newText={diffState.diff.newText}
@@ -638,7 +635,7 @@ export function FileView({
         </div>
       )}
       {mode === 'edit' && canEdit && textKind !== null && (
-        <LazyFileEditor
+        <FileEditor
           key={openedFileId}
           path={openedPath}
           text={editorText}

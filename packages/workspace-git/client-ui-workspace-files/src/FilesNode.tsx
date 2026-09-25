@@ -13,21 +13,7 @@
  * `ui-directory-picker-browse`'s "no search, no persistence" posture.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-// A local join rather than the `clsx` package, for a bundling reason rather
-// than a stylistic one: this module is the entry's, and that package also
-// sits inside the lazily-chunked file bodies. A module used by BOTH the
-// entry and a chunk gets hoisted into a third chunk the entry then requires
-// SYNCHRONOUSLY, which the closure-factory loader cannot answer. Three lines
-// here keep the split clean — see
-// ../../client-ui-file-editing/src/bodies.tsx.
-/**
- * Join truthy class names.
- * @param names - class names; `false`/`undefined` entries are dropped.
- * @returns the joined class attribute.
- */
-function cx(...names: readonly (string | false | undefined)[]): string {
-  return names.filter(Boolean).join(' ')
-}
+import clsx from 'clsx'
 import {
   Button, FileTypeIcon, IconCheckOutlineRegular, IconCloseFillRegular, IconFolderCloseRegular, IconFolderOpenRegular,
   IconPauseOutlineRegular, IconPlayOutlineRegular, IconRefreshOutlineRegular, IconTriangleRightFillRegular,
@@ -225,7 +211,7 @@ function GitStatusSummary({
           </button>
           <button
             type="button"
-            className={cx(css.gitRefreshButton, css.gitDiscardButton)}
+            className={clsx(css.gitRefreshButton, css.gitDiscardButton)}
             title={t('files.git.discard')}
             disabled={busy}
             onClick={onDiscard}
@@ -243,7 +229,7 @@ function GitStatusSummary({
           )}
           <button
             type="button"
-            className={cx(css.gitRefreshButton, css.gitCountButton)}
+            className={clsx(css.gitRefreshButton, css.gitCountButton)}
             title={t('files.git.pull', { n: status.behind })}
             disabled={busy}
             onClick={onPull}
@@ -262,7 +248,7 @@ function GitStatusSummary({
           )}
           <button
             type="button"
-            className={cx(css.gitRefreshButton, css.gitCountButton)}
+            className={clsx(css.gitRefreshButton, css.gitCountButton)}
             title={t('files.git.push', { n: status.ahead })}
             disabled={busy}
             onClick={onPush}
@@ -414,7 +400,7 @@ function GitStatusBadge({ code, t }: { code: string | undefined; t: FilesTransla
   if (code === undefined) return null
   const labelKey = GIT_STATUS_LABEL_KEYS[code]
   return (
-    <span className={cx(css.gitStatusBadge, css[`gitStatus${code}`])} title={labelKey === undefined ? undefined : t(labelKey)}>
+    <span className={clsx(css.gitStatusBadge, css[`gitStatus${code}`])} title={labelKey === undefined ? undefined : t(labelKey)}>
       {code}
     </span>
   )
@@ -668,7 +654,7 @@ function DirectoryRow({
     <>
       <button
         type="button"
-        className={cx(css.row, selected && css.rowSelected)}
+        className={clsx(css.row, selected && css.rowSelected)}
         style={{ paddingLeft: 8 + depth * 22 }}
         aria-expanded={expanded}
         aria-selected={selected}
@@ -677,8 +663,8 @@ function DirectoryRow({
           onSelectDir(entry.path)
         }}
       >
-        <span className={cx(css.slot, css.chevron)}>
-          <IconTriangleRightFillRegular size={14} className={cx(css.arrow, expanded && css.arrowOpen)} />
+        <span className={clsx(css.slot, css.chevron)}>
+          <IconTriangleRightFillRegular size={14} className={clsx(css.arrow, expanded && css.arrowOpen)} />
         </span>
         <span className={css.slot}>
           {expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
@@ -1105,7 +1091,7 @@ export function FilesNode({
         <button
           ref={headerRef}
           type="button"
-          className={cx(css.row, css.headerToggle)}
+          className={clsx(css.row, css.headerToggle)}
           style={{ paddingLeft: 8 }}
           aria-expanded={expanded}
           // The workspace's own root path. The right-Sidebar file tab this
@@ -1116,8 +1102,8 @@ export function FilesNode({
           title={rootPath}
           onClick={toggleExpanded}
         >
-          <span className={cx(css.slot, css.chevron)}>
-            <IconTriangleRightFillRegular size={14} className={cx(css.arrow, expanded && css.arrowOpen)} />
+          <span className={clsx(css.slot, css.chevron)}>
+            <IconTriangleRightFillRegular size={14} className={clsx(css.arrow, expanded && css.arrowOpen)} />
           </span>
           <span className={css.slot}>
             {expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
