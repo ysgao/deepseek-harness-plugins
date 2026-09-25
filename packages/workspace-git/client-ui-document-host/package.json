@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugins-client-ui-document-host",
-  "description": "Phase 0 spike: runs @deepseek-ai/dsh-client-ui-sidebar-documentpreview's own apply() from an out-of-tree browser bundle, to prove its renderer bodies (pdf.js worker + assets, FortuneSheet excel worker, office, html, image) can be built and loaded outside the vendor tree before the seat is relocated into the main-area File tab.",
+  "description": "Replaces the ui-sidebar-documentpreview row: runs @deepseek-ai/dsh-client-ui-sidebar-documentpreview's own apply() from an out-of-tree browser bundle and redirects one registration, so its renderers (pdf.js worker + assets, FortuneSheet excel worker, office, html, image) draw in the conversation's File tab instead of the right Sidebar, with no renderer forked. Its `.` entry re-exports that row's Host half so the preview config still reaches the page.",
   "version": "0.0.0",
   "type": "module",
   "main": "lib/index.js",

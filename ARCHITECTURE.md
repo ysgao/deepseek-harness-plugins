@@ -319,10 +319,10 @@ row being replaced is genuinely absent, not merely out-shadowed.
 | `dsh-plugins-client-ui-workspace-files` | Sidebar Files tree (live directory watch, auto-refresh toggle, reload, git status, create file/folder) and the `workspace.files` command; declares the optional `workspaceFilesNode` Context service — see "Files tree: why an optional service, not a slot" |
 | `dsh-plugins-client-remotes-workspace-git` | Mounts the two controllers' generated `/remote` Client contributions — see "Plugin isolation" |
 | `dsh-plugins-client-ui-workspace-enhanced` | Replaces `dsh-client-ui-workspace`'s own `sidebar.workspaces`/`conversation.hero.workspace` registrations; renders `workspaceFilesNode`'s `Component` as a Files sibling row — see "Replace, don't patch" |
-| `dsh-plugins-client-ui-conversation-files` | Registers a `'file'` entry into `dsh-client-ui-conversation`'s pristine `conversation.view` slot; populated through `conversationFileOpener` — see "File tab: a pristine slot, but a fork-only trigger" |
+| `dsh-plugins-client-ui-conversation-files` | Registers a `'file'` entry into `dsh-client-ui-conversation`'s pristine `conversation.view` slot; populated through `conversationFileOpener`. Declares the `conversation.file.document` seat the preview engine is relocated onto, and contributes the tab's View/Edit/Diff/Save controls to that engine's `sidebar.right.tab.document.actions` toolbar — see "File tab: a pristine slot, but a fork-only trigger" and "File tab controls: one toolbar, two mount points" |
 | `dsh-plugins-client-ui-conversation-enhanced` | Replaces `dsh-client-ui-conversation`'s own conversation-shell registration; provides the `conversationFileOpener` cross-session bridge |
-| `dsh-plugins-client-ui-document-host` | Replaces `dsh-client-ui-sidebar-documentpreview` by running its own `apply()` and redirecting one registration: the preview engine draws in the File tab instead of the right Sidebar. Adds the Sidebar hand-off and two renderers upstream lacks — see "Document preview: relocate the seat, never the renderers" |
-| `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle: does NOT mount `@deepseek-ai/dsh-workspace` itself (relies on the target profile's own `web-app` bundle — see "Two findings worth knowing" in the bundle's own README); disables and replaces the `ui-workspace`/`ui-conversation` rows |
+| `dsh-plugins-client-ui-document-host` | Replaces `dsh-client-ui-sidebar-documentpreview` by running its own `apply()` and redirecting one registration: the preview engine draws in the File tab instead of the right Sidebar. Adds the Sidebar hand-off and two renderers upstream lacks, and re-exports that row's **Host** half so its `__DSH_DOCUMENT_PREVIEW_CONFIG__` page injection survives the disable — see "Document preview: relocate the seat, never the renderers" |
+| `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle: does NOT mount `@deepseek-ai/dsh-workspace` itself (relies on the target profile's own `web-app` bundle — see "Two findings worth knowing" in the bundle's own README); disables four rows — replacing `ui-workspace`, `ui-conversation` and `ui-sidebar-documentpreview`, and retiring `ui-sidebar-files` outright |
 
 ### `packages/anthropic-subscription/` — Anthropic subscription authorization
 
@@ -533,8 +533,8 @@ into it by name and imports nothing from it — deliberately: a value import
 the other way would have pulled the whole preview engine into the File tab's
 own bundle.
 
-**What Phase 0 established.** The design rests on a build claim, so it was
-tested before anything else was written (`packages/workspace-git/
+**What the build proof established.** The design rests on a build claim, so
+it was tested before anything else was written (`packages/workspace-git/
 client-ui-document-host/README.md` has the full table). The engine bundles
 out of tree at 287.10 kB against the vendor's own 280.79 kB for the same
 graph; its heavy bodies stay lazy at 7.11 MB (`client.pdf.js`) and 7.05 MB
@@ -1165,7 +1165,7 @@ PR against `deepseek-ai/deepseek-harness`.
   and Diff need the text regardless), and the relocated engine performs its
   own paged read of the same file. Harmless but wasteful; collapsing them
   means the tab taking its text from the document owner's content, which is
-  a bigger change than Phase 3 was worth.
+  a bigger change than this relocation was worth.
 - **Bundle install order.** `scripts/install-plugins.mjs`'s `BUNDLES` array
   is where this order is now written down and applied (`pnpm run build`
   runs it; it appends only what a profile is missing, and warns rather than

@@ -55,6 +55,42 @@ repo carries, this one already followed the plugin pattern most closely).
   was fork-only, here most of `FileView.tsx`'s `t()` calls stayed on the
   pristine namespace; only the fork-only subset moved to `tFiles`.
 
+## The document seat, and the one toolbar over it
+
+This package **declares** `conversation.file.document`
+(`src/document-seat.ts`), the seat `dsh-plugins-client-ui-document-host`
+relocates the upstream preview engine onto. A slot has exactly one declaring
+entry, and that entry is this tab — so the contract lives here, and the host
+registers into it by name and imports nothing from this package.
+
+The seat answers `useTabInfo()` from the tab's own state. That is what makes
+upstream's renderer bodies relocatable at all: they read everything from
+that hook and nothing from owner props, so any seat that can answer it can
+host them. Nothing registering into the seat is a normal state — the tab
+then draws its own `FilePreview`, exactly as it did before the seat existed,
+and that fallback is deliberate rather than vestigial.
+
+**Controls: one component, two mount points.** View/Edit/Diff/Save live in
+`src/FileActions.tsx`. While the engine is drawing, they register into its
+own header toolbar through `sidebar.right.tab.document.actions`, so a file
+carries one row of controls rather than the engine's toolbar beneath this
+tab's header — and this tab then draws no header of its own, because the
+engine's already renders the path.
+
+They cannot live *only* there: that toolbar is the engine's body, mounted
+only in View mode, so controls registered there and nowhere else would
+vanish the moment Edit was pressed. So the tab draws the same component in
+its own header whenever nothing has claimed it — in Edit and Diff, and in
+any composition without the document host, where `slots.inject` never fires.
+
+`FileView` keeps owning the state. The draft cache, the `writeFile` version
+guard and the conflict notice stay here; it publishes a flat snapshot into a
+per-session `FileModeStore` (`src/mode-store.ts`) that both mounts read, and
+the store compares before notifying so publishing on every render does not
+re-render the toolbar on every keystroke. Edit is offered for whatever
+`isTextKind` admits — Markdown, ontology, delimited and RTF included — so a
+text kind added later is not silently left out.
+
 ## What still needs `conversationFileOpener`
 
 This package renders the File tab and can be driven by anything that

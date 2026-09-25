@@ -21,7 +21,7 @@ dsh plugin --profile web-app add @deepseek-ai/dsh-web-app   # first
 dsh plugin --profile web-app add dsh-plugins-bundle-workspace-git   # second
 ```
 
-`cordis.patch.yml` disables two existing rows and inserts seven over the
+`cordis.patch.yml` disables four existing rows and inserts eight over the
 target profile's existing composition — no edit to `packages/bundle/base`
 or `packages/bundle/web-app` in the vendored harness:
 
@@ -33,8 +33,23 @@ or `packages/bundle/web-app` in the vendored harness:
 - `ui-conversation` (`disabled: true`) — `dsh-client-ui-conversation`'s own
   conversation-shell registration, turned off the same way so
   `conversation-enhanced` (below) can take over without conflicting.
+- `ui-sidebar-files` (`disabled: true`) — the upstream file tree in the
+  right Sidebar. The one row here **retired** rather than replaced: nothing
+  is inserted in its place, because this bundle already draws a file tree in
+  the left Sidebar and two trees disagreeing about one directory is not a
+  feature. Everything it carried now lives in `workspace-files-node`,
+  `workspace.files` keystroke included. What was genuinely given up with it
+  (its tab type and its Start-page guide tile) is recorded under
+  `retirements` in `scripts/replacement-parity.json`, which also asserts the
+  row still exists upstream so the disable cannot decay into a no-op.
+- `ui-sidebar-documentpreview` (`disabled: true`) — the file preview engine
+  (text, code, Markdown, HTML, image, PDF, Office, spreadsheet grid), turned
+  off so `document-host` (below) can run that plugin's own `apply()` and
+  draw it in the File tab instead. No renderer is forked.
 - `workspace-file-controller` / `workspace-git-controller` — the two Host
-  Typert RPC namespaces. Both declare `static inject = ['workspaceRegistry']`,
+  Typert RPC namespaces. Both declare `workspaceRegistry` in their
+  `static inject` (the file controller also takes `fs`, which its
+  `watchDirectory` stream resolves and watches targets through),
   resolved by the target profile's own `web-app` bundle (its `workspace` row)
   — this bundle does **not** mount `@deepseek-ai/dsh-workspace` itself.
   `dsh-plugins-bundle-anthropic-subscription`'s `authorization-seam` row is
@@ -49,6 +64,13 @@ or `packages/bundle/web-app` in the vendored harness:
   always falling back to its own in-app preview modal.
 - `conversation-files` — the File tab, into the pristine `conversation.view`
   slot (no upstream diff needed for the tab itself).
+- `document-host` — the relocated preview engine: it runs
+  `ui-sidebar-documentpreview`'s own `apply()` and redirects one
+  registration, so every renderer that row had (and every one a later
+  release adds) draws in the File tab's document seat. Also re-exports that
+  row's **Host** half, so the `__DSH_DOCUMENT_PREVIEW_CONFIG__` page
+  injection its cache limits come from survives the row being disabled.
+  Ordered after `conversation-files`, which declares the seat it fills.
 - `workspace-files-node` — the sidebar Files tree and its optional
   `workspaceFilesNode` Context service.
 - `workspace-enhanced` — consumes that service and renders the Files row;

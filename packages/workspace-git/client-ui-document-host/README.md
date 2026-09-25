@@ -44,6 +44,39 @@ Two things are added:
   the engine already does those at least as well, and a second implementation
   at `extension` priority would silently outrank the better one.
 
+## The Host half, which is not browser code
+
+`ui-sidebar-documentpreview` is a Client package with a Host half as well as
+a browser one: its `.` entry embeds the validated preview settings in the
+served page (`webserver/index-inject` pushes
+`__DSH_DOCUMENT_PREVIEW_CONFIG__`), and that global is where the browser
+engine reads its office/excel cache limits.
+
+Disabling the row switches that off too. A no-op `.` export here — the shape
+every other Client package in this repo uses — would therefore have pinned
+those limits to their schema defaults with no way to configure them: a
+replacement registering strictly less than the row it replaced, which
+CONSTITUTION.md Article III forbids.
+
+So `./src/index.ts` re-exports that package's own `apply` and `Config`
+unchanged, rather than reimplementing either. The schema, its defaults and
+the injected global stay upstream's, pin bumps included. Only the settings
+key moves: a profile configures `document-host` where it configured
+`ui-sidebar-documentpreview`.
+
+Importing it there is Host-safe — that module's graph is a config schema and
+one event handler, with no CSS Module or browser API in it. The reason this
+package's *browser* code still lives under `./client` is unchanged, and is
+explained in `./src/client/index.ts`.
+
+Check it the way it was checked here, from a real boot rather than by
+reading the row list:
+
+```sh
+curl -s -L -c /tmp/j -b /tmp/j "http://127.0.0.1:3080/?token=<token>" \
+  | grep -o "__DSH_DOCUMENT_PREVIEW_CONFIG__[^;]*"
+```
+
 ## The build contract this inherits
 
 Inlining that engine means inheriting the build-time inputs its own
