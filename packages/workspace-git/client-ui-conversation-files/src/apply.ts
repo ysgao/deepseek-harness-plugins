@@ -76,6 +76,9 @@ export function apply(ctx: Context): void {
   // Held here, in apply(), because both entries resolve their session's store
   // from the same instance — see ./mode-store.ts.
   const modeStores = new FileModeStores()
+  // One injected face per session — see the `inject` below for why identity
+  // stability is load-bearing here rather than a micro-optimisation.
+  const faces = new Map<SessionId, FileViewInjected>()
 
   // The File tab's own controls, drawn inside the relocated preview engine's
   // header toolbar: upstream declares `sidebar.right.tab.document.actions`
@@ -150,9 +153,20 @@ export function apply(ctx: Context): void {
         inject: { hooks: { tabInfo: fileDocumentTabInfoFactory } },
       },
     },
+    // Cached per session, and deliberately so. The framework calls this on
+    // every render, and a fresh object here means fresh `fileAddress`,
+    // `readFile` and `writeFile` identities every time — which churns
+    // `FileView`'s `documentContext` memo, hands every relocated body a new
+    // `useTabInfo()` answer on each render, and re-fires effects keyed on it.
+    // The spreadsheet grid does exactly that, and looped until React gave up
+    // with "Maximum update depth exceeded" (#185), crashing the slot entry.
+    // Nothing in this face varies with anything but the session, so one
+    // instance per session is both correct and stable.
     inject: (sessionId: SessionId): FileViewInjected => {
+      const cached = faces.get(sessionId)
+      if (cached !== undefined) return cached
       const modeStore = modeStores.for(sessionId)
-      return {
+      const face: FileViewInjected = {
         readFile: (workspaceId, path, signal) => {
           const owner = resolveWorkspaceId(sessionId, workspaceId)
           if (owner === undefined) {
@@ -200,6 +214,8 @@ export function apply(ctx: Context): void {
         releaseModeStore: () => { modeStores.release(sessionId, modeStore) },
         tFiles,
       }
+      faces.set(sessionId, face)
+      return face
     },
   }, FileView))
 }

@@ -22,6 +22,7 @@
  * package's implementation id to dispatch on.
  * @module dsh-plugins-client-ui-conversation-files/document-seat
  */
+import { useMemo } from 'react'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { PaneId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { SlotHookFactory } from '@deepseek-ai/dsh-client-ui-slots'
@@ -93,7 +94,15 @@ export const fileDocumentTabInfoFactory: SlotHookFactory<'conversation.file.docu
 ) => {
   const { tab, navigation, visible, signal, actions, shortcuts } = context
   return function useTabInfo() {
-    return {
+    // Memoized, and not as an optimization. A body reads this on every
+    // render and keys effects off the objects in it; returning fresh
+    // literals re-fires those effects, and a body that sets state in one
+    // never settles. The spreadsheet grid did exactly that until the tab
+    // stopped churning the context beneath it (see ./apply.ts), and React
+    // ended it with "Maximum update depth exceeded" (#185). Stable
+    // identities here mean a body cannot be driven into that loop again by
+    // a caller that re-renders more often than upstream's own Sidebar does.
+    return useMemo(() => ({
       // `expanded: true` is a statement of fact, not a default: a body is
       // only rendered here while the File tab is mounted, and a mounted File
       // tab is on screen. Bodies that skip work while collapsed would
@@ -108,6 +117,6 @@ export const fileDocumentTabInfoFactory: SlotHookFactory<'conversation.file.docu
         actions,
         refreshShortcut: shortcuts.find(row => row.id === 'page.refresh'),
       },
-    }
+    }), [tab, navigation, visible, signal, actions, shortcuts])
   }
 }
