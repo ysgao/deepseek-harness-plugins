@@ -43,6 +43,7 @@ import { fileDocumentTabInfoFactory } from './document-seat.ts'
 import { createExternalOpenAction } from './ExternalOpenAction.tsx'
 import { FileActions, type FileActionsProps } from './FileActions.tsx'
 import { FileView, type FileViewInjected } from './FileView.tsx'
+import { registerTextViewers } from './text-viewers.tsx'
 import { FileModeStores } from './mode-store.ts'
 import { en, zh } from './locales.ts'
 
@@ -75,6 +76,12 @@ export function apply(ctx: Context): void {
   // view publishes into it, and the document-toolbar entry reads it back.
   // Held here, in apply(), because both entries resolve their session's store
   // from the same instance — see ./mode-store.ts.
+  // This package's own text views of the Open XML formats, offered to the
+  // relocated engine as alternatives its viewer menu can always reach — see
+  // ./text-viewers.tsx, including why they are registered from here rather
+  // than from the document host.
+  registerTextViewers(ctx, NS, tFiles)
+
   const modeStores = new FileModeStores()
   // One injected face per session — see the `inject` below for why identity
   // stability is load-bearing here rather than a micro-optimisation.
