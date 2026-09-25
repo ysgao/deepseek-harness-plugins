@@ -135,12 +135,48 @@
   color: var(--dsw-alias-label-primary);
 }
 
-/* The diff's own meaning-carrying colors: removed on the error token, added
-   on the success token — the same tokens DiffBlock uses. */
+/* The diff's own meaning-carrying fill: a whole-row background tint plus a
+   colored gutter with a left-edge accent bar, matching the tokens and the
+   visual language `dsh-client-ui-deliverables`'s own turn-review `FileDiff`
+   draws its comparison with (`--dsw-alias-file-diff-*`), so both surfaces
+   read as the same kind of diff. Background, not just text color: a
+   changed row has to be findable at a glance, before a reader focuses on
+   its text. */
 .del {
-  color: var(--dsw-alias-state-error-primary);
+  --dsl-sbs-diff-marker: var(--dsw-alias-file-diff-deleted-marker);
+  background: var(--dsw-alias-file-diff-deleted-bg);
 }
 
 .add {
-  color: var(--dsw-alias-state-success-primary);
+  --dsl-sbs-diff-marker: var(--dsw-alias-file-diff-added-marker);
+  background: var(--dsw-alias-file-diff-added-bg);
+}
+
+/* The gutter half of a marked row: its own fill (denser than the content
+   half, matching FileDiff's `--diff-gutter-fill`) plus an inset accent bar
+   on the side's own left edge — the old side's gutter is the row's first
+   cell, the new side's is its third (the divider sits between them as a
+   sibling, not a row child). */
+.del.gutter {
+  background: var(--dsw-alias-file-diff-deleted-gutter);
+  color: var(--dsl-sbs-diff-marker);
+}
+
+.add.gutter {
+  background: var(--dsw-alias-file-diff-added-gutter);
+  color: var(--dsl-sbs-diff-marker);
+}
+
+.row .gutter:first-child.del,
+.row .gutter:nth-child(3).del,
+.row .gutter:first-child.add,
+.row .gutter:nth-child(3).add {
+  box-shadow: inset 3px 0 0 var(--dsl-sbs-diff-marker);
+}
+
+/* The unpaired side of a replacement row (an add with no matching del line,
+   or vice versa): a flat fill reading as "no line here", not blank space
+   that looks like a rendering gap. */
+.empty {
+  background: var(--dsw-alias-interactive-bg-hover);
 }

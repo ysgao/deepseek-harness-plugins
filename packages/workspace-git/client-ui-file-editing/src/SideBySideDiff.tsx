@@ -4,15 +4,24 @@
 // removed-then-added chat card). Unlike DiffBlock/ReadBlock this shows the
 // WHOLE file, not a context-limited hunk or a height-capped window: it is
 // already the file's own dedicated view, so there is nothing to collapse.
-// No syntax highlighting, matching DiffBlock's own choice for the same
-// reason: a diff's meaning-carrying color (removed/added) already competes
-// for the reader's attention. Colors resolve through --dsw-* tokens.
-
+//
+// Syntax-highlighted and row-filled the same way the right Sidebar's turn
+// "Edited <file>" review draws its own comparison (`dsh-client-ui-
+// deliverables`'s `FileDiff`/`TextDiff`): a whole-line background tint plus a
+// colored gutter accent bar on add/del rows (not just tinted text), an empty-
+// row fill on the unpaired side, and per-token highlighting via the same
+// shared `useCodeHighlighter`/`languageForPath` primitives that component
+// uses — so a diff reads as source code with changes marked, not as two
+// columns of plain text. All colors resolve through the same --dsw-alias-
+// file-diff-* tokens `FileDiff` reads, so the two views agree visually.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import clsx from 'clsx'
 import { diffLines } from 'diff'
-import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  languageForPath, useCodeHighlighter, writeClipboard,
+} from '@deepseek-ai/dsh-client-ui-primitives'
+import type { CodeHighlighter, HighlightSpan } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useSplitRatio } from './useSplitRatio.ts'
 import css from './SideBySideDiff.module.css'
 
@@ -128,6 +137,36 @@ function buildRows(oldText: string | null, newText: string | null): DiffRow[] {
 }
 
 /**
+ * Highlight one side's cells as one fragment, in row order.
+ *
+ * Mirrors `dsh-client-ui-deliverables`'s own `FileDiff.tsx#highlightedSide`:
+ * the highlighter tokenizes a whole fragment at once (shiki's grammars are
+ * not line-callable), so every present cell's text on this side is joined by
+ * `\n` in row order and the returned per-line token lists are indexed back
+ * onto their originating rows by position. An absent cell (the other side's
+ * unpaired line) contributes nothing to the fragment and is skipped when
+ * mapping results back, so gutter/row indices never need adjusting for it.
+ * @param rows - the full row set (both sides read from the same array).
+ * @param side - which side's cells to extract and highlight.
+ * @param highlighter - the shared per-fragment tokenizer.
+ * @returns each present row's spans, indexed by its position in `rows`; `undefined` while the grammar is loading or unsupported (falls back to plain text).
+ */
+function highlightedSide(rows: readonly DiffRow[], side: 'old' | 'new', highlighter: CodeHighlighter): ReadonlyMap<number, readonly HighlightSpan[]> | undefined {
+  const present = rows.flatMap((row, index) => row[side].text === null ? [] : [{ index, text: row[side].text }])
+  if (present.length === 0) return new Map()
+  const tokenized = highlighter(present.map(cell => cell.text).join('\n'))
+  if (tokenized === undefined) return undefined
+  return new Map(present.map((cell, position) => [cell.index, tokenized[position] ?? []]))
+}
+
+/** One line's text, plain or tokenized — same rendering vendor's `FileDiff`'s `DiffText` uses. */
+function DiffText({ text, spans }: { text: string; spans: readonly HighlightSpan[] | undefined }): ReactNode {
+  return spans === undefined
+    ? <>{text}</>
+    : <>{spans.map((span, index) => <span key={index} style={span.style}>{span.text}</span>)}</>
+}
+
+/**
  * The diff text a reader copies: a unified `-`/`+`/` ` prefixed line per row
  * side, in file order — the same convention `DiffBlock`'s copy control uses.
  * @param rows - the aligned rows.
@@ -162,6 +201,11 @@ const CELL_CLASS: Record<DiffCell['tone'], string | undefined> = {
  */
 export function SideBySideDiff({ path, oldText, newText, className, labels }: SideBySideDiffProps) {
   const rows = useMemo(() => buildRows(oldText, newText), [oldText, newText])
+  const highlighter = useCodeHighlighter(languageForPath(path ?? ''))
+  const highlights = useMemo(
+    () => ({ old: highlightedSide(rows, 'old', highlighter), new: highlightedSide(rows, 'new', highlighter) }),
+    [rows, highlighter],
+  )
   const [copied, setCopied] = useState(false)
   const { ratio, dividerProps } = useSplitRatio()
   const copiedTimerRef = useRef<number | undefined>(undefined)
@@ -204,10 +248,14 @@ export function SideBySideDiff({ path, oldText, newText, className, labels }: Si
         />
         {rows.map((row, index) => (
           <div key={index} className={css.row}>
-            <span className={css.gutter} aria-hidden>{row.old.number ?? ''}</span>
-            <span className={clsx(css.content, CELL_CLASS[row.old.tone])}>{row.old.text ?? ''}</span>
-            <span className={css.gutter} aria-hidden>{row.new.number ?? ''}</span>
-            <span className={clsx(css.content, CELL_CLASS[row.new.tone])}>{row.new.text ?? ''}</span>
+            <span className={clsx(css.gutter, CELL_CLASS[row.old.tone], row.old.text === null && css.empty)} aria-hidden>{row.old.number ?? ''}</span>
+            <span className={clsx(css.content, CELL_CLASS[row.old.tone], row.old.text === null && css.empty)}>
+              <DiffText text={row.old.text ?? ''} spans={row.old.text === null ? undefined : highlights.old?.get(index)} />
+            </span>
+            <span className={clsx(css.gutter, CELL_CLASS[row.new.tone], row.new.text === null && css.empty)} aria-hidden>{row.new.number ?? ''}</span>
+            <span className={clsx(css.content, CELL_CLASS[row.new.tone], row.new.text === null && css.empty)}>
+              <DiffText text={row.new.text ?? ''} spans={row.new.text === null ? undefined : highlights.new?.get(index)} />
+            </span>
           </div>
         ))}
       </div>
