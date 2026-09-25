@@ -30,6 +30,14 @@
  * the Open XML containers only, so a registration for them would publish a
  * viewer that always fails. Those keep the engine's Host-side conversion,
  * which does read them.
+ *
+ * Plain text, code, Markdown, images and PDF are absent for a different
+ * reason: the engine draws them well and rarely refuses, so a second entry
+ * in the viewer menu of every text file opened would be mostly noise.
+ * Adding them is a deliberate future step rather than an oversight — the
+ * components are already in this bundle, so each is one more row in the
+ * table below, and `FilePreview` can take its text straight from the
+ * owner's `content` without this package reading the file again.
  * @module dsh-plugins-client-ui-conversation-files/text-viewers
  */
 import type { ReactNode } from 'react'

@@ -603,6 +603,16 @@ The registrations themselves are in
 `client-ui-conversation-files/src/text-viewers.tsx`, which also explains why
 they live in that package rather than in the document host.
 
+**Not yet complete, and deliberately left so.** The alternatives cover
+`.docx`, `.xlsx`/`.xls`, `.pptx` and `.csv`/`.tsv`, and this bundle's
+ontology and RTF viewers are the default for their formats. Plain text,
+code, Markdown, images and PDF have the engine as their only viewer: those
+are the formats it draws well and rarely refuses, so the menu entry would
+mostly be noise on every text file opened. Completing it is cheap when it is
+wanted — the components are already in this bundle, so it is more entries in
+the same table — and the arrangement above is what says it would be correct
+to add.
+
 #### File tab controls: one toolbar, two mount points
 
 Relocating the engine into the File tab left the file with two rows of
