@@ -18,7 +18,12 @@ import { Button, Modal, writeClipboard } from '@deepseek-ai/dsh-client-ui-primit
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceFileContent } from 'dsh-plugins-api-workspace-file-controller/types'
-import { FilePreview, isContentMismatch, isTextKind } from 'dsh-plugins-client-ui-file-editing'
+// Deep imports, never the barrel — see the same note in
+// ../../client-ui-conversation-files/src/FileView.tsx. This modal is the
+// fallback for a file that could not be docked into a File tab, so its
+// preview graph should not be on the boot path either.
+import { LazyFilePreview } from 'dsh-plugins-client-ui-file-editing/src/LazyFilePreview.tsx'
+import { isContentMismatch, isTextKind } from 'dsh-plugins-client-ui-file-editing/src/kinds.ts'
 import type { FilePreviewLabels, FilePreviewState } from 'dsh-plugins-client-ui-file-editing'
 import { langFromPath, viewerKindFor } from './classify.ts'
 import css from './FileViewer.module.css'
@@ -223,7 +228,8 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
 
   return (
     <Modal open onClose={onClose} title={basename(path)} closeLabel={t('files.viewer.close')} footer={footer}>
-      <FilePreview
+      <LazyFilePreview
+        contentMismatch={isContentMismatch(kind, previewState)}
         className={css.body}
         path={path}
         kind={kind}

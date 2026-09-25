@@ -32,7 +32,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InjectFace, PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import { FileEditor, FilePreview, isContentMismatch, isTextKind, SideBySideDiff } from 'dsh-plugins-client-ui-file-editing'
+// Deep imports, never the barrel: it re-exports `FilePreview`, whose graph
+// pulls mammoth, pdfjs-dist, jszip and xlsx — megabytes this tab downloads
+// on every boot to serve a fallback that, with the document host composed
+// in, almost never renders. `FileEditor` and `SideBySideDiff` are light
+// (CodeMirror and `diff`), and `./kinds.ts` holds no renderer at all.
+import { FileEditor } from 'dsh-plugins-client-ui-file-editing/src/FileEditor.tsx'
+import { LazyFilePreview } from 'dsh-plugins-client-ui-file-editing/src/LazyFilePreview.tsx'
+import { SideBySideDiff } from 'dsh-plugins-client-ui-file-editing/src/SideBySideDiff.tsx'
+import { isContentMismatch, isTextKind } from 'dsh-plugins-client-ui-file-editing/src/kinds.ts'
 import type {
   FileEditorResizeLabels, FilePreviewLabels, FilePreviewState, SideBySideDiffLabels,
 } from 'dsh-plugins-client-ui-file-editing'
@@ -569,7 +577,8 @@ export function FileView({
   // still draws whenever the document seat is empty — `dsh-plugins-client-ui-
   // document-host` not composed in, or composed in and declining this file.
   const ownPreview = (
-    <FilePreview
+    <LazyFilePreview
+      contentMismatch={isContentMismatch(kind, state)}
       className={css.body}
       path={openedPath}
       kind={kind}
@@ -644,7 +653,15 @@ export function FileView({
           ? ownPreview
           : renderSlot('conversation.file.document', {}, { hookContext: documentContext, fallback: ownPreview })
       )}
-      {mode === 'view' && showsExternalOnly && (
+      {/* Only under this tab's OWN preview. When the document seat is
+          filled, the engine decides what it can render — and it renders far
+          more than this package classifies (legacy `.doc`/`.ppt` among
+          them, host-converted), so keying the offer off `classify.ts` put
+          an "open externally" button under files that had just previewed
+          perfectly well. Where the engine genuinely has nothing to show it
+          says so, and `ExternalOpenAction` makes the same offer there, in
+          the empty state upstream reserves for it. */}
+      {mode === 'view' && showsExternalOnly && documentContext === null && (
         <div className={css.footer}>
           <Button variant="outline" onClick={() => { void openPath(openedPath) }}>
             {tFiles('files.viewer.openExternally')}

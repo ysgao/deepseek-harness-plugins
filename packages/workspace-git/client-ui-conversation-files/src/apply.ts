@@ -40,6 +40,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/src/client/document/contract.ts'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import { fileDocumentTabInfoFactory } from './document-seat.ts'
+import { createExternalOpenAction } from './ExternalOpenAction.tsx'
 import { FileActions, type FileActionsProps } from './FileActions.tsx'
 import { FileView, type FileViewInjected } from './FileView.tsx'
 import { FileModeStores } from './mode-store.ts'
@@ -94,6 +95,21 @@ export function apply(ctx: Context): void {
       t: tFiles,
     }),
   }, FileActions))
+
+  // "Open with default app", in the engine's own unpreviewable empty state.
+  // Upstream declares that slot and registers nothing into it; without this
+  // the File tab would have no offer at all for a file the engine cannot
+  // render (an archive, a video, a font), since the tab's own footer is now
+  // drawn only under its own preview. Through `slots.inject`, so a
+  // composition with no document host simply keeps that footer.
+  const openExternally = createExternalOpenAction({
+    openPath: (path) => { void unwrap(ctx.remote.session.openWorkspacePath({ path }, undefined)) },
+    label: () => tFiles('files.viewer.openExternally'),
+  })
+  ctx.slots.inject('sidebar.right.tab.document.unpreviewable', () => ctx.slots.register({
+    name: 'sidebar.right.tab.document.unpreviewable',
+    id: 'conversation-files.open-externally',
+  }, openExternally))
 
   // Re-fetched on every call, not cached at apply() time: `workspaces` is an
   // optional cross-package service that may not have registered yet when

@@ -11,7 +11,15 @@
  */
 export { FileEditor } from './FileEditor.tsx'
 export type { FileEditorProps, FileEditorResizeLabels } from './FileEditor.tsx'
-export { FilePreview, isContentMismatch, isTextKind } from './FilePreview.tsx'
+export { FilePreview } from './FilePreview.tsx'
+// From ./kinds.ts, the module that holds no renderer — see its doc comment.
+// Importing these two through this barrel still costs a consumer the whole
+// preview graph, because the barrel re-exports `FilePreview` above; a
+// consumer that wants only the classification should deep-import
+// `./src/kinds.ts` instead.
+export { isContentMismatch, isTextKind } from './kinds.ts'
+export { LazyFilePreview } from './LazyFilePreview.tsx'
+export type { LazyFilePreviewProps } from './LazyFilePreview.tsx'
 export type {
   DelimitedLabels, FilePreviewKind, FilePreviewLabels, FilePreviewProps, FilePreviewState, FileTextKind, RtfLabels,
 } from './FilePreview.tsx'
