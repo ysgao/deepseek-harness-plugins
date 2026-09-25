@@ -39,6 +39,7 @@ export const zh = {
   'files.edit.conflict': '文件已在磁盘上被修改，无法保存。',
   'files.edit.reload': '放弃更改并重新加载',
   'files.edit.saveError': '保存失败，请重试。',
+  'files.edit.unsaved': '有未保存的更改',
   'files.edit.resizeAria': '调整预览大小',
   'files.edit.resizeTitle': '拖动以调整大小，双击重置',
 } satisfies Record<string, string>
@@ -73,6 +74,7 @@ export const en = {
   'files.edit.conflict': 'This file changed on disk and can’t be saved.',
   'files.edit.reload': 'Discard changes and reload',
   'files.edit.saveError': 'Save failed. Try again.',
+  'files.edit.unsaved': 'Unsaved changes',
   'files.edit.resizeAria': 'Resize preview',
   'files.edit.resizeTitle': 'Drag to resize, double-click to reset',
 } satisfies Record<ConversationFilesKey, string>

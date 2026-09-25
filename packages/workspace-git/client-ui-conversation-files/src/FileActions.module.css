@@ -34,3 +34,7 @@
   cursor: pointer;
   font: inherit;
 }
+
+.unsaved {
+  color: var(--dsw-alias-state-warn-primary);
+}

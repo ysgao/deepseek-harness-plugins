@@ -87,6 +87,13 @@ export function FileActions({ store, owner, t }: FileActionsProps) {
           </Button>
         </>
       )}
+      {/* The unsaved marker the tab's own header carries beside the path.
+          Repeated here because that header is not drawn while the engine's
+          is (see FileView), and a pending draft is worth seeing from View
+          mode, where Save is not offered. */}
+      {state.dirty && state.mode !== 'edit' && (
+        <span className={css.unsaved} aria-label={t('files.edit.unsaved')}> •</span>
+      )}
       <div className={css.modeToggle}>
         <Button variant={state.mode === 'view' ? 'primary' : 'ghost'} onClick={() => { run('setMode')('view') }}>
           {t('files.diff.view')}

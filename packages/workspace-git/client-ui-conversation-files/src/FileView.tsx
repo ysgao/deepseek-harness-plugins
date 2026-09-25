@@ -567,20 +567,24 @@ export function FileView({
 
   return (
     <div className={css.root}>
-      <div className={css.header}>
-        <span className={css.path}>
-          {openedPath}
-          {hasDraft && <span className={css.unsaved} aria-hidden> •</span>}
-        </span>
-        <div className={css.headerActions}>
-          {/* The same controls the preview engine's toolbar draws, drawn here
-              instead whenever that toolbar is not on screen to draw them —
-              Edit and Diff modes, and any composition without the document
-              host. `FileActions` reads the store this tab publishes to, so
-              the two mounts are never out of step. */}
-          {!hostedByEngine && <FileActions store={modeStore} owner="tab" t={tFiles} />}
+      {/* Drawn only when the preview engine's own header is not on screen —
+          Edit and Diff modes, and any composition without the document host.
+          While that header IS drawing, it already carries this file's
+          `PathLabel` and, through the actions slot, these same controls; a
+          row here too would just repeat the path above its own toolbar.
+          `FileActions` reads the store this tab publishes to, so the two
+          mounts are never out of step. */}
+      {!hostedByEngine && (
+        <div className={css.header}>
+          <span className={css.path}>
+            {openedPath}
+            {hasDraft && <span className={css.unsaved} aria-hidden> •</span>}
+          </span>
+          <div className={css.headerActions}>
+            <FileActions store={modeStore} owner="tab" t={tFiles} />
+          </div>
         </div>
-      </div>
+      )}
       {mode === 'diff' && (
         <div className={css.body}>
           {diffState.phase === 'loading' && <p className={css.diffNotice}>{tFiles('files.viewer.loading')}</p>}
