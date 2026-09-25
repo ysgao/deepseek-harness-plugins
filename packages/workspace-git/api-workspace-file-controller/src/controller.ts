@@ -86,9 +86,14 @@ function mapFileError(error: unknown): never {
  * Host service backing the generated `ctx.remote['workspace-files']` namespace.
  */
 export class WorkspaceFileController extends TypertRemoteService {
-  // `fs` joins `workspaceRegistry` for `watchDirectory` alone: the change
-  // feed resolves and watches targets through it.
-  static inject = ['workspaceRegistry', 'fs']
+  // Only `workspaceRegistry`, deliberately. `watchDirectory` needs `fs`
+  // too, but a Cordis `inject` list is service-wide: naming `fs` here would
+  // withhold `listEntries`, `readFile`, `writeFile` and `gitFileDiff` as
+  // well wherever no filesystem service is composed in, so the Files tree
+  // and the File tab would degrade to nothing rather than to "no live
+  // watching". `watchDirectory` resolves it optionally instead, and refuses
+  // on its own terms.
+  static inject = ['workspaceRegistry']
 
   static Config: z<Config> = z.object({
     maxEntries: z.natural().default(DEFAULT_MAX_ENTRIES),
@@ -237,6 +242,13 @@ export class WorkspaceFileController extends TypertRemoteService {
   async *watchDirectory(request: WorkspaceWatchDirectoryRequest, signal: AbortSignal): AsyncIterable<WorkspaceDirectoryWatchFrame> {
     const root = requireWorkspacePath(this.ctx, request.workspaceId)
     const path = await this.requireContainedPath(request.workspaceId, request.path)
+    // Resolved per call rather than through `static inject` — see the
+    // comment on that list. The feed reads `ctx.fs` when it follows a
+    // target, so without one this endpoint is the only thing that cannot
+    // answer, and it says so in the vocabulary the client already handles.
+    if (this.ctx.get('fs') === undefined) {
+      throw new RemoteError('workspace-files/watch-unsupported', 'no filesystem service is composed in', { path })
+    }
     try {
       for await (const frame of this.feed.follow(root, path, signal)) {
         // The change detail the feed carries (absolute path, version, or

@@ -17,13 +17,24 @@ to be here. What moved in:
   `workspace-files.watchDirectory` — this repo's own **workspace-scoped**
   stream, not the Session-scoped `workspaceFiles.changes` the retired tree
   used, because this tree is drawn for a selected Workspace whether or not a
-  Session was ever started in it.
+  Session was ever started in it. The subscription is a loop, not a single
+  call: a supervised Remote stream throws when its generation *ends* as well
+  as when it fails, so a level re-subscribes with backoff (0.5s doubling to
+  30s) and re-reads on the way back, rather than going quietly un-watched
+  for the rest of its mount after a host reconnect. The one refusal it
+  believes is `workspace-files/watch-unsupported`, which is the filesystem
+  saying this target cannot be watched at all; the level then keeps its
+  listing and Reload keeps working.
 - **Auto-refresh pause/resume, and reload.** Tree-wide, not per level:
   pausing is a statement about this tree's appetite for churn during a build
   or a checkout, and a reader who pauses one level and forgets the other
   three has paused nothing. Resuming re-reads immediately rather than making
   the reader ask twice.
 - **Per-directory failure lines** instead of one generic "couldn't load".
+- **Reload re-reads in place.** It is a generation passed *down* to every
+  mounted level, not the root level's `key`: remounting the subtree would
+  collapse every open folder, which leaves nothing expanded for the re-read
+  the control promises.
 - **Directories-first natural name order** (`file2` before `file10`), moved
   Host-side into `listWorkspaceEntries`' own collator, so the wire order is
   already the reader's order.

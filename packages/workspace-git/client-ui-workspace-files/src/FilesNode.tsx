@@ -505,6 +505,32 @@ function failureLine(reason: unknown): FilesKey {
   }
 }
 
+/** Re-subscribe delay for the Nth consecutive failed or ended directory watch: 0.5s doubling to a 30s ceiling. */
+function backoffMs(attempt: number): number {
+  return Math.min(30_000, 500 * 2 ** attempt)
+}
+
+/**
+ * Wait, or resolve early when the caller is torn down.
+ * @param ms - delay.
+ * @param signal - aborted on unmount or path change.
+ * @returns a promise that settles either way; the caller re-checks `signal`.
+ */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    // The listener is removed whichever way this settles: the watch loop
+    // calls this once per retry on one long-lived signal, so leaving the
+    // timer's own listener attached would accumulate one per attempt.
+    const settle = (): void => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', settle)
+      resolve()
+    }
+    const timer = setTimeout(settle, ms)
+    signal.addEventListener('abort', settle, { once: true })
+  })
+}
+
 /**
  * Fetch one directory level, keep it current while it is on screen, and
  * report its settled state — aborting on unmount or path change. The caller
@@ -558,15 +584,38 @@ function useLevel(
     if (watch === undefined || !autoRefresh) return
     const controller = new AbortController()
     void (async () => {
-      try {
-        for await (const frame of watch(path, controller.signal)) {
-          if (controller.signal.aborted) return
-          if (frame === 'change') reload()
+      // Re-subscribed in a loop, because one subscription is not the same
+      // thing as watching. A supervised Remote stream throws when its
+      // generation ENDS as well as when it fails (`WorkspaceFilesNode`
+      // supplies the `ended` error), so a host reconnect or any transient
+      // drop used to leave this level permanently un-watched for the rest
+      // of its mount — while the header still read "Pause", promising live
+      // updates that were no longer arriving.
+      let attempt = 0
+      while (!controller.signal.aborted) {
+        try {
+          for await (const frame of watch(path, controller.signal)) {
+            if (controller.signal.aborted) return
+            // A generation that got as far as `ready` is a healthy watch;
+            // whatever ends it later starts its own backoff from zero
+            // rather than inheriting an older outage's.
+            if (frame === 'ready') attempt = 0
+            if (frame === 'change') reload()
+          }
+        } catch (error: unknown) {
+          // The one refusal worth believing: this filesystem cannot watch
+          // this target, and asking again will not change that. The level
+          // keeps its listing and Reload keeps working — a failure the
+          // reader cannot act on is not worth surfacing.
+          if (remoteErrorOf(error)?.code === 'workspace-files/watch-unsupported') return
         }
-      } catch {
-        // A watch this filesystem cannot provide costs the level nothing it
-        // had before: it keeps its listing, and Reload keeps working. The
-        // tree does not surface a failure the user cannot act on.
+        if (controller.signal.aborted) return
+        await sleep(backoffMs(attempt), controller.signal)
+        if (controller.signal.aborted) return
+        attempt += 1
+        // Whatever changed while nothing was watching is exactly what this
+        // level stopped seeing, so it re-reads before watching again.
+        reload()
       }
     })()
     return () => { controller.abort() }

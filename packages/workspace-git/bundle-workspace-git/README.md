@@ -47,9 +47,12 @@ or `packages/bundle/web-app` in the vendored harness:
   off so `document-host` (below) can run that plugin's own `apply()` and
   draw it in the File tab instead. No renderer is forked.
 - `workspace-file-controller` / `workspace-git-controller` — the two Host
-  Typert RPC namespaces. Both declare `workspaceRegistry` in their
-  `static inject` (the file controller also takes `fs`, which its
-  `watchDirectory` stream resolves and watches targets through),
+  Typert RPC namespaces. Both declare `static inject = ['workspaceRegistry']`
+  and nothing more: the file controller's `watchDirectory` also needs `fs`,
+  but it resolves that per call rather than naming it there, because an
+  `inject` list is service-wide and would withhold `listEntries`/`readFile`/
+  `writeFile`/`gitFileDiff` too wherever no filesystem service is composed
+  in. `workspaceRegistry` is
   resolved by the target profile's own `web-app` bundle (its `workspace` row)
   — this bundle does **not** mount `@deepseek-ai/dsh-workspace` itself.
   `dsh-plugins-bundle-anthropic-subscription`'s `authorization-seam` row is
