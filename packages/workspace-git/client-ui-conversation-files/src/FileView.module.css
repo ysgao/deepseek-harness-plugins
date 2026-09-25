@@ -98,6 +98,37 @@
   padding: 16px;
 }
 
+/*
+ * The relocated preview engine's seat.
+ *
+ * It gets the same flex slot the tab's own bodies get (`.body`), because a
+ * bare `renderSlot` child of this column is `flex: 0 1 auto` — it sizes to
+ * its content, and the engine's own root is written for the right Sidebar's
+ * pane, which always has a definite height. Text and Markdown survived that
+ * (their content has intrinsic height); the spreadsheet grid did not, and
+ * collapsed to zero — the workbook parsed, its notice appeared, and nothing
+ * was drawn.
+ *
+ * No padding, unlike `.body`: the engine draws its own header and toolbar
+ * and expects the full width, exactly as it has it in the Sidebar.
+ */
+.documentSeat {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The engine's root (or the fallback's) fills the seat rather than sizing to
+   its own content — this is what gives a `height: 100%` body something to be
+   100% of. */
+.documentSeat > * {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
 .empty {
   display: flex;
   align-items: center;

@@ -654,7 +654,11 @@ export function FileView({
       {mode === 'view' && (
         documentContext === null
           ? ownPreview
-          : renderSlot('conversation.file.document', {}, { hookContext: documentContext, fallback: ownPreview })
+          : (
+            <div className={css.documentSeat}>
+              {renderSlot('conversation.file.document', {}, { hookContext: documentContext, fallback: ownPreview })}
+            </div>
+          )
       )}
       {/* Only under this tab's OWN preview. When the document seat is
           filled, the engine decides what it can render — and it renders far
