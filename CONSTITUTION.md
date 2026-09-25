@@ -132,12 +132,45 @@ through a top-level `inject` array.
 a plugin to prove `dsh` survives it"), run whenever a plugin's mount, inject,
 or registration shape changes.
 
-## VI. Work lands on `main`, not through a pull request
+## VI. `main` is a running build, not a workspace
 
-This repository has one author, and a pull request against it has no reviewer
-but the person who wrote it. So a change is committed to `main` — directly, or
-by a local merge from a working branch that is never pushed. No pull request is
-opened against this repo, and no working branch reaches `origin`.
+The `dsh` that develops this repo *is* a build of this repo — the profile
+running this session's own GUI is composed from `main` as it stands right
+now. That is a live dependency, not a metaphor: a change committed to `main`
+mid-feature, before it builds and boots, can take down the very tool being
+used to write the rest of the feature. So `main` only ever holds a state
+that has actually been built and booted successfully; everything else
+happens on a branch.
+
+Concretely:
+
+- **All development happens on a branch**, created from `main`, never by
+  committing to `main` directly.
+- **The branch is built and boot-tested at a checkpoint before it merges** —
+  "Testing procedures" in ARCHITECTURE.md names what that means: `pnpm run
+  build`, the disposable-profile boot, and (for a replacement package or a
+  submodule pin) "Replacement parity". A commit that fails any of these is
+  fixed on the branch, not merged past.
+- **The branch does not merge to `main` until every feature it carries
+  works.** A branch may sit unmerged for as long as it needs to; a partial
+  or speculative state belongs on the branch, never on `main`, however long
+  that takes.
+- **The merge itself is local**, same as before: `git merge` (or `git
+  worktree` for parallel work), never a pull request. This repository has
+  one author, and a pull request against it has no reviewer but the person
+  who wrote it — see the unchanged reasoning below.
+
+This is what makes it safe to keep developing `dsh` and its plugins with the
+very `dsh` build this repo produces: `main` is always the last state proven
+to build and boot, so switching back to it (or starting a fresh session
+against it) never hands you a broken tool.
+
+### No pull request against this repo
+
+A pull request here has no reviewer but the person who wrote it, so a change
+still reaches `main` by commit — directly once proven on a branch, per
+above, never by opening a PR. No pull request is opened against this repo,
+and no working branch reaches `origin`.
 
 This says nothing about upstream. Article II's instruction to send an
 upstream-worthy change as a real pull request against
@@ -155,7 +188,11 @@ in its history.
 *Enforced by:* the observable state of `origin`, which carries exactly one
 branch, `main`. A working branch pushed to `origin`, or a pull request open
 against this repo, is itself the violation rather than evidence of one; the
-remedy is to merge the work locally and delete the branch.
+remedy is to merge the work locally and delete the branch. That `origin`
+check cannot see whether a *local* commit landed on `main` before or after
+its build/boot checkpoint — that half is enforced by discipline (this
+article) and by the plain fact that a broken `main` is immediately felt in
+the next session's own `dsh`, not by an automated gate.
 
 ---
 
