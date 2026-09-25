@@ -568,6 +568,41 @@ and `Config` unchanged. Only the settings key moves: a profile configures
 Verify it the way it was verified here — boot, fetch the page, and look for
 the global in the HTML, rather than trusting that the row loaded.
 
+#### Two implementations, one default
+
+The relocated engine is the default for every format it draws. This bundle's
+own viewers stay reachable beside it, for every format they support, whether
+or not the default worked — the toolbar's viewer menu is where the reader
+picks between them, and it appears precisely when more than one
+implementation matches a file.
+
+That is a deliberate arrangement, not a migration half-finished. It follows
+from what each side is good for. The engine renders far more than this
+bundle ever did — legacy `.doc`/`.ppt` converted Host-side, a real
+spreadsheet grid, PDF with a text layer — and it also refuses: a workbook
+over its cell limit, a conversion that fails, a format it has no body for.
+This bundle's viewers are the answer to that refusal, and they are also what
+runs when the engine is not composed in at all.
+
+Two rules keep it honest:
+
+- **Neither side is rewritten to accommodate the other.** The ported core
+  keeps its shape (`client-ui-document-host` runs upstream's own `apply()`
+  and redirects one registration; no renderer is forked), and this repo's
+  existing plugin keeps its own read, its editor and its save path. Where
+  they cannot be integrated cheaply, they are simply both present — the
+  duplicate read being the visible cost, and an accepted one.
+- **Alternatives register at `builtin`, never `extension`.** The engine
+  registers its bodies first, so at equal priority and equal matched-suffix
+  length it keeps the default and this bundle's viewer sits beside it.
+  `extension` is reserved for a format the engine has NO body for — the
+  ontology and RTF viewers — where outranking the plain-text fallback is the
+  entire point.
+
+The registrations themselves are in
+`client-ui-conversation-files/src/text-viewers.tsx`, which also explains why
+they live in that package rather than in the document host.
+
 #### File tab controls: one toolbar, two mount points
 
 Relocating the engine into the File tab left the file with two rows of
@@ -1161,11 +1196,22 @@ PR against `deepseek-ai/deepseek-harness`.
   demand, each registering itself under its own `chunk:` name. What remains
   is the one thing HTTP cannot answer — that a PDF, a spreadsheet and an
   image actually draw in the File tab.
-- **A previewed file is read twice.** `FileView` keeps its own read (Edit
-  and Diff need the text regardless), and the relocated engine performs its
-  own paged read of the same file. Harmless but wasteful; collapsing them
-  means the tab taking its text from the document owner's content, which is
-  a bigger change than this relocation was worth.
+- **A previewed file is read twice, and stays that way.** `FileView` keeps
+  its own read and the relocated engine performs its own paged read of the
+  same file. Listed here because it is worth knowing, not because it is
+  waiting to be fixed: it is what having two working implementations costs,
+  and the two reads are not interchangeable. The engine's is paged, for
+  renderers that draw what they are handed. This bundle's is one shot, which
+  is what its own Edit, Save and side-by-side Diff need, and what lets its
+  viewers window a 100 MB file (see `DEFAULT_MAX_READ_BYTES`).
+
+  Collapsing them would mean the tab taking its text from the document
+  owner's content — rewriting the path that already works, in the package
+  that is supposed to keep working when the engine does not, to save a read.
+  An earlier attempt at exactly this was abandoned mid-change on finding the
+  data-loss it opens: `FileEditor` is keyed per file and seeds its buffer
+  once at mount, so gating the read without also gating the editor mounts an
+  empty buffer that Save then writes over the file.
 - **Bundle install order.** `scripts/install-plugins.mjs`'s `BUNDLES` array
   is where this order is now written down and applied (`pnpm run build`
   runs it; it appends only what a profile is missing, and warns rather than
