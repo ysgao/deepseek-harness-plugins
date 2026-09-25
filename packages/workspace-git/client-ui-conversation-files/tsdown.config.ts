@@ -28,5 +28,11 @@ export default defineConfig([
     dts: false,
     clean: false,
   },
-  clientPluginBundle('dsh-plugins-client-ui-conversation-files', 'lib/types/client/index.js'),
+  // The file bodies (CodeMirror, mammoth, pdfjs-dist, jszip, xlsx) travel
+  // in one lazy chunk instead of this entry — see
+  // ../client-ui-file-editing/src/lazy.tsx. Nothing in the entry may share
+  // a module with that chunk, or rolldown hoists the shared part into a
+  // third chunk the entry requires synchronously, which the loader cannot
+  // resolve.
+  clientPluginBundle('dsh-plugins-client-ui-conversation-files', 'lib/types/client/index.js', { codeSplitting: true }),
 ])

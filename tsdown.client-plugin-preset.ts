@@ -181,6 +181,23 @@ function asyncChunkRequirePlugin() {
     ) {
       if (outputOptions.format !== 'cjs') return null
       const transformed = new Rolldown.RolldownMagicString(code)
+      // Rolldown also emits a BARE `require("./client.<name>.js");` at the
+      // top of a chunk that dynamically imports another — a side-effect
+      // import, meant to run the target's top-level code in module order.
+      // In this format that statement is always wrong: the loader's
+      // synchronous `require` THROWS for anything but a declared external
+      // ("missed the module table"), so it would fail the whole bundle at
+      // load; and the chunk it names is lazy by construction, so its side
+      // effects belong at `require.async` time, not before. Neutralizing it
+      // is what makes the chunk lazy instead of fatal.
+      //
+      // `require\(` matches only the bare call: `require.async(` has no `(`
+      // straight after `require`, so the rewrite below never sees this.
+      const sideEffectRequire = /require\((['"])(\.\/client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js)\1\)/gu
+      for (const match of [...code.matchAll(sideEffectRequire)]) {
+        if (!CLIENT_CHUNK.test(match[2]!.slice(2))) continue
+        transformed.overwrite(match.index, match.index + match[0].length, 'void 0')
+      }
       for (const dynamicImport of chunk.dynamicImports) {
         const fileName = dynamicImport.startsWith('./') ? dynamicImport.slice(2) : dynamicImport
         if (!CLIENT_CHUNK.test(fileName)) continue

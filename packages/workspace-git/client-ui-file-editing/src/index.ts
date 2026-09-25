@@ -18,8 +18,10 @@ export { FilePreview } from './FilePreview.tsx'
 // consumer that wants only the classification should deep-import
 // `./src/kinds.ts` instead.
 export { isContentMismatch, isTextKind } from './kinds.ts'
-export { LazyFilePreview } from './LazyFilePreview.tsx'
-export type { LazyFilePreviewProps } from './LazyFilePreview.tsx'
+// The deferred bodies. A consumer wanting them off its boot path should
+// deep-import './src/lazy.tsx' rather than take them through this barrel,
+// which re-exports the eager components above.
+export { LazyFileEditor, LazyFilePreview, LazySideBySideDiff } from './lazy.tsx'
 export type {
   DelimitedLabels, FilePreviewKind, FilePreviewLabels, FilePreviewProps, FilePreviewState, FileTextKind, RtfLabels,
 } from './FilePreview.tsx'

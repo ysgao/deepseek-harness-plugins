@@ -22,7 +22,7 @@ import type { WorkspaceFileContent } from 'dsh-plugins-api-workspace-file-contro
 // ../../client-ui-conversation-files/src/FileView.tsx. This modal is the
 // fallback for a file that could not be docked into a File tab, so its
 // preview graph should not be on the boot path either.
-import { LazyFilePreview } from 'dsh-plugins-client-ui-file-editing/src/LazyFilePreview.tsx'
+import { LazyFilePreview } from 'dsh-plugins-client-ui-file-editing/src/lazy.tsx'
 import { isContentMismatch, isTextKind } from 'dsh-plugins-client-ui-file-editing/src/kinds.ts'
 import type { FilePreviewLabels, FilePreviewState } from 'dsh-plugins-client-ui-file-editing'
 import { langFromPath, viewerKindFor } from './classify.ts'
