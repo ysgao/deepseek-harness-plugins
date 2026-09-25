@@ -188,4 +188,22 @@ export class FileModeStores {
     this.bySession.set(sessionId, created)
     return created
   }
+
+  /**
+   * Drop a session's store once nothing is drawing its File tab.
+   *
+   * Called from the tab's own unmount. Without it this map is append-only
+   * for the life of the page, and a client that visits many conversations
+   * accumulates one store per conversation it ever opened. Re-entering a
+   * dropped session simply creates a fresh store, which is correct: the tab
+   * publishes its whole snapshot on mount.
+   * @param sessionId - the conversation whose File tab unmounted.
+   * @param store - the store that tab held, dropped only if it is still the
+   * one registered — a remount that already replaced it must not be evicted
+   * by the old tab's late cleanup.
+   */
+  release(sessionId: string, store: FileModeStore): void {
+    if (this.bySession.get(sessionId) !== store) return
+    this.bySession.delete(sessionId)
+  }
 }

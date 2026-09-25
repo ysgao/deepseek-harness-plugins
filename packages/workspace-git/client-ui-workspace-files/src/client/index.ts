@@ -111,17 +111,12 @@ export function apply(ctx: Context): void {
       resolve: () => ({
         status: 'handled',
         run: () => {
-          // The Sidebar may be collapsed, in which case no tree is on screen
-          // to answer. Ask first, then look: a tree that focused itself has
-          // a focused element inside the Sidebar, and one that could not is
-          // the signal to open it. Never an unconditional toggle — the face
-          // exposes only `toggleSidebar()`, which would close an already
-          // open Sidebar and hide the very thing being asked for.
-          reveal.request()
-          const revealed = typeof document !== 'undefined'
-            && document.activeElement instanceof HTMLElement
-            && document.activeElement.getBoundingClientRect().width > 0
-          if (revealed) return
+          // The Sidebar may be collapsed, in which case no tree is mounted
+          // to answer. Ask first, then act on how many did: zero is the
+          // signal to open the Sidebar. Never an unconditional toggle — the
+          // face exposes only `toggleSidebar()`, which would close an
+          // already open Sidebar and hide the very thing being asked for.
+          if (reveal.request() > 0) return
           ctx.get('layout')?.toggleSidebar()
           // The Sidebar mounts its tree in the same commit; the request that
           // found nothing is re-sent once it exists.

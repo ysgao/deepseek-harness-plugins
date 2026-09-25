@@ -134,47 +134,56 @@ export function apply(ctx: Context): void {
         inject: { hooks: { tabInfo: fileDocumentTabInfoFactory } },
       },
     },
-    inject: (sessionId: SessionId): FileViewInjected => ({
-      readFile: (workspaceId, path, signal) => {
-        const owner = resolveWorkspaceId(sessionId, workspaceId)
-        if (owner === undefined) {
-          return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
-        }
-        return unwrap(ctx.remote['workspace-files'].readFile({ workspaceId: owner, path }, signal))
-      },
-      openPath: async (path) => {
-        await unwrap(ctx.remote.session.openWorkspacePath({ path }, undefined))
-      },
-      getGitStatus: (workspaceId, signal) => {
-        const owner = resolveWorkspaceId(sessionId, workspaceId)
-        if (owner === undefined) {
-          return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
-        }
-        return unwrap(ctx.remote['workspace-git'].status({ workspaceId: owner }, signal))
-      },
-      getFileDiff: (workspaceId, path, signal) => {
-        const owner = resolveWorkspaceId(sessionId, workspaceId)
-        if (owner === undefined) {
-          return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
-        }
-        return unwrap(ctx.remote['workspace-files'].gitFileDiff({ workspaceId: owner, path }, signal))
-      },
-      writeFile: (workspaceId, path, content, expectedVersion, signal) => {
-        const owner = resolveWorkspaceId(sessionId, workspaceId)
-        if (owner === undefined) {
-          return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
-        }
-        return unwrap(ctx.remote['workspace-files'].writeFile({ workspaceId: owner, path, content, expectedVersion }, signal))
-          .then(value => value.version)
-      },
-      // The session the tab is drawn for is the session the address names:
-      // a document body reads its file through this address, and the file's
-      // workspace is resolved Host-side from that session.
-      fileAddress: path => fileAddressFor(sessionId, undefined, path),
-      // The same instance the document-toolbar entry above resolves for this
-      // session: that is what makes the two mounts one control.
-      modeStore: modeStores.for(sessionId),
-      tFiles,
-    }),
+    inject: (sessionId: SessionId): FileViewInjected => {
+      const modeStore = modeStores.for(sessionId)
+      return {
+        readFile: (workspaceId, path, signal) => {
+          const owner = resolveWorkspaceId(sessionId, workspaceId)
+          if (owner === undefined) {
+            return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
+          }
+          return unwrap(ctx.remote['workspace-files'].readFile({ workspaceId: owner, path }, signal))
+        },
+        openPath: async (path) => {
+          await unwrap(ctx.remote.session.openWorkspacePath({ path }, undefined))
+        },
+        getGitStatus: (workspaceId, signal) => {
+          const owner = resolveWorkspaceId(sessionId, workspaceId)
+          if (owner === undefined) {
+            return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
+          }
+          return unwrap(ctx.remote['workspace-git'].status({ workspaceId: owner }, signal))
+        },
+        getFileDiff: (workspaceId, path, signal) => {
+          const owner = resolveWorkspaceId(sessionId, workspaceId)
+          if (owner === undefined) {
+            return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
+          }
+          return unwrap(ctx.remote['workspace-files'].gitFileDiff({ workspaceId: owner, path }, signal))
+        },
+        writeFile: (workspaceId, path, content, expectedVersion, signal) => {
+          const owner = resolveWorkspaceId(sessionId, workspaceId)
+          if (owner === undefined) {
+            return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
+          }
+          return unwrap(ctx.remote['workspace-files'].writeFile({ workspaceId: owner, path, content, expectedVersion }, signal))
+            .then(value => value.version)
+        },
+        // The session the tab is drawn for is the session the address names:
+        // a document body reads its file through this address, and the file's
+        // workspace is resolved Host-side from that session.
+        fileAddress: path => fileAddressFor(sessionId, undefined, path),
+        // The same id `fileAddress` above stamps into every address this tab
+        // mints, so the tab can refuse one that names a different session.
+        sessionId,
+        // The same instance the document-toolbar entry above resolves for this
+        // session: that is what makes the two mounts one control.
+        modeStore,
+        // Dropped by identity, so a remount that already replaced this store
+        // is not evicted by the old tab's late cleanup.
+        releaseModeStore: () => { modeStores.release(sessionId, modeStore) },
+        tFiles,
+      }
+    },
   }, FileView))
 }

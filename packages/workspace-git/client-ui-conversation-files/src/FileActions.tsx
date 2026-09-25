@@ -87,11 +87,13 @@ export function FileActions({ store, owner, t }: FileActionsProps) {
           </Button>
         </>
       )}
-      {/* The unsaved marker the tab's own header carries beside the path.
-          Repeated here because that header is not drawn while the engine's
-          is (see FileView), and a pending draft is worth seeing from View
-          mode, where Save is not offered. */}
-      {state.dirty && state.mode !== 'edit' && (
+      {/* The unsaved marker the tab's own header carries beside the path —
+          drawn here only for the engine mount, which replaces that header.
+          The `tab` mount sits *inside* it, where the path already carries
+          its own marker, and drawing a second one there reads as "path • … •".
+          Outside Edit only: in Edit the Save button beside it already says
+          there is something to save. */}
+      {owner === 'engine' && state.dirty && state.mode !== 'edit' && (
         <span className={css.unsaved} aria-label={t('files.edit.unsaved')}> •</span>
       )}
       <div className={css.modeToggle}>

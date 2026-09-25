@@ -39,6 +39,7 @@ import type {
 import type { WorkspaceFileContent, WorkspaceFileVersion } from 'dsh-plugins-api-workspace-file-controller/types'
 import type { WorkspaceFileDiff } from 'dsh-plugins-api-workspace-file-controller/types'
 import type { WorkspaceGitStatus } from 'dsh-plugins-api-workspace-git-controller/types'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -86,12 +87,26 @@ export interface FileViewInjected {
    */
   fileAddress: (path: string) => string
   /**
+   * The session this tab is drawn for. Used to refuse a file address that
+   * names a *different* session: paths are resolved against this session's
+   * workspace, so opening another one's would read a different file at the
+   * same relative path, or fail with an error the reader cannot explain.
+   */
+  sessionId: SessionId
+  /**
    * This session's shared toolbar state. The tab publishes what it is
    * showing into it on every render; whichever mount of `FileActions` is
    * live — the preview engine's own header toolbar, or this tab's header —
    * reads it back. See `./mode-store.ts`.
    */
   modeStore: FileModeStore
+  /**
+   * Drop this session's store when the tab unmounts. Kept on the face
+   * rather than reached for through the store itself: the collection that
+   * owns the entry lives in `apply()`, and the tab should not have to know
+   * how stores are keyed to stop leaking one.
+   */
+  releaseModeStore: () => void
   /** Bound `conversation-files` locale translate function (this package's own namespace — see `../ARCHITECTURE.md`). */
   tFiles: TranslateNS<'conversation-files'>
 }
@@ -222,7 +237,7 @@ function stateFromError(error: unknown): FilePreviewState {
  */
 export function FileView({
   viewRequest, completeViewRequest, readFile, openPath, getGitStatus, getFileDiff, writeFile, fileAddress,
-  modeStore, renderSlot, tFiles, t,
+  sessionId, modeStore, releaseModeStore, renderSlot, tFiles, t,
 }: FileViewProps) {
   const filePreviewLabels: FilePreviewLabels = useMemo(() => ({
     markdown: { code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('markdown.footnotes') },
@@ -354,8 +369,11 @@ export function FileView({
           // Markdown relative link) stays in this tab, which is where the
           // reader is looking. An address this tab cannot show — another
           // session's file, a non-file resource — is declined rather than
-          // silently opening somewhere else.
-          if (file?.scope === 'session') setOpenedPath(file.path)
+          // silently opening somewhere else. The session comparison is the
+          // load-bearing half: this tab reads every path against its own
+          // session's workspace, so another session's address would resolve
+          // to the wrong file rather than to nothing.
+          if (file?.scope === 'session' && file.sessionId === sessionId) setOpenedPath(file.path)
         },
         // Page types are a right-Sidebar concept: there are no pages to open
         // in a File tab, and a body asking for one gets nothing rather than
@@ -518,8 +536,12 @@ export function FileView({
     )
   }, [modeStore, openedPath, mode, canEdit, canDiff, hasDraft, saveState.phase, handleSave, handleDiscardAndReload])
 
-  // A closed tab leaves no controls behind in a toolbar that outlives it.
-  useEffect(() => () => { modeStore.clear() }, [modeStore])
+  // A closed tab leaves no controls behind in a toolbar that outlives it,
+  // and no store behind in the map that keyed it.
+  useEffect(() => () => {
+    modeStore.clear()
+    releaseModeStore()
+  }, [modeStore, releaseModeStore])
 
   // Whether the preview engine's own toolbar is drawing the controls. When
   // it is, this tab must not draw a second copy; when it is not — Edit and

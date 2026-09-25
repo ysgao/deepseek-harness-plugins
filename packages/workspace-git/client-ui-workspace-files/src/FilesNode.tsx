@@ -529,15 +529,17 @@ function useLevel(
   list: (path: string, signal?: AbortSignal) => Promise<WorkspaceEntryListing>,
   watch: ((path: string, signal: AbortSignal) => AsyncIterable<'ready' | 'change'>) | undefined,
   autoRefresh: boolean,
+  refreshKey: number,
 ): readonly [LevelState, () => void] {
   const [state, setState] = useState<LevelState>({ phase: 'loading' })
   const [generation, setGeneration] = useState(0)
   const reload = useCallback(() => { setGeneration(value => value + 1) }, [])
+  const settled = generation > 0 || refreshKey > 0
   useEffect(() => {
     // A re-read holds the rows already on screen rather than flashing the
     // level back to its loading line: this runs on every observed change,
     // and a tree that blinks whenever a build touches a file is unusable.
-    setState(current => (generation === 0 ? { phase: 'loading' } : current))
+    setState(current => (settled ? current : { phase: 'loading' }))
     const controller = new AbortController()
     list(path, controller.signal).then((listing) => {
       if (controller.signal.aborted) return
@@ -547,7 +549,11 @@ function useLevel(
       setState({ phase: 'error', line: failureLine(reason) })
     })
     return () => { controller.abort() }
-  }, [path, list, generation])
+    // `settled` is derived from the two generations and deliberately not a
+    // dependency of its own: it only decides whether to show the loading
+    // line, never what is read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, list, generation, refreshKey])
   useEffect(() => {
     if (watch === undefined || !autoRefresh) return
     const controller = new AbortController()
@@ -577,7 +583,7 @@ function useLevel(
  * target of a later Add action.
  */
 function DirectoryRow({
-  entry, depth, onOpenFile, listWorkspaceEntries, watchWorkspaceDirectory, autoRefresh,
+  entry, depth, onOpenFile, listWorkspaceEntries, watchWorkspaceDirectory, autoRefresh, refreshKey,
   gitStatusFiles, selectedDirPath, onSelectDir, t,
 }: {
   entry: WorkspaceEntry
@@ -586,6 +592,8 @@ function DirectoryRow({
   listWorkspaceEntries: (path: string, signal?: AbortSignal) => Promise<WorkspaceEntryListing>
   watchWorkspaceDirectory: ((path: string, signal: AbortSignal) => AsyncIterable<'ready' | 'change'>) | undefined
   autoRefresh: boolean
+  /** Bumped by the header's Reload; re-reads this level in place, without remounting it. */
+  refreshKey: number
   gitStatusFiles: Readonly<Record<string, string>> | undefined
   selectedDirPath: string | null
   onSelectDir: (path: string) => void
@@ -623,6 +631,7 @@ function DirectoryRow({
           listWorkspaceEntries={listWorkspaceEntries}
           watchWorkspaceDirectory={watchWorkspaceDirectory}
           autoRefresh={autoRefresh}
+          refreshKey={refreshKey}
           gitStatusFiles={gitStatusFiles}
           selectedDirPath={selectedDirPath}
           onSelectDir={onSelectDir}
@@ -668,7 +677,7 @@ function FileRow({ entry, depth, onOpen, gitStatusFiles, t }: {
 
 /** One fetched level's rows: loading/error/empty states, else directory rows before file rows. */
 function FilesLevel({
-  path, depth, onOpenFile, listWorkspaceEntries, watchWorkspaceDirectory, autoRefresh,
+  path, depth, onOpenFile, listWorkspaceEntries, watchWorkspaceDirectory, autoRefresh, refreshKey,
   gitStatusFiles, selectedDirPath, onSelectDir, t,
 }: {
   path: string
@@ -677,12 +686,14 @@ function FilesLevel({
   listWorkspaceEntries: (path: string, signal?: AbortSignal) => Promise<WorkspaceEntryListing>
   watchWorkspaceDirectory: ((path: string, signal: AbortSignal) => AsyncIterable<'ready' | 'change'>) | undefined
   autoRefresh: boolean
+  /** Bumped by the header's Reload; re-reads every mounted level in place. */
+  refreshKey: number
   gitStatusFiles: Readonly<Record<string, string>> | undefined
   selectedDirPath: string | null
   onSelectDir: (path: string) => void
   t: FilesTranslate
 }) {
-  const [state] = useLevel(path, listWorkspaceEntries, watchWorkspaceDirectory, autoRefresh)
+  const [state] = useLevel(path, listWorkspaceEntries, watchWorkspaceDirectory, autoRefresh, refreshKey)
   const indent = 8 + depth * 22
   if (state.phase === 'loading') {
     return <div className={css.notice} style={{ paddingLeft: indent }}>{t('files.viewer.loading')}</div>
@@ -706,6 +717,7 @@ function FilesLevel({
               listWorkspaceEntries={listWorkspaceEntries}
               watchWorkspaceDirectory={watchWorkspaceDirectory}
               autoRefresh={autoRefresh}
+              refreshKey={refreshKey}
               gitStatusFiles={gitStatusFiles}
               selectedDirPath={selectedDirPath}
               onSelectDir={onSelectDir}
@@ -964,9 +976,14 @@ export function FilesNode({
     [watchWorkspaceDirectory, workspaceId],
   )
   const watchLevel = watchWorkspaceDirectory === undefined ? undefined : watch
-  // Remounts every expanded level, which refetches each of them: the one
-  // gesture that answers "I changed something outside this tree" without
-  // needing to know which directory it landed in.
+  // Re-reads every mounted level: the one gesture that answers "I changed
+  // something outside this tree" without needing to know which directory it
+  // landed in.
+  //
+  // Passed DOWN as a prop rather than used as the root level's `key`. A key
+  // bump remounts the whole subtree, and each `DirectoryRow` holds its own
+  // `expanded` in component state — so reloading used to collapse every open
+  // folder, leaving nothing expanded for the re-read the tooltip promises.
   const reloadLevels = useCallback(() => { setLevelRefreshKey(key => key + 1) }, [])
   useEffect(() => reveal?.subscribe(() => {
     setExpanded(true)
@@ -980,14 +997,18 @@ export function FilesNode({
     header.focus({ preventScroll: true })
   }), [reveal])
   const toggleAutoRefresh = useCallback(() => {
-    setAutoRefresh((value) => {
-      // Resuming re-reads immediately: whatever changed while paused is
-      // exactly what the reader stopped seeing, and making them click Reload
-      // straight after Resume would be asking twice for one intent.
-      if (!value) reloadLevels()
-      return !value
-    })
-  }, [reloadLevels])
+    // Branch on the current value here, in the event handler, rather than
+    // inside the updater: a `setState` updater runs in the render phase and
+    // must be pure, and React re-invokes it under StrictMode and on any
+    // replayed render — which would fire the re-read more than once per
+    // click.
+    //
+    // Resuming re-reads immediately: whatever changed while paused is
+    // exactly what the reader stopped seeing, and making them click Reload
+    // straight after Resume would be asking twice for one intent.
+    if (!autoRefresh) reloadLevels()
+    setAutoRefresh(value => !value)
+  }, [autoRefresh, reloadLevels])
   const readFile = useCallback(
     (path: string, signal?: AbortSignal): Promise<WorkspaceFileContent> => readWorkspaceFile(workspaceId, path, signal),
     [readWorkspaceFile, workspaceId],
@@ -1105,13 +1126,13 @@ export function FilesNode({
       {pushError !== null && <div className={css.notice} role="alert">{pushError}</div>}
       {expanded && (
         <FilesLevel
-          key={levelRefreshKey}
           path={rootPath}
           depth={1}
           onOpenFile={handleOpenFile}
           listWorkspaceEntries={list}
           watchWorkspaceDirectory={watchLevel}
           autoRefresh={autoRefresh}
+          refreshKey={levelRefreshKey}
           gitStatusFiles={gitStatus?.files}
           selectedDirPath={selectedDirPath}
           onSelectDir={setSelectedDirPath}

@@ -22,8 +22,16 @@
 
 /** Broadcast requesting that every mounted Files tree show itself. */
 export interface FilesReveal {
-  /** Ask every mounted tree to expand; the first to answer takes focus. */
-  request: () => void
+  /**
+   * Ask every mounted tree to expand; the first to answer takes focus.
+   * @returns how many trees answered. Zero means no tree is mounted to
+   * answer — a collapsed Sidebar — which is the caller's cue to open it and
+   * ask again. The count is the only honest signal available: the request
+   * itself is fire-and-forget, and inspecting the document afterwards
+   * cannot tell "a tree focused itself" from "nothing is focused, so
+   * `document.activeElement` is `<body>`".
+   */
+  request: () => number
   /**
    * Observe reveal requests for a component's lifetime.
    * @param listener - called once per request.
@@ -41,14 +49,18 @@ export function createFilesReveal(): FilesReveal {
   return {
     request: () => {
       // A listener that throws is a bug in one tree, not a reason for the
-      // keystroke to fail for the others.
+      // keystroke to fail for the others — but it did not answer, so it is
+      // not counted.
+      let answered = 0
       for (const listener of [...listeners]) {
         try {
           listener()
+          answered += 1
         } catch (error: unknown) {
           console.error('workspace-files: reveal listener failed', error)
         }
       }
+      return answered
     },
     subscribe: (listener) => {
       listeners.add(listener)
