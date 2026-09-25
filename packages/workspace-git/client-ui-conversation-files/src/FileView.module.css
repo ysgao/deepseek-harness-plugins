@@ -116,15 +116,37 @@
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
+  /* The containing block for the absolutely-positioned body below, and the
+     clip that keeps a body wider than the tab from widening it. */
+  position: relative;
+  overflow: hidden;
 }
 
-/* The engine's root (or the fallback's) fills the seat rather than sizing to
-   its own content — this is what gives a `height: 100%` body something to be
-   100% of. */
+/*
+ * The body is taken OUT of flow and pinned to the seat.
+ *
+ * Not `flex: 1 1 auto`, which is what this was and which cost two days of
+ * spreadsheets that would not draw. The engine's `ExcelBody` turns its own
+ * container resizing into a window resize —
+ *
+ *   new ResizeObserver(() => { window.dispatchEvent(new Event('resize')) })
+ *
+ * — because FortuneSheet only re-measures on that event. In the right
+ * Sidebar the pane it sits in has a definite size, so the grid measures,
+ * lays out, and settles. In a flex child sized by its content that is a
+ * feedback loop: the grid measures, lays itself out, the container follows
+ * it, the observer fires, the grid measures again. Whether it converges
+ * depends on the sheet, which is why some files drew and others left an
+ * empty body with React's "Maximum update depth exceeded" behind it.
+ *
+ * `inset: 0` gives the body a box that is settled BEFORE it measures and
+ * that it cannot influence, which is the property the Sidebar pane had all
+ * along. Every relocated body owns its own scrollport, so taking them out of
+ * flow costs nothing.
+ */
 .documentSeat > * {
-  flex: 1 1 auto;
+  position: absolute;
+  inset: 0;
   min-height: 0;
   min-width: 0;
 }
