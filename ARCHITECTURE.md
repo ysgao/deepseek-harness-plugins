@@ -554,6 +554,54 @@ string, and two license banners. Every one of those resolves from the
 output is embedded verbatim. A pin bump that renames one of those raw
 specifiers stops the build rather than shipping a dead renderer.
 
+**The Host half is replaced too, not just the browser one.**
+`ui-sidebar-documentpreview` is a Client package with a Host half: it pushes
+`__DSH_DOCUMENT_PREVIEW_CONFIG__` into the served page through
+`webserver/index-inject`, and that global is where the browser engine reads
+its office/excel cache limits. Disabling the row switches that off as well,
+so a no-op `.` export here would have pinned those limits to their schema
+defaults with no way to configure them — a replacement registering strictly
+less than what it replaced, which Article III forbids. So
+`client-ui-document-host`'s `.` entry re-exports the vendor's own `apply`
+and `Config` unchanged. Only the settings key moves: a profile configures
+`document-host` where it used to configure `ui-sidebar-documentpreview`.
+Verify it the way it was verified here — boot, fetch the page, and look for
+the global in the HTML, rather than trusting that the row loaded.
+
+#### File tab controls: one toolbar, two mount points
+
+Relocating the engine into the File tab left the file with two rows of
+controls: the tab's own header (path, View/Edit/Diff, Save) above the
+engine's header (its `PathLabel`, viewer picker, wrap, reload). Upstream
+already declares the seam for merging them —
+`sidebar.right.tab.document.actions`, a list slot for "contributions acting
+on the previewed file" — so the tab's controls register into it and the
+engine's header carries them.
+
+They cannot live *only* there. That toolbar is drawn by the engine's body,
+which is mounted only in View mode; controls registered into that slot and
+nowhere else would vanish the moment Edit was pressed, stranding the reader
+in a mode with no way back. So `FileActions` has two mount points — the
+engine's toolbar while the engine draws, the tab's own header when it does
+not — and the tab draws its header row only in that second case, since the
+engine's header already carries the path. The engine mount claims the
+controls while mounted; the tab watches that claim.
+
+That second mount is also the fallback, not a degraded path: `slots.inject`
+never fires where nothing declares the slot, so a composition without
+`client-ui-document-host` keeps the tab header exactly as it was before any
+of this.
+
+**`FileView` keeps owning the state.** The draft cache, the `writeFile`
+version guard and the conflict notice stay in the tab; relocating them into
+a toolbar entry would have meant duplicating them. It publishes a flat
+snapshot into a per-session `FileModeStore` that both mounts read, and the
+store compares before notifying, so publishing on every render does not
+re-render the toolbar on every keystroke. Edit is offered for whatever
+`isTextKind` admits — Markdown, ontology, delimited and RTF included —
+rather than an enumeration that would silently omit a kind added later.
+
+
 ### `packages/mcp-connector/` — MCP connectors with OAuth 2.0
 
 | Package | Role |

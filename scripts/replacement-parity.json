@@ -5,7 +5,7 @@
     "enforces is CONSTITUTION.md's 'A replacement never subtracts'.",
     "",
     "`forks[].sha256` is the first 16 hex of the sha256 of the vendor file AS OF the",
-    "commit named by `vendorPin` — the revision each fork was last read against, not",
+    "commit named by `vendorPin` \u2014 the revision each fork was last read against, not",
     "a checksum of the fork itself. When a pin bump changes one of those files, the",
     "check goes red until a human re-reads it beside the fork, ports what changed,",
     "and re-records the hash with `--update`.",
@@ -24,7 +24,7 @@
     "this repo owns. There is no replacement package to compare against, so check",
     "6 asks the questions that still have answers: is the disable real, does the",
     "row still exist upstream, what covers it now, and what was actually given up.",
-    "`divergences` may not be empty — a disabled row always costs something."
+    "`divergences` may not be empty \u2014 a disabled row always costs something."
   ],
   "vendorPin": "477b4f420553e8a52c2fbccc464d7561b239c443",
   "replacements": [
@@ -73,7 +73,7 @@
         "ORs the per-session everOpenedFile bit into all three pristine blank-phase gates"
       ],
       "divergences": [
-        "Entering a conversation activates the landing View (Chat) instead of the Session's persisted View preference (readConversationViewPreference), because the forked File view cannot restore what it was showing — see src/apply.ts's activateLandingView and DefaultConversationViews.tsx's landing effect."
+        "Entering a conversation activates the landing View (Chat) instead of the Session's persisted View preference (readConversationViewPreference), because the forked File view cannot restore what it was showing \u2014 see src/apply.ts's activateLandingView and DefaultConversationViews.tsx's landing effect."
       ],
       "forks": [
         {
@@ -122,15 +122,18 @@
         "call": "applyDocumentPreview"
       },
       "adds": [
-        "runs the vendor preview engine's own apply(), so every tab type, dictionary, service, seat, chip title and renderer it registers is registered here too — including renderers added in a later release, which nothing here enumerates",
+        "runs the vendor preview engine's own apply(), so every tab type, dictionary, service, seat, chip title and renderer it registers is registered here too \u2014 including renderers added in a later release, which nothing here enumerates",
         "redirects exactly one registration: the seat moves from the right Sidebar's sidebar.right.pane.tab to the File tab's conversation.file.document",
         "registers a hand-off body under the vacated Sidebar seat, so openResource (which throws for an unclaimed address) keeps resolving for conversation file links and tool line references, and forwards them to the File tab",
-        "one document-host locale namespace holding the hand-off refusal line"
+        "one document-host locale namespace holding the hand-off refusal line",
+        "re-exports the vendor row's own Host half (apply + Config) from this package's `.` entry, so the `webserver/index-inject` push of __DSH_DOCUMENT_PREVIEW_CONFIG__ \u2014 the preview engine's office/excel cache limits \u2014 survives the row being disabled instead of falling to schema defaults with no way to set them",
+        "the File tab's own View/Edit/Diff/Save controls register into the engine's `sidebar.right.tab.document.actions` toolbar seat (from dsh-plugins-client-ui-conversation-files), so a previewed file carries one row of controls rather than the engine's toolbar under the tab's own header"
       ],
       "divergences": [
-        "A file resource opened through openResource no longer renders in the right Sidebar: the tab claims the address, forwards it to the conversation's File tab, and closes itself. That is the point of the replacement, not a shortfall — but a caller that expected the content to appear in the Sidebar column sees it appear in the middle instead.",
+        "A file resource opened through openResource no longer renders in the right Sidebar: the tab claims the address, forwards it to the conversation's File tab, and closes itself. That is the point of the replacement, not a shortfall \u2014 but a caller that expected the content to appear in the Sidebar column sees it appear in the middle instead.",
         "The hand-off needs dsh-plugins-client-ui-conversation-files (the File tab) and dsh-plugins-client-ui-conversation-enhanced (the cross-session opener) composed in. Without them the Sidebar tab shows a refusal line instead of a preview, where the vendor row would have previewed the file. Both ship in this same bundle, so the gap only opens if the bundle is taken apart.",
-        "The seat reports a settled presentation to its bodies — expanded, never fullscreen, one pane id — because the File tab has no collapsed or fullscreen state to report. A body that varies its behaviour by those flags behaves as though the Sidebar were always open, which in the File tab it effectively is."
+        "The seat reports a settled presentation to its bodies \u2014 expanded, never fullscreen, one pane id \u2014 because the File tab has no collapsed or fullscreen state to report. A body that varies its behaviour by those flags behaves as though the Sidebar were always open, which in the File tab it effectively is.",
+        "Preview settings are configured on this row rather than the vendor's: a profile that set `ui-sidebar-documentpreview`'s office/excel limits sets them on `document-host` now. The schema, its defaults and the injected global are upstream's own, re-exported unchanged, so only the key moves."
       ],
       "forks": [
         {
@@ -178,7 +181,7 @@
         "four signIn* copy keys in both dictionaries"
       ],
       "divergences": [
-        "apply() does not fall back to the pristine ui-settings-models apply() on setup failure (the other two replacements do) — importing that file for its apply value pulls in its narrower LocaleNamespaceMap declaration, which this package's wider one conflicts with. See src/client/index.ts's own doc comment."
+        "apply() does not fall back to the pristine ui-settings-models apply() on setup failure (the other two replacements do) \u2014 importing that file for its apply value pulls in its narrower LocaleNamespaceMap declaration, which this package's wider one conflicts with. See src/client/index.ts's own doc comment."
       ],
       "forks": [
         {
@@ -241,17 +244,17 @@
       "vendorPackage": "packages/_vendor/deepseek-harness/packages/client/ui-sidebar-files",
       "why": "A second file tree, in the other Sidebar. This bundle's own tree predates it, is the one carrying git status and in-app editing, and is where this bundle's users already work. Keeping both means two trees disagreeing about the same directory, so the vendor row is switched off rather than mirrored.",
       "covers": [
-        "the tree itself, its lazy one-level-at-a-time listing and its open-a-file gesture — dsh-plugins-client-ui-workspace-files' FilesNode, in the left Sidebar",
-        "live per-directory watching, the auto-refresh pause/resume toggle and manual reload — ported into FilesNode/useLevel over this bundle's own workspace-scoped workspace-files.watchDirectory stream",
-        "per-directory failure lines instead of one generic load error — FilesNode's failureLine",
-        "directories-first natural name order — moved Host-side into listWorkspaceEntries' collator",
-        "the shared per-extension FileTypeIcon glyphs — FileRow",
+        "the tree itself, its lazy one-level-at-a-time listing and its open-a-file gesture \u2014 dsh-plugins-client-ui-workspace-files' FilesNode, in the left Sidebar",
+        "live per-directory watching, the auto-refresh pause/resume toggle and manual reload \u2014 ported into FilesNode/useLevel over this bundle's own workspace-scoped workspace-files.watchDirectory stream",
+        "per-directory failure lines instead of one generic load error \u2014 FilesNode's failureLine",
+        "directories-first natural name order \u2014 moved Host-side into listWorkspaceEntries' collator",
+        "the shared per-extension FileTypeIcon glyphs \u2014 FileRow",
         "the workspace.files command (same id, same Cmd+P / Ctrl+Alt+P defaults, same regions), re-registered by dsh-plugins-client-ui-workspace-files' own apply(), now revealing the left-Sidebar tree"
       ],
       "divergences": [
         "The `files` right-Sidebar tab type is not re-registered anywhere: there is no second tree, which is the point of the retirement. Nothing else registered that kind, so no other package's openTab('files') breaks.",
         "Its Start-page guide tile is gone with the type. The left tree is always present in the Sidebar it lives in, so it needs no entry box to be discovered.",
-        "The retired tree was Session-scoped (it listed the Session's workspace root). The left tree is Workspace-scoped, so it also works with a Workspace selected and no Session started — strictly more, but not the same addressing.",
+        "The retired tree was Session-scoped (it listed the Session's workspace root). The left tree is Workspace-scoped, so it also works with a Workspace selected and no Session started \u2014 strictly more, but not the same addressing.",
         "The root path is shown on the header row's hover title rather than as a dedicated PathLabel header line: the enclosing Workspace group already names the workspace, so a standalone page's need to state where it is does not apply."
       ]
     }
