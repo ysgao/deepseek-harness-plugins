@@ -73,7 +73,24 @@ export class WorkspaceFileError extends Error {
 /** Complete-result bound of one `listEntries` level (entries beyond this many are cut, name-sorted tail). */
 export const DEFAULT_MAX_ENTRIES = 1000
 
-/** Byte bound of one `readFile` call; a larger file fails with `file-too-large` before any content leaves the host. */
+/**
+ * Byte bound of one `readFile` call; a larger file fails with
+ * `file-too-large` before any content leaves the host.
+ *
+ * Deliberately generous, and NOT to be lowered to "something a browser can
+ * hold" — that reasoning has already cost one wrong commit. This read is
+ * one shot (the whole file, base64 on the wire), which looks alarming
+ * beside upstream's paged read, but the two are answering different
+ * designs: upstream pages because its renderer draws what it has been
+ * given, while every viewer here draws a WINDOW. `ReadBlock` takes
+ * `maxLines`, renders that many, and says "showing N of M" with an expand
+ * control, so the DOM cost is bounded by what is on screen rather than by
+ * the file.
+ *
+ * What the bound actually protects is transfer and heap, not rendering, and
+ * 100 MB is the deliberate ceiling for that. A reader opening a large log
+ * gets it; a runaway file does not.
+ */
 export const DEFAULT_MAX_READ_BYTES = 100 * 1024 * 1024
 
 /**
