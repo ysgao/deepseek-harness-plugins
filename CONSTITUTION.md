@@ -45,8 +45,14 @@ that the submodule commit this repo's index would record still equals
 submodule moves the pin while dirtying nothing the first check would see.
 
 Ahead of that, `.claude/settings.json` denies `Edit`/`Write` under
-`packages/_vendor/**`, so an agent working in this repo is refused the edit
-rather than caught after making it.
+`packages/_vendor/**` for a session running under Claude Code specifically,
+so that one tool refuses the edit rather than catching it after it's made.
+That file's schema (`permissions.deny`, `sandbox.filesystem.denyWrite`) is
+Claude Code's own settings format — no other agent tool reads it, and
+neither this repo nor `dsh` itself defines a per-path write-deny primitive
+an agent tool could read instead. The pre-commit hook above is what actually
+holds regardless of which tool is editing; this second layer is a bonus for
+the one tool it applies to, not a second guarantee.
 
 Neither layer is the point. The rule is the point; they exist so that
 breaking it fails loudly instead of landing quietly, and `--no-verify` still
