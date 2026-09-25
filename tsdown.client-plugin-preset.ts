@@ -193,10 +193,24 @@ function asyncChunkRequirePlugin() {
       //
       // `require\(` matches only the bare call: `require.async(` has no `(`
       // straight after `require`, so the rewrite below never sees this.
-      const sideEffectRequire = /require\((['"])(\.\/client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js)\1\)/gu
-      for (const match of [...code.matchAll(sideEffectRequire)]) {
-        if (!CLIENT_CHUNK.test(match[2]!.slice(2))) continue
-        transformed.overwrite(match.index, match.index + match[0].length, 'void 0')
+      // ONLY a standalone statement. An earlier version matched the call
+      // anywhere, which also neutralized requires whose VALUE is used
+      // (`var shared = require("./client.clsx.js")`) — the variable became
+      // `undefined` and the first property read off it threw, far from here
+      // and with nothing pointing back. A require that feeds a value is a
+      // genuine cross-chunk dependency this format cannot express at all,
+      // and it must fail loudly at build time rather than be papered over:
+      // see `assertNoValueChunkRequire` below.
+      // The trailing `;` is optional: at this stage rolldown has not
+      // necessarily emitted it yet, and a lookahead for the end of the
+      // statement is what actually distinguishes a side-effect import from
+      // `x = require(...)`.
+      const sideEffectStatement =
+        /(^|[\n;{}])([ \t]*)require\((['"])(\.\/client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js)\3\);?(?=[ \t]*(?:\r?\n|[;}]|$))/gu
+      for (const match of [...code.matchAll(sideEffectStatement)]) {
+        if (!CLIENT_CHUNK.test(match[4]!.slice(2))) continue
+        const from = match.index + match[1]!.length + match[2]!.length
+        transformed.overwrite(from, match.index + match[0].length, '')
       }
       for (const dynamicImport of chunk.dynamicImports) {
         const fileName = dynamicImport.startsWith('./') ? dynamicImport.slice(2) : dynamicImport
@@ -213,6 +227,23 @@ function asyncChunkRequirePlugin() {
         for (const match of matches) {
           transformed.overwrite(match.index, match.index + match[0].length, `require.async(${JSON.stringify(specifier)})`)
         }
+      }
+      // Anything still naming a package-local chunk synchronously is a value
+      // dependency across chunks, which this format cannot express: the
+      // loader's `require` resolves declared externals and THROWS otherwise,
+      // so the bundle would fail at load with an error pointing nowhere near
+      // the cause. Fail the build instead, naming the chunk, so the fix is
+      // the real one — keep the module out of the shared position.
+      const remaining = [...transformed.toString().matchAll(/require\((['"])(\.\/client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js)\1\)/gu)]
+        .filter(match => CLIENT_CHUNK.test(match[2]!.slice(2)))
+      if (remaining.length > 0) {
+        const names = [...new Set(remaining.map(match => match[2]!))].join(', ')
+        throw new Error(
+          `client plugin bundle: ${names} is required synchronously for its value. `
+          + 'The closure-factory loader cannot resolve a cross-chunk require — rolldown hoisted a module shared by '
+          + 'the entry and a lazy chunk. Keep it out of that shared position (move the sharing code into the chunk, '
+          + 'or stop the entry using it) rather than splitting it off.',
+        )
       }
       return transformed.hasChanged() ? transformed : null
     },
