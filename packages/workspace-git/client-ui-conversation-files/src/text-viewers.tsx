@@ -53,6 +53,7 @@ import type { DocumentPreviewProps } from '@deepseek-ai/dsh-client-ui-sidebar-do
 /** Implementation ids, namespaced to this package as upstream namespaces its own. */
 const DOCX_ID = 'dsh-plugins-client-ui-conversation-files/docx-text'
 const XLSX_ID = 'dsh-plugins-client-ui-conversation-files/xlsx-text'
+const XLS_ID = 'dsh-plugins-client-ui-conversation-files/xls-text'
 const PPTX_ID = 'dsh-plugins-client-ui-conversation-files/pptx-text'
 const DELIMITED_ID = 'dsh-plugins-client-ui-conversation-files/delimited-text'
 
@@ -134,14 +135,46 @@ export function registerTextViewers(
   ctx: Context, ns: 'conversation-files', t: TranslateNS<'conversation-files'>,
 ): void {
   ctx.inject(['documentPreviews'], (ctx) => {
-    for (const [id, extensions, title, loading, Body] of [
-      [DOCX_ID, ['docx'], 'files.viewer.docxTitle', 'bytes-complete', DocxTextBody],
-      [XLSX_ID, ['xlsx', 'xls'], 'files.viewer.xlsxTitle', 'bytes-complete', XlsxTextBody],
-      [PPTX_ID, ['pptx'], 'files.viewer.pptxTitle', 'bytes-complete', PptxTextBody],
-      [DELIMITED_ID, ['csv', 'tsv'], 'files.viewer.delimitedTitle', 'text-pages', DelimitedTextBody],
+    // `.xls` and `.csv`/`.tsv` take `extension`, which makes THIS viewer the
+    // default and leaves the engine's grid one click away in the menu. That
+    // inverts the usual arrangement, and only with evidence: the grid
+    // crashes outright on those two formats. FortuneSheet mounts read-only
+    // (`allowEdit: false`) and runs a layout effect that calls `setContext`
+    // on every pass —
+    //
+    //   useLayoutEffect(() => { if (!context.allowEdit) setContext(…) },
+    //     [context.luckysheetfile, context.currentSheetId,
+    //      context.luckysheetCellUpdate, firstSelection])
+    //
+    // — which for these sheet shapes never settles, so React aborts with
+    // "Maximum update depth exceeded" (#185) and the document slot crashes
+    // to an empty body: no grid, and no error line either, because nothing
+    // refused. Confirmed against real files of a few hundred rows, and the
+    // stack lands in the bundled FortuneSheet, not in upstream's code or
+    // ours — so it is not ours to fix and not the vendor's to be patched
+    // (Article II).
+    //
+    // `.xlsx` is here too, reluctantly. The grid drew it correctly once and
+    // then stopped — same file, same build, sometimes #185 and sometimes an
+    // empty body that never settles — so the failure is not per-format but
+    // per-run, and a default that works only sometimes is not a default.
+    //
+    // This is the one place the arrangement's "engine is the default" rule
+    // is overridden, and only for the formats it demonstrably cannot draw.
+    // The grid stays one click away for anyone who wants to try it, and
+    // keeps every capability this viewer lacks (cell formatting, formulas,
+    // multiple sheets as tabs). Re-test all three when the vendor pin moves:
+    // if the grid settles reliably, these belong back at `builtin` and the
+    // engine takes the default again.
+    for (const [id, extensions, title, loading, priority, Body] of [
+      [DOCX_ID, ['docx'], 'files.viewer.docxTitle', 'bytes-complete', 'builtin', DocxTextBody],
+      [XLSX_ID, ['xlsx'], 'files.viewer.xlsxTitle', 'bytes-complete', 'extension', XlsxTextBody],
+      [XLS_ID, ['xls'], 'files.viewer.xlsxTitle', 'bytes-complete', 'extension', XlsxTextBody],
+      [PPTX_ID, ['pptx'], 'files.viewer.pptxTitle', 'bytes-complete', 'builtin', PptxTextBody],
+      [DELIMITED_ID, ['csv', 'tsv'], 'files.viewer.delimitedTitle', 'text-pages', 'extension', DelimitedTextBody],
     ] as const) {
       ctx.effect(() => ctx.documentPreviews.register({
-        id, extensions: [...extensions], priority: 'builtin', title: () => t(title), loading, wrap: false,
+        id, extensions: [...extensions], priority, title: () => t(title), loading, wrap: false,
       }), `conversation-files: ${id} metadata`)
       ctx.effect(() => ctx.slots.inject('sidebar.right.tab.document', () => ctx.slots.register(
         { name: 'sidebar.right.tab.document', key: id, locale: ns },
