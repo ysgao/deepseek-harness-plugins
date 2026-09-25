@@ -73,8 +73,28 @@ export class WorkspaceFileError extends Error {
 /** Complete-result bound of one `listEntries` level (entries beyond this many are cut, name-sorted tail). */
 export const DEFAULT_MAX_ENTRIES = 1000
 
-/** Byte bound of one `readFile` call; a larger file fails with `file-too-large` before any content leaves the host. */
-export const DEFAULT_MAX_READ_BYTES = 100 * 1024 * 1024
+/**
+ * Byte bound of one `readFile` call; a larger file fails with
+ * `file-too-large` before any content leaves the host.
+ *
+ * This read is ONE SHOT — the whole file, base64 on the wire, decoded and
+ * held in the browser — so the bound is the only thing standing between a
+ * reader and a tab that opens a 100 MB log by transferring ~133 MB of
+ * base64. Upstream's own file read never faces this because it is paged: it
+ * takes a line offset and answers at most 5,000 lines or 2 MB, and stops
+ * mid-page the moment the bytes exceed that, so a single enormous line
+ * cannot grow memory past the cap either.
+ *
+ * 16 MB is chosen against what this content is actually FOR rather than
+ * against what a filesystem can hold: a CodeMirror buffer a person edits,
+ * and a side-by-side diff. Past that the preview is not useful even when it
+ * succeeds, and `file-too-large` is a better answer than a wedged tab — the
+ * File tab already turns it into the "Open with default app" affordance.
+ *
+ * Callers wanting more pass their own bound; this is the default, not a
+ * ceiling.
+ */
+export const DEFAULT_MAX_READ_BYTES = 16 * 1024 * 1024
 
 /**
  * True when `path` is the workspace root itself or a filesystem descendant of
