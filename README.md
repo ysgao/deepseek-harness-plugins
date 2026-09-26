@@ -19,7 +19,8 @@ the design rationale:
   multi-tab). An in-repo fork of the third-party npm package
   `dsh-plugin-terminal`, not of `deepseek-harness` itself — see its own
   `README.md` for what was changed and why (an unauthenticated-shell-access
-  bug and a broken `node-pty` prebuild in the upstream version).
+  bug and a broken `node-pty` prebuild in the upstream version). Optional —
+  see "Running" below; `pnpm run build` does not install or reinstall it.
 - **`packages/mcp-connector/`** — MCP connectors, including remote servers
   behind OAuth 2.0. A superset of `@deepseek-ai/dsh-mcp-client` (same stdio
   and static-header transports, same config, same tool names) plus an
@@ -136,10 +137,11 @@ profile up:
 ```sh
 ./dsh plugin --profile web add "$(pwd)/packages/workspace-git/bundle-workspace-git"
 ./dsh plugin --profile web add "$(pwd)/packages/anthropic-subscription/bundle-anthropic-subscription"
-./dsh plugin --profile web add "$(pwd)/packages/terminal/dsh-plugin-terminal"
 ./dsh plugin --profile web add "$(pwd)/packages/mcp-connector/bundle-mcp-connector"
 ./dsh --profile web
 ```
+
+`packages/terminal/` is optional and not part of this list — see below.
 
 **Install order matters for any profile name `dsh` does *not* auto-initialize
 this way.** `bundle-workspace-git` and `bundle-anthropic-subscription` each
@@ -149,6 +151,18 @@ only exists once whatever bundle mounts `dsh-client-ui-workspace`/
 dsh-web-app` for the recognized profile names) has already inserted it —
 `cordis.patch.yml` operations apply in `dsh.profile.bundles` order, so that
 bundle must be added first.
+
+**`packages/terminal/dsh-plugin-terminal` is optional**, unlike the three
+bundles above: it only inserts a row (`terminal-panel`), never disables one,
+so no other bundle depends on it being present. `pnpm run build`/`scripts/
+install-plugins.mjs` never installs or reinstalls it, precisely so that
+removing it from a profile through Settings > Plugins is a decision that
+sticks across rebuilds instead of being silently undone on the next `pnpm
+run build`. Add it by hand where you want the bottom terminal panel:
+
+```sh
+./dsh plugin --profile web add "$(pwd)/packages/terminal/dsh-plugin-terminal"
+```
 
 The standalone CLI login profile doesn't need `dsh-web-app` at all:
 

@@ -34,11 +34,18 @@ import { fileURLToPath } from 'node:url'
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-/** Bundle directories, in the order they must appear in `dsh.profile.bundles`. */
+/**
+ * Bundle directories, in the order they must appear in `dsh.profile.bundles`.
+ * `packages/terminal/dsh-plugin-terminal` is deliberately not here: unlike
+ * the other three, it inserts a row rather than replacing a vendor one, so a
+ * profile can drop it from Settings > Plugins and lose nothing this repo
+ * otherwise owns — this script must not force it back on a profile whose
+ * owner removed it on purpose. Install it by hand where it's wanted:
+ * `./dsh plugin --profile <name> add packages/terminal/dsh-plugin-terminal`.
+ */
 const BUNDLES = [
   'packages/workspace-git/bundle-workspace-git',
   'packages/anthropic-subscription/bundle-anthropic-subscription',
-  'packages/terminal/dsh-plugin-terminal',
   'packages/mcp-connector/bundle-mcp-connector',
 ]
 
@@ -103,13 +110,28 @@ if (missing.length === 0) {
     // install, a moved checkout a `link:` dep points at) silently unlists
     // bundles nobody asked to touch. Loud is the only acceptable outcome:
     // the profile has already been rewritten by the time we can see it.
-    const dropped = before.filter((entry) => !installedBundles().includes(entry))
+    const after = installedBundles()
+    const dropped = before.filter((entry) => !after.includes(entry))
     if (dropped.length > 0) {
       console.error(
         `install-plugins: adding ${name} dropped ${dropped.join(', ')} from profile "${profile}"'s bundle list.\n` +
           'That means `dsh plugin add` could not resolve those packages — check the profile\'s node_modules\n' +
           '(a `link:` dependency pointing at a moved checkout is the usual cause), then re-add them in order:\n' +
           dropped.map((entry) => `  ./dsh plugin --profile ${profile} add <path to ${entry}>`).join('\n'),
+      )
+      process.exit(1)
+    }
+    // Exit 0 and no drop is not proof `name` itself landed: `dsh plugin add`
+    // can also resolve to a no-op (e.g. a stale lockfile/node_modules that
+    // makes the new package invisible to it) without dropping anything else.
+    // Silence here is exactly the failure this whole script exists to
+    // close — a bundle that never appears in the app with nothing in the
+    // build output to say why.
+    if (!after.includes(name)) {
+      console.error(
+        `install-plugins: \`dsh plugin add ${name}\` exited 0 but profile "${profile}"'s bundle list still does not\n` +
+          `include it. Check the profile's node_modules for ${name}, then re-add by hand:\n` +
+          `  ./dsh plugin --profile ${profile} add ${path}`,
       )
       process.exit(1)
     }
