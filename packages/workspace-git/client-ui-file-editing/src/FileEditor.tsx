@@ -25,18 +25,27 @@
  * Every change reports upward through `onChange`; save/dirty/error chrome
  * is the caller's concern.
  *
- * The editing surface itself stays undecorated monospace regardless of
- * `lang` or `kind` — no per-language CodeMirror grammar, ontology
- * serializations and RTF markup included (CodeMirror publishes no grammar for
- * any of them either) — since the preview pane already covers highlighting;
- * only Markdown additionally gets structure-aware editing (`@codemirror/lang-markdown`, for
- * list/blockquote continuation), a genuinely editing-time behavior a read-only
- * preview pane can't substitute for. One decoration applies to every kind
- * alike: the buffer's content DOM carries `spellcheck="true"`, so the
- * browser's own native spellchecker underlines misspellings exactly as it
- * would in a plain `<textarea>` — the browser/OS dictionary, not a
- * code-aware one, so it has no notion of identifiers or per-language
- * comment/string scoping.
+ * The editing surface itself carries no *syntax highlighting* of its own
+ * regardless of `lang` or `kind` — ontology serializations and RTF markup
+ * included (CodeMirror publishes no grammar for either) — since the preview
+ * pane already covers that; only Markdown additionally gets structure-aware
+ * editing (`@codemirror/lang-markdown`, for list/blockquote continuation), a
+ * genuinely editing-time behavior a read-only preview pane can't substitute
+ * for. What CodeMirror grammar the buffer *does* carry is a narrower
+ * question, resolved by `./codemirror/languages.ts`'s `languageExtensionFor`:
+ * a `kind: 'text'` file whose `lang` it recognizes gets that language's own
+ * bracket/tag matching, smart indent, and completion source — the reason for
+ * carrying it at all is the completion source, since {@link
+ * FileEditorProps.onSaveRequested}'s sibling autocomplete wiring
+ * (`autocompletion()` plus `wordCompletionSource`, see this component's own
+ * mount effect) is otherwise limited to repeating words already typed once.
+ * Two decorations apply to every kind alike, `lang`-recognized or not: the
+ * buffer's content DOM carries `spellcheck="true"` (the browser/OS
+ * dictionary, not a code-aware one, so it has no notion of identifiers or
+ * per-language comment/string scoping), and `wordCompletionSource` offers
+ * back any `\w+` token already typed elsewhere in the same buffer — the only
+ * completion source a file with no recognized `lang` (or a non-`'text'` kind,
+ * whose own `lang` is always `undefined`) ever gets.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -44,10 +53,13 @@ import type { CSSProperties } from 'react'
 import clsx from 'clsx'
 import { EditorState } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
+import { autocompletion } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { MarkdownText, ReadBlock } from '@deepseek-ai/dsh-client-ui-primitives'
+import { languageExtensionFor } from './codemirror/languages.ts'
 import { editorTheme } from './codemirror/theme.ts'
+import { wordCompletionSource } from './codemirror/wordCompletion.ts'
 import { DelimitedPreview } from './DelimitedPreview.tsx'
 import type { FilePreviewLabels, FileTextKind } from './FilePreview.tsx'
 import { toReadBlockLines } from './lines.ts'
@@ -132,9 +144,26 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
     /* v8 ignore next */
     if (host === null) return
     let previewTimer: number | undefined
+    // Resolved once, at mount, alongside every other `lang`/`kind`-derived
+    // extension below (see the "Mount-once" note at the end of this effect)
+    // — a per-`lang` `Extension`, or `undefined` when `lang` names nothing
+    // this module has a grammar for (including every non-`'text'` kind,
+    // whose own `lang` is always `undefined` — `markdown` gets its
+    // structure-aware extension separately, below).
+    const langExtension = languageExtensionFor(lang)
     const extensions = [
       lineNumbers(),
       history(),
+      // `autocompletion()` with no `override` merges every applicable
+      // completion source found in "language data" at the cursor, rather
+      // than picking one winner — so `wordCompletionSource` below (which
+      // applies unconditionally, via `EditorState.languageData`, plain-text
+      // files included) and `langExtension`'s own richer, language-specific
+      // source (keyword/snippet, or `lang-javascript`/`lang-python`'s
+      // local-scope-aware completion, when one applies) both contribute to
+      // the same popup rather than either replacing the other.
+      autocompletion(),
+      EditorState.languageData.of(() => [{ autocomplete: wordCompletionSource }]),
       keymap.of([
         { key: 'Mod-s', run: () => { onSaveRequestedRef.current?.(); return true } },
         indentWithTab,
@@ -155,6 +184,7 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
       // elsewhere in the app.
       EditorView.contentAttributes.of({ spellcheck: 'true' }),
       ...(kind === 'markdown' ? [markdown()] : []),
+      ...(langExtension !== undefined ? [langExtension] : []),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return
         const next = update.state.doc.toString()

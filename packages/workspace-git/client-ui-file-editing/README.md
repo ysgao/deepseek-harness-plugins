@@ -34,6 +34,57 @@ Legacy binary `.doc`/`.ppt` (pre-2007 OLE compound-file format) have no
 practical client-side parser and stay in the `external` ("open with default
 app") fallback, same as any other unrecognized extension.
 
+## Editing-time assistance (spellcheck, autocompletion)
+
+Two enhancements apply to the CodeMirror buffer itself, on top of the
+per-format read-only preview every text kind already gets — see
+`FileEditor.tsx`'s own doc comment for the exact extension list.
+
+- **Spellcheck.** The buffer's content DOM carries `spellcheck="true"`
+  (`EditorView.contentAttributes`), so the browser's own native
+  spellchecker underlines misspellings exactly as it would in a plain
+  `<textarea>` — no CodeMirror extension, dictionary, or Host round-trip.
+  It's the browser/OS dictionary, not a code-aware one, so it has no notion
+  of identifiers or per-language comment/string scoping — expect false
+  positives on code identifiers.
+- **Autocompletion.** `@codemirror/autocomplete`'s `autocompletion()` (no
+  `override`, so every applicable source below merges into one popup
+  rather than any one replacing another):
+  - `src/codemirror/wordCompletion.ts`'s `wordCompletionSource` — offers
+    any other `\w+` token already typed in the same buffer, nearest
+    occurrence first. Registered unconditionally via
+    `EditorState.languageData`, so it is the *only* source a file with no
+    recognized `lang` (or a non-`'text'` kind, whose own `lang` is always
+    `undefined`) gets.
+  - `src/codemirror/languages.ts`'s `languageExtensionFor` — when `lang`
+    resolves to a CodeMirror 6 language package (the same `LANG_BY_EXTENSION`
+    vocabulary `dsh-plugins-client-ui-conversation-files`/
+    `dsh-plugins-client-ui-workspace-files`'s own `classify.ts` already uses
+    for the preview pane's shiki grammar hint), that language's own
+    grammar is attached to the *editable* buffer too — not only bracket
+    matching and smart indent, but each language's own completion source:
+    keyword/snippet completion for most, `@codemirror/lang-javascript`'s
+    and `@codemirror/lang-python`'s local-scope-aware completion of
+    identifiers already declared in the buffer, and
+    `@codemirror/lang-html`'s/`@codemirror/lang-css`'s tag/attribute/
+    property completion. `ts`/`tsx`/`js`/`jsx`/`json`/`html`/`css`/`scss`/
+    `less`/`py`/`rs`/`xml`/`sql`/`php` resolve through an official
+    `@codemirror/lang-*` package (a real Lezer grammar); every other
+    recognized `lang` (`go`, `rb`, `java`/`c`/`cpp`/`cs`/`kotlin`, `swift`,
+    `sh`, `yaml`, `toml`, `ini`, `lua`) resolves through
+    `@codemirror/legacy-modes` — the CodeMirror project's own maintained
+    port of every CodeMirror 5 mode, wrapped via `StreamLanguage.define` —
+    whose token-classification parsers contribute keywords only, not
+    scope-aware completion. This is genuinely new grammar on the *editing*
+    surface, not merely the preview pane: before this, only Markdown carried
+    one (`@codemirror/lang-markdown`, for list/blockquote continuation).
+  There is no semantic/type-aware completion (no project-wide symbol index,
+  no cross-file "go to definition") — that would need a real language-server
+  process (the same engines VS Code's own language extensions wrap, e.g.
+  `typescript-language-server`/`pyright`/`gopls`) bridged in from the Host,
+  which is out of scope for this package: everything above runs entirely in
+  the browser tab, with no process spawned and no additional Host RPC.
+
 ## Ontology files (`.owl`, `.rdf`, …)
 
 OWL/RDF ontologies are plain text, so Edit and Diff treat them exactly as
