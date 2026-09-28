@@ -85,6 +85,27 @@ at the pinned commit first — a stale checkout is the usual cause:
 git submodule update --init --recursive packages/_vendor/deepseek-harness
 ```
 
+`build-vendor.mjs`'s preflight can also refuse with "stale local state left
+over from a previous vendor pin", naming directories like
+`packages/api/.claude`. `git checkout`/`submodule update` only touch tracked
+files, so a `.claude` settings/session directory an agent left behind from
+running with its working directory inside a vendor package folder survives
+a pin bump untouched — it's git-ignored, not tracked, so nothing about
+moving the pin removes it. tsdown's workspace glob (`packages/*/*`) still
+finds it on disk and chokes on it (no `package.json`). The preflight prints
+the exact fix, which only deletes git-ignored, untracked content and never
+touches a tracked vendor file (Article II-safe):
+
+```sh
+git -C packages/_vendor/deepseek-harness clean -fdX -- <paths it lists>
+```
+
+It shouldn't recur unless something again runs an agent session with its
+working directory inside `packages/_vendor/deepseek-harness/packages/*/*` —
+avoid that rather than pre-emptively deleting `.claude` anywhere; this
+repo's own top-level `.claude/settings.json` and the vendor's own
+`.claude/skills` are tracked files, not stray state.
+
 Then build this repo's own plugin packages:
 
 ```sh

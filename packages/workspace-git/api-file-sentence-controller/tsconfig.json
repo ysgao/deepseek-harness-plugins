@@ -1,0 +1,19 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
+    { "path": "../../_vendor/deepseek-harness/vendor/schemastery" },
+    { "path": "../../_vendor/deepseek-harness/packages/typert/protocol" },
+    { "path": "../../_vendor/deepseek-harness/packages/llm/llm" },
+    { "path": "../../_vendor/deepseek-harness/packages/core/session" },
+    { "path": "../../_vendor/deepseek-harness/packages/util/timeout" },
+    { "path": "../../_vendor/deepseek-harness/packages/util/values" }
+  ]
+}

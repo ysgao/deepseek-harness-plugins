@@ -1,9 +1,10 @@
 /**
  * Browser-only entry: mounts this bundle's own generated Remote
- * contributions — `dsh-plugins-api-workspace-file-controller` and
- * `dsh-plugins-api-workspace-git-controller` — the Client-side composition
+ * contributions — `dsh-plugins-api-workspace-file-controller`,
+ * `dsh-plugins-api-workspace-git-controller`, and
+ * `dsh-plugins-api-file-sentence-controller` — the Client-side composition
  * role `@deepseek-ai/dsh-api-remotes` fills for every other namespace in
- * this app, but can't for these two: that vendored assembly is a static,
+ * this app, but can't for these: that vendored assembly is a static,
  * hand-curated list unaware of out-of-tree plugins, and
  * `dsh-typert-loader`'s auto-discovery only covers a package's Host
  * `./typert` half (its own README documents this as a known limitation —
@@ -28,10 +29,13 @@
  * back any partial mounts) instead of letting it propagate: every consumer
  * (`dsh-plugins-client-ui-workspace-files`,
  * `dsh-plugins-client-ui-conversation-files`) injects
- * `remote.workspace-files`/`remote.workspace-git` and simply stays pending
- * forever per Cordis's ordinary lazy-activation semantics — degrading only
- * the feature that needs those two namespaces, while the rest of the app
- * boots normally.
+ * `remote.workspace-files`/`remote.workspace-git`/`remote.fileSentence` and
+ * simply stays pending forever per Cordis's ordinary lazy-activation
+ * semantics — degrading only the feature that needs those namespaces, while
+ * the rest of the app boots normally. `fileSentence` backs an optional
+ * editing aid (model-backed ghost text) layered over a heuristic that
+ * already works without it, so its own consumer degrades further still —
+ * see `dsh-plugins-client-ui-conversation-files`'s own doc comments.
  * @module dsh-plugins-client-remotes-workspace-git/client
  */
 import type { Context } from '@deepseek-ai/cordis'
@@ -39,30 +43,31 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import workspaceFileRemote from 'dsh-plugins-api-workspace-file-controller/remote'
 import workspaceGitRemote from 'dsh-plugins-api-workspace-git-controller/remote'
+import fileSentenceRemote from 'dsh-plugins-api-file-sentence-controller/remote'
 
 /** Required Client services. */
 export const inject = ['remote']
 
 /**
- * Mount both Remote contributions. A failure is caught and logged, after
+ * Mount every Remote contribution. A failure is caught and logged, after
  * rolling back any contribution that mounted before the failing one, rather
  * than thrown: the Client loader treats a throwing top-level entry as fatal
- * to the whole app, so this degrades only the Workspace Files/git-status
- * features instead of taking every feature down with it.
+ * to the whole app, so this degrades only the Workspace Files/git-status/
+ * ghost-text features instead of taking every feature down with it.
  * @param ctx - Client root Context.
- * @returns disposer unmounting both Remote contributions in reverse order, or a no-op if the mount itself failed.
+ * @returns disposer unmounting every Remote contribution in reverse order, or a no-op if the mount itself failed.
  */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposers: Array<() => Promise<void>> = []
   try {
-    for (const contribution of [workspaceFileRemote, workspaceGitRemote]) {
+    for (const contribution of [workspaceFileRemote, workspaceGitRemote, fileSentenceRemote]) {
       disposers.push(await ctx.remote.$mount(contribution))
     }
   } catch (error) {
     for (const dispose of disposers.reverse()) await dispose()
     ctx.logger.error(
       'dsh-plugins-client-remotes-workspace-git: failed to mount a Remote contribution — '
-      + 'Workspace Files/git-status features will stay unavailable',
+      + 'Workspace Files/git-status/ghost-text features will stay unavailable',
     )
     ctx.logger.error(error)
     return async () => {}

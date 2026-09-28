@@ -1,9 +1,20 @@
 # Composes the File manager + git feature into a web-app-derived profile:
-# the two Host Typert controllers (workspace-files/workspace-git RPC
-# namespaces) plus three Client packages, over the profile's existing
+# three Host Typert controllers (workspace-files/workspace-git/fileSentence
+# RPC namespaces) plus several Client packages, over the profile's existing
 # base/web-app composition — no edit to packages/bundle/base or
 # packages/bundle/web-app in the vendored harness (one row below disables
 # an existing one; nothing here rewrites vendored source).
+#
+# file-sentence-controller is unlike the other two Host controllers: it
+# needs no `workspaceRegistry` at all (it never reads or writes a file — see
+# its own README), only `ctx.llm`/`ctx.sessions`, both mounted by
+# `packages/bundle/base` in every profile that has a Workspace concept and
+# several that don't. It backs the File editor's optional model-backed
+# "next sentence" ghost text (`dsh-plugins-client-ui-file-editing`'s
+# `sentenceGhostText`, wired through `dsh-plugins-client-ui-conversation-
+# files`'s `predictSentence`), using whichever provider/model the calling
+# conversation's own Session is currently on — never a separately
+# configured route.
 #
 # No workspace-registry-seam row here, unlike dsh-plugins-bundle-anthropic-
 # subscription's own authorization-seam: that one is needed because no
@@ -58,15 +69,16 @@
 # row starts failing to find anything to disable.
 #
 # remotes-workspace-git mounts this bundle's own workspace-files/workspace-
-# git generated Remote contributions on the Client — the role
+# git/fileSentence generated Remote contributions on the Client — the role
 # @deepseek-ai/dsh-api-remotes fills for every other namespace, but can't
-# for these two out-of-tree ones (see that package's own README). Kept as
+# for these out-of-tree ones (see that package's own README). Kept as
 # its own dedicated plugin, not folded into workspace-enhanced: a $mount
 # failure there would throw workspace-enhanced's whole apply() and take the
 # core Workspace sidebar down with it. This row's own failure stays local to
 # its own fiber instead — workspace-files-node/conversation-files simply
-# stay pending on their `remote.workspace-files`/`remote.workspace-git`
-# inject if it never mounts, degrading only the Files/git-status feature.
+# stay pending on their `remote.workspace-files`/`remote.workspace-git`/
+# `remote.fileSentence` inject if it never mounts, degrading only the
+# Files/git-status/ghost-text feature.
 
 # ui-sidebar-files is the upstream file tree in the RIGHT Sidebar. It is the
 # one row here that is retired rather than replaced — switched off with
@@ -109,6 +121,9 @@
 
     - id: workspace-git-controller
       name: 'dsh-plugins-api-workspace-git-controller'
+
+    - id: file-sentence-controller
+      name: 'dsh-plugins-api-file-sentence-controller'
 
     - id: conversation-enhanced
       name: 'dsh-plugins-client-ui-conversation-enhanced'

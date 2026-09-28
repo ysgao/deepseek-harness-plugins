@@ -28,6 +28,7 @@
     { "path": "../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" },
     { "path": "../client-ui-file-editing" },
     { "path": "../api-workspace-file-controller" },
-    { "path": "../api-workspace-git-controller" }
+    { "path": "../api-workspace-git-controller" },
+    { "path": "../api-file-sentence-controller" }
   ]
 }

@@ -46,6 +46,23 @@
  * back any `\w+` token already typed elsewhere in the same buffer — the only
  * completion source a file with no recognized `lang` (or a non-`'text'` kind,
  * whose own `lang` is always `undefined`) ever gets.
+ *
+ * Prose kinds additionally get "next sentence" ghost text
+ * (`./codemirror/ghostText.ts`'s `sentenceGhostText`): dimmed inline phantom
+ * text predicting the sentence or line that follows the one the writer just
+ * finished, accepted with `Tab` or dismissed with `Escape`/further typing —
+ * a different UI primitive from the `autocompletion()` popup above, suited
+ * to a whole predicted sentence rather than one dropdown item. "Prose" here
+ * is `kind === 'markdown' || kind === 'rtf'` (both always derive prose from
+ * the buffer, `lang` or not), or `kind === 'text'` with no resolved `lang`
+ * (a `.txt`/`.log`/`.env` file, not a recognized source/config language) —
+ * deliberately excluding code, where "next sentence" is not the right unit
+ * and `languageExtensionFor`'s own completion already fits better. The local
+ * heuristic behind it (`./codemirror/sentencePrediction.ts`) runs entirely
+ * in the browser, same as `wordCompletionSource`; {@link
+ * FileEditorProps.predictSentence} is the seam a caller uses to additionally
+ * wire a model-backed upgrade, entirely optional and never required for the
+ * feature to work.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -57,6 +74,7 @@ import { autocompletion } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { MarkdownText, ReadBlock } from '@deepseek-ai/dsh-client-ui-primitives'
+import { sentenceGhostText } from './codemirror/ghostText.ts'
 import { languageExtensionFor } from './codemirror/languages.ts'
 import { editorTheme } from './codemirror/theme.ts'
 import { wordCompletionSource } from './codemirror/wordCompletion.ts'
@@ -113,6 +131,23 @@ export interface FileEditorProps {
    * own save-page dialog); omitted leaves the shortcut unhandled here.
    */
   onSaveRequested?: () => void
+  /**
+   * Optional model-backed upgrade to the "next sentence" ghost text a prose
+   * kind already gets for free (see this component's own doc comment) —
+   * called only at the same natural pause points the local heuristic itself
+   * uses, with the text preceding the cursor and a signal aborted the
+   * moment a later keystroke supersedes this attempt, and expected to
+   * resolve to a predicted continuation or `null`. Read fresh on every
+   * attempt (not captured once at mount): a caller may freely switch this
+   * between a function and `undefined` on any render — e.g. a user-facing
+   * on/off switch — and the very next pause point honors the new value, no
+   * remount needed. Left `undefined` (the default), the feature stays
+   * entirely local/offline; this component itself never makes a network or
+   * Host call on its own. A caller wiring this up is responsible for
+   * whatever model/provider it calls and for gating it on user consent
+   * (buffer content leaves the browser tab the moment this is called).
+   */
+  predictSentence?: (context: { before: string; path: string; lang: string | undefined; signal: AbortSignal }) => Promise<string | null>
   /** Extra class merged onto the wrapper (callers position; this component draws). */
   className?: string | undefined
 }
@@ -123,12 +158,14 @@ export interface FileEditorProps {
  * @param props - see {@link FileEditorProps}.
  * @returns the editor element.
  */
-export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onChange, onSaveRequested, className }: FileEditorProps) {
+export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onChange, onSaveRequested, predictSentence, className }: FileEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   const onSaveRequestedRef = useRef(onSaveRequested)
   onSaveRequestedRef.current = onSaveRequested
+  const predictSentenceRef = useRef(predictSentence)
+  predictSentenceRef.current = predictSentence
   // Every kind but 'text' always gets a live preview: each derives its own
   // body from the buffer itself (Markdown structure, a detected ontology
   // serialization, a delimited file's columns, an RTF document's text), so
@@ -151,6 +188,11 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
     // whose own `lang` is always `undefined` — `markdown` gets its
     // structure-aware extension separately, below).
     const langExtension = languageExtensionFor(lang)
+    // See this component's own doc comment for exactly which kinds count as
+    // "prose": kind==='text' only qualifies with no resolved `lang` — a
+    // recognized source/config language keeps `languageExtensionFor`'s own
+    // completion instead, where "next sentence" is not the useful unit.
+    const isProseKind = kind === 'markdown' || kind === 'rtf' || (kind === 'text' && lang === undefined)
     const extensions = [
       lineNumbers(),
       history(),
@@ -164,6 +206,24 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
       // the same popup rather than either replacing the other.
       autocompletion(),
       EditorState.languageData.of(() => [{ autocomplete: wordCompletionSource }]),
+      // Registered before the Tab/indent keymap below so a pending "next
+      // sentence" suggestion's own Tab-accept binding is tried, and wins,
+      // ahead of `indentWithTab`'s unconditional indent — see
+      // `./codemirror/ghostText.ts`'s own doc comment on registration order.
+      // Only added for a prose kind (see `isProseKind` above); a code file
+      // keeps exactly the extension set it had before this feature existed.
+      // The `predictAsync` wrapper itself is stable (built once, here, at
+      // mount) and always installed for a prose kind; it is what reads
+      // `predictSentenceRef.current` fresh on every call, which is what
+      // makes the prop live — see this component's own `predictSentence` doc
+      // comment.
+      ...(isProseKind
+        ? [sentenceGhostText({
+          predictAsync: (before, signal) => predictSentenceRef.current === undefined
+            ? Promise.resolve(null)
+            : predictSentenceRef.current({ before, path, lang, signal }),
+        })]
+        : []),
       keymap.of([
         { key: 'Mod-s', run: () => { onSaveRequestedRef.current?.(); return true } },
         indentWithTab,
@@ -205,6 +265,15 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
     // owns the document from here, and a caller wanting a different
     // `lang`/`kind` remounts by keying on the same file identity `text`
     // itself remounts on (see the component doc comment — not always bare `path`).
+    // `predictSentence` is the one exception to "mount-once": whether the
+    // ghost-text extension exists at all still follows `isProseKind` (fixed
+    // at mount, like `kind`/`lang` themselves), but whether it actually
+    // calls out to a model on any given attempt is read fresh from
+    // `predictSentenceRef` every time (see the `predictAsync` wrapper
+    // above) — so toggling this prop between a function and `undefined` on
+    // a later render (a user-facing on/off switch, or a caller whose
+    // callback identity simply changes) takes effect on the very next pause
+    // point, with no remount.
   }, [])
 
   const previewLines = useMemo(

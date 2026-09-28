@@ -47,11 +47,20 @@ export interface FileToolbarSnapshot {
   readonly dirty: boolean
   /** How the last save attempt ended. */
   readonly save: FileSavePhase
+  /**
+   * Whether the model-backed "next sentence" ghost-text upgrade is turned
+   * on — a per-browser preference (see `./ai-prediction-preference.ts`),
+   * republished here so the toolbar can show and toggle it without its own
+   * copy of that state. Meaningful only in Edit mode, but always present so
+   * `same()` below stays a flat field comparison; `FileActions` decides
+   * when to actually draw the indicator.
+   */
+  readonly aiPredictionEnabled: boolean
 }
 
 /** The resting snapshot: no file, nothing to offer. */
 export const RESTING_SNAPSHOT: FileToolbarSnapshot = {
-  path: null, mode: 'view', canEdit: false, canDiff: false, dirty: false, save: 'idle',
+  path: null, mode: 'view', canEdit: false, canDiff: false, dirty: false, save: 'idle', aiPredictionEnabled: false,
 }
 
 /** What `FileView` publishes alongside its snapshot: the actions only it can perform. */
@@ -62,15 +71,20 @@ export interface FileToolbarHandlers {
   readonly save: () => void
   /** Drop the open draft and re-read the file (offered by the conflict notice). */
   readonly discardAndReload: () => void
+  /** Flip the model-backed ghost-text preference and persist the new value. */
+  readonly toggleAiPrediction: () => void
 }
 
 /** Handlers before `FileView` has mounted; each a no-op rather than a crash. */
-const NO_HANDLERS: FileToolbarHandlers = { setMode: () => {}, save: () => {}, discardAndReload: () => {} }
+const NO_HANDLERS: FileToolbarHandlers = {
+  setMode: () => {}, save: () => {}, discardAndReload: () => {}, toggleAiPrediction: () => {},
+}
 
 /** Whether two snapshots say the same thing. */
 function same(left: FileToolbarSnapshot, right: FileToolbarSnapshot): boolean {
   return left.path === right.path && left.mode === right.mode && left.canEdit === right.canEdit
     && left.canDiff === right.canDiff && left.dirty === right.dirty && left.save === right.save
+    && left.aiPredictionEnabled === right.aiPredictionEnabled
 }
 
 /** One File tab's toolbar state, shared between the tab and whichever toolbar draws its controls. */

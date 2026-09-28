@@ -46,6 +46,7 @@
   "dependencies": {
     "dsh-plugins-api-workspace-git-controller": "workspace:^",
     "dsh-plugins-api-workspace-file-controller": "workspace:^",
+    "dsh-plugins-api-file-sentence-controller": "workspace:^",
     "dsh-plugins-client-ui-file-editing": "workspace:^"
   },
   "peerDependencies": {
