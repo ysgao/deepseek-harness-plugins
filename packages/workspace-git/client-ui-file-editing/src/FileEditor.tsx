@@ -31,7 +31,12 @@
  * any of them either) — since the preview pane already covers highlighting;
  * only Markdown additionally gets structure-aware editing (`@codemirror/lang-markdown`, for
  * list/blockquote continuation), a genuinely editing-time behavior a read-only
- * preview pane can't substitute for.
+ * preview pane can't substitute for. One decoration applies to every kind
+ * alike: the buffer's content DOM carries `spellcheck="true"`, so the
+ * browser's own native spellchecker underlines misspellings exactly as it
+ * would in a plain `<textarea>` — the browser/OS dictionary, not a
+ * code-aware one, so it has no notion of identifiers or per-language
+ * comment/string scoping.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -138,6 +143,17 @@ export function FileEditor({ path, text, kind, lang, labels, resizeLabels, onCha
       ]),
       EditorView.lineWrapping,
       editorTheme,
+      // Native browser spellcheck on the editable buffer: CodeMirror renders
+      // its content DOM as `contenteditable`, so the browser's own
+      // spellchecker (same mechanism as a plain `<textarea>`) activates the
+      // moment that element carries `spellcheck="true"` — no CodeMirror
+      // extension, dictionary, or Host round-trip involved. It's the
+      // browser/OS dictionary, not a code-aware one (no camelCase/identifier
+      // splitting), so false positives on code identifiers are expected; it
+      // still gives every FileTextKind (prose and code alike) the same
+      // squiggly-underline spelling feedback a plain text field already has
+      // elsewhere in the app.
+      EditorView.contentAttributes.of({ spellcheck: 'true' }),
       ...(kind === 'markdown' ? [markdown()] : []),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return
