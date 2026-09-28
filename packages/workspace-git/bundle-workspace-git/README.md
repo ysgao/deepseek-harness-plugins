@@ -21,7 +21,7 @@ dsh plugin --profile web-app add @deepseek-ai/dsh-web-app   # first
 dsh plugin --profile web-app add dsh-plugins-bundle-workspace-git   # second
 ```
 
-`cordis.patch.yml` disables four existing rows and inserts eight over the
+`cordis.patch.yml` disables four existing rows and inserts nine over the
 target profile's existing composition — no edit to `packages/bundle/base`
 or `packages/bundle/web-app` in the vendored harness:
 
@@ -61,6 +61,13 @@ or `packages/bundle/web-app` in the vendored harness:
   mounts `@deepseek-ai/dsh-workspace` — self-mounting it here only ever
   duplicate-registers it (`service "workspaceRegistry" has been registered`),
   confirmed by a real boot; see "Two findings worth knowing" below.
+- `file-sentence-controller` — the third Host Typert RPC namespace
+  (`fileSentence`), backing the File editor's optional model-backed "next
+  sentence" ghost text. Declares `static inject = ['llm', 'sessions']`
+  instead — no `workspaceRegistry`, since it never reads or writes a file —
+  and uses whichever provider/model the calling conversation's own Session
+  is currently on, never a separately configured route. See
+  [`dsh-plugins-api-file-sentence-controller`'s own README](../api-file-sentence-controller/README.md).
 - `conversation-enhanced` — the `conversationFileOpener` cross-session
   bridge; the actual conversation-shell replacement. Lets the sidebar Files
   tree (below) dock a file into the current session's File tab instead of
@@ -79,12 +86,13 @@ or `packages/bundle/web-app` in the vendored harness:
 - `workspace-enhanced` — consumes that service and renders the Files row;
   the actual `sidebar.workspaces`/`conversation.hero.workspace` replacement.
 - `remotes-workspace-git` — mounts this bundle's own `workspace-files`/
-  `workspace-git` generated Remote contributions on the Client. Without this
-  row, `ctx.remote['workspace-files']`/`['workspace-git']` are never
-  populated in the browser even though the two Host controllers above boot
-  and register their namespaces correctly; `workspace-files-node`/
-  `conversation-files` simply stay pending on those two `inject` keys if it
-  never mounts, degrading only the Files/git-status feature. See
+  `workspace-git`/`fileSentence` generated Remote contributions on the
+  Client. Without this row, `ctx.remote['workspace-files']`/
+  `['workspace-git']`/`.fileSentence` are never populated in the browser
+  even though the three Host controllers above boot and register their
+  namespaces correctly; `workspace-files-node`/`conversation-files` simply
+  stay pending on those `inject` keys if it never mounts, degrading only the
+  Files/git-status/ghost-text feature. See
   [`dsh-plugins-client-remotes-workspace-git`'s own README](../client-remotes-workspace-git/README.md).
 
 See [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) for the full package

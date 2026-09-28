@@ -85,6 +85,40 @@ per-format read-only preview every text kind already gets — see
   which is out of scope for this package: everything above runs entirely in
   the browser tab, with no process spawned and no additional Host RPC.
 
+## Next-sentence prediction (ghost text)
+
+For prose kinds (`markdown`, `rtf`, or `text` with no resolved `lang` — see
+`FileEditor.tsx`'s own doc comment for the exact rule), the buffer also
+predicts the sentence or line that follows the one the writer just finished,
+shown as dimmed inline phantom text right after the cursor — the
+Copilot/Smart-Compose UX — accepted with `Tab` or dismissed with `Escape` or
+by simply continuing to type. This is a different UI primitive from the
+`autocompletion()` popup above: a whole predicted sentence reads far better
+as phantom text one can type past than as one item in a completion dropdown,
+and the two coexist without either interfering with the other.
+
+- **Local heuristic (`src/codemirror/sentencePrediction.ts`), always on, no
+  network call.** At a natural pause — a sentence just ended, or `Enter` was
+  pressed after a non-empty line — it looks for another place in the *same
+  buffer* where an identically-worded sentence or line was followed by
+  something, and offers that something back. This is pattern *reuse*, not
+  generation: a document that never repeats a sentence structure gets no
+  suggestion at all, same as `wordCompletionSource` on a word used only once.
+  It is genuinely useful on repetitive prose (numbered steps, changelog
+  entries, FAQ-style Q/A pairs, checklists) and silent on novel prose.
+- **Optional model-backed upgrade (`FileEditorProps.predictSentence`).** A
+  caller may additionally supply an async function called at the same pause
+  points, with the text preceding the cursor; its resolved suggestion
+  replaces the local guess once it arrives, provided the cursor hasn't moved.
+  This package makes no network or Host call on its own — wiring an actual
+  model-backed provider (and any user-consent gating around sending buffer
+  content to it) is entirely the caller's responsibility. Left unset, the
+  feature is exactly the local heuristic above.
+
+Deliberately excluded from code kinds: "next sentence" is not a useful unit
+for source code, where `languageExtensionFor`'s own keyword/scope-aware
+completion already fits the editing motion better.
+
 ## Ontology files (`.owl`, `.rdf`, …)
 
 OWL/RDF ontologies are plain text, so Edit and Diff treat them exactly as

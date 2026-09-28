@@ -109,13 +109,29 @@
  * collapsed to zero — the workbook parsed, its notice appeared, and nothing
  * was drawn.
  *
- * No padding, unlike `.body`: the engine draws its own header and toolbar
- * and expects the full width, exactly as it has it in the Sidebar.
+ * "Survived" meant "rendered", not "the engine's own header — the path plus
+ * the View/Edit/Diff/AI-prediction row this seat's contributions draw into
+ * (`FileActions`, via `sidebar.right.tab.document.actions`) — stayed put
+ * while scrolling": that header is a fixed-height row over its own scrolling
+ * body (TextPreview.module.css's `.header`/`.body`), which only keeps the
+ * header in view when this seat itself is genuinely height-bounded, the way
+ * the right Sidebar pane the engine was written for always is. Without an
+ * explicit height here, this seat's only child is absolutely positioned
+ * (below) and so contributes nothing to `.root`'s own content height,
+ * leaving this seat's resolved height exactly as reliably indefinite as
+ * `.body`'s own comment above describes — and an indefinite seat lets the
+ * engine's header scroll away with its body instead of sitting above it.
+ * `--dsh-conversation-viewport-height`/`--dsh-composer-height` are the same
+ * published measurements (`ConversationContent`'s `ResizeObserver`, set on
+ * the ancestor `.scrollBody`) `ui-chat`'s `TurnNavigator.module.css` reads
+ * for its own `--turn-rail-band`, with that file's own fallback values for
+ * the frames before the observer's first callback.
  */
 .documentSeat {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+  height: calc(var(--dsh-conversation-viewport-height, 100dvh) - var(--dsh-composer-height, 152px));
   /* The containing block for the absolutely-positioned body below, and the
      clip that keeps a body wider than the tab from widening it. */
   position: relative;

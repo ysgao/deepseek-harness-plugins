@@ -25,9 +25,14 @@
  * Unsaved edits live in an in-memory per-path draft cache (`draftsRef`), not
  * React state, so switching to another file (or to View/Diff) and back
  * never silently loses a draft — no native `beforeunload`/`confirm` dialog
- * needed. Saving goes through `writeFile`'s version guard; a concurrent
- * on-disk change surfaces as an inline conflict notice rather than
- * overwriting it.
+ * needed. There is no Save button: edits autosave — `handleEditChange`
+ * (re)arms a debounce (`scheduleAutosave`, `AUTOSAVE_DEBOUNCE_MS`) on every
+ * keystroke, and leaving Edit mode or a Cmd/Ctrl+S in the editor
+ * (`handleSaveNow`) flushes immediately instead of waiting it out. Saving
+ * goes through `writeFile`'s version guard; a concurrent on-disk change
+ * surfaces as an inline conflict notice rather than overwriting it, and
+ * `FileActions`' status readout (Saving…/Saved/Unsaved changes) is what a
+ * reader watches in the button's place.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { InjectFace, PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -57,6 +62,7 @@ import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 // dsh-plugins-client-ui-document-host when that package is composed in; this
 // tab draws its own preview when it is not.
 import type { FileDocumentHookContext } from './document-seat.ts'
+import { readAiPredictionPreference, writeAiPredictionPreference } from './ai-prediction-preference.ts'
 import { FileActions } from './FileActions.tsx'
 import type { FileModeStore, FileViewMode } from './mode-store.ts'
 import type { SidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
@@ -84,6 +90,17 @@ export interface FileViewInjected {
   writeFile: (
     workspaceId: WorkspaceId | undefined, path: string, content: string, expectedVersion: WorkspaceFileVersion, signal?: AbortSignal,
   ) => Promise<WorkspaceFileVersion>
+  /**
+   * Predict the sentence/line that follows `before`, the model-backed
+   * upgrade to `FileEditor`'s own local ghost-text heuristic — using
+   * whichever provider/model this tab's own session is currently on (see
+   * `dsh-plugins-api-file-sentence-controller`'s own README), never a
+   * separately configured route. Resolves `null` uniformly for every
+   * failure mode (no route yet, provider error, timeout, a declining
+   * model): this face never throws a user-visible error for an
+   * unavailable auxiliary suggestion.
+   */
+  predictSentence: (path: string, lang: string | undefined, before: string, signal: AbortSignal) => Promise<string | null>
   /**
    * Compose the `dsh-resource://file/session/<id>/<path>` address for a path
    * this tab has open, in this tab's own session.
@@ -153,12 +170,20 @@ interface FileDraft {
   version: WorkspaceFileVersion
 }
 
-/** Save-button/status state for the currently open path's Edit mode. */
+/** Autosave status for the currently open path's Edit mode. */
 type SaveState =
   | { phase: 'idle' }
   | { phase: 'saving' }
   | { phase: 'conflict' }
   | { phase: 'error' }
+
+/**
+ * Pause between the last keystroke `handleEditChange` sees and the autosave
+ * `scheduleAutosave` fires. Long enough that ordinary typing coalesces into
+ * one write rather than one per keystroke; short enough that a reader who
+ * stops to think, or switches away, rarely finds anything still unsaved.
+ */
+const AUTOSAVE_DEBOUNCE_MS = 1200
 
 /** Full File-view component props: runtime & injected & the pristine `conversation`-namespace locale seat. */
 export type FileViewProps =
@@ -245,7 +270,7 @@ function stateFromError(error: unknown): FilePreviewState {
  */
 export function FileView({
   viewRequest, completeViewRequest, readFile, openPath, getGitStatus, getFileDiff, writeFile, fileAddress,
-  sessionId, modeStore, releaseModeStore, renderSlot, tFiles, t,
+  predictSentence, sessionId, modeStore, releaseModeStore, renderSlot, tFiles, t,
 }: FileViewProps) {
   const filePreviewLabels: FilePreviewLabels = useMemo(() => ({
     markdown: { code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('markdown.footnotes') },
@@ -303,11 +328,25 @@ export function FileView({
   // loses a draft, and never shows one workspace's draft under another's
   // identity. Plain mutable state (not React state): every keystroke would
   // otherwise re-render the whole tab. `hasDraft` is the reactive slice
-  // callers actually need to render from (the unsaved-changes indicator,
-  // whether Save is enabled).
+  // callers actually need to render from — the unsaved-changes indicator,
+  // and the autosave status readout's "Unsaved changes" vs. "Saved" text.
   const draftsRef = useRef(new Map<string, FileDraft>())
   const [hasDraft, setHasDraft] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>({ phase: 'idle' })
+
+  // The model-backed ghost-text preference — one per-browser value (see
+  // ./ai-prediction-preference.ts), read once at mount and flipped by the
+  // toolbar's switch. Not reset by `openedFileId`: it is a reader
+  // preference, not per-file state, so it stays as the reader left it
+  // across every file this tab opens.
+  const [aiPredictionEnabled, setAiPredictionEnabled] = useState(readAiPredictionPreference)
+  const handleToggleAiPrediction = useCallback(() => {
+    setAiPredictionEnabled((current) => {
+      const next = !current
+      writeAiPredictionPreference(next)
+      return next
+    })
+  }, [])
 
   // A one-shot handoff (viewRequest/completeViewRequest): acknowledge
   // immediately so a second open of the same path (a re-click while already
@@ -323,6 +362,13 @@ export function FileView({
   // See `fileIdentityOf`'s own doc comment: `path` alone conflates two
   // different workspaces' same-named files into one draft/editor identity.
   const openedFileId = openedPath === null ? null : fileIdentityOf(openedWorkspaceId, openedPath)
+  // Mirrors `openedFileId` into a ref, read (not the state) by a save that
+  // may still be resolving once the reader has already switched files — see
+  // `handleSave`'s own doc comment for why touching this tab's React state
+  // for a save that landed after that switch would corrupt the *new* file's
+  // display instead of the one it was actually for.
+  const currentFileIdRef = useRef(openedFileId)
+  currentFileIdRef.current = openedFileId
 
   // One lifetime per opened file, handed to a document body as the signal
   // its own reads ride on. Aborting it on change is what stops the previous
@@ -480,40 +526,126 @@ export function FileView({
     }
   }, [openedPath, openedWorkspaceId, readFile, reloadToken])
 
+  // The pending debounced autosave, if any — a single timer, not one per
+  // file: `scheduleAutosave` always fires the *latest* `handleSave` (read
+  // off `handleSaveRef`, updated below on every render), which is only ever
+  // meaningfully different across a file switch, and the cleanup effect
+  // further down cancels a still-pending timer the moment that happens, so
+  // it can never fire pointed at the wrong file.
+  const autosaveTimerRef = useRef<number | undefined>(undefined)
+  // Whether a write is currently in flight, guarding against a debounce
+  // firing (or a Cmd/Ctrl+S) while a previous one hasn't resolved yet —
+  // `handleSave` itself queues the trailing edits for the write that's
+  // already running rather than starting a second, overlapping one.
+  const savingRef = useRef(false)
+
   // Records every keystroke into the current (path, workspaceId)'s draft,
   // forked from the version the buffer was seeded at (the read's version, or
   // the prior draft's — never re-derived per keystroke, only at fork time).
+  // Every edit also (re)arms the autosave debounce below.
   const handleEditChange = useCallback((text: string) => {
     if (openedFileId === null) return
     const baseVersion = draftsRef.current.get(openedFileId)?.version ?? version
     if (baseVersion === null) return
     draftsRef.current.set(openedFileId, { text, version: baseVersion })
     setHasDraft(true)
+    scheduleAutosave()
   }, [openedFileId, version])
 
   const handleSave = useCallback(() => {
     if (openedPath === null || openedFileId === null) return
+    // A write is already in flight for this same file: let it finish first.
+    // Its own completion below re-arms the debounce for whatever changed
+    // meanwhile, so nothing typed during the wait goes unsaved.
+    if (savingRef.current) return
     const draft = draftsRef.current.get(openedFileId)
     if (draft === undefined) return
-    setSaveState({ phase: 'saving' })
-    writeFile(openedWorkspaceId, openedPath, draft.text, draft.version).then((nextVersion) => {
-      draftsRef.current.delete(openedFileId)
-      setHasDraft(false)
+    const fileId = openedFileId
+    const path = openedPath
+    const workspaceId = openedWorkspaceId
+    savingRef.current = true
+    if (currentFileIdRef.current === fileId) setSaveState({ phase: 'saving' })
+    writeFile(workspaceId, path, draft.text, draft.version).then((nextVersion) => {
+      savingRef.current = false
+      // Read fresh, not the `draft` this write started with: more may have
+      // been typed while it was in flight (autosave's whole reason to keep
+      // typing usable during a round trip). Reference equality tells the
+      // two cases apart — nothing changed the entry since, or something did.
+      const current = draftsRef.current.get(fileId)
+      if (current === draft) {
+        draftsRef.current.delete(fileId)
+      } else if (current !== undefined) {
+        // Re-fork the newer, still-unsaved text onto the version this write
+        // just produced, and queue another autosave for it.
+        draftsRef.current.set(fileId, { text: current.text, version: nextVersion })
+      }
+      // A reader who has since switched to another file: update that
+      // file's identity-scoped bookkeeping (above) but leave this tab's own
+      // React state alone — it now describes a *different* open file, and
+      // overwriting it here would show this write's result under the wrong
+      // path.
+      if (currentFileIdRef.current !== fileId) return
+      setHasDraft(draftsRef.current.has(fileId))
       setSaveState({ phase: 'idle' })
       setVersion(nextVersion)
-      setState({ phase: 'ready', content: { kind: 'text', text: draft.text } })
+      setState({ phase: 'ready', content: { kind: 'text', text: (current ?? draft).text } })
       setRefreshToken(token => token + 1)
+      if (current !== undefined && current !== draft) scheduleAutosave()
     }).catch((error: unknown) => {
+      savingRef.current = false
+      if (currentFileIdRef.current !== fileId) return
       const conflict = remoteErrorOf(error)?.code === 'workspace-files/file-changed'
       setSaveState({ phase: conflict ? 'conflict' : 'error' })
     })
   }, [openedPath, openedFileId, openedWorkspaceId, writeFile])
+
+  // `scheduleAutosave` and `handleSave` are mutually referential (a
+  // reconciled trailing edit re-arms the debounce from inside `handleSave`
+  // itself), so the debounce reads the latest `handleSave` off a ref —
+  // updated on every render, the same pattern `FileEditor` uses for its own
+  // `onChange`/`onSaveRequested` props — rather than closing over it
+  // directly.
+  const handleSaveRef = useRef(handleSave)
+  handleSaveRef.current = handleSave
+
+  const scheduleAutosave = useCallback(() => {
+    window.clearTimeout(autosaveTimerRef.current)
+    autosaveTimerRef.current = window.setTimeout(() => { handleSaveRef.current() }, AUTOSAVE_DEBOUNCE_MS)
+  }, [])
+
+  // Cmd/Ctrl+S (`FileEditor`'s `onSaveRequested`) and a mode switch away
+  // from Edit both want the *current* draft written now, not after the
+  // usual debounce — cancel whatever is pending and save immediately.
+  const handleSaveNow = useCallback(() => {
+    window.clearTimeout(autosaveTimerRef.current)
+    handleSave()
+  }, [handleSave])
+
+  // Never lets a pending or in-flight autosave outlive the file it was
+  // scheduled for: switching to another (or closing the tab) cancels it.
+  // A write already dispatched to the Host can't be un-sent, which is
+  // exactly what `currentFileIdRef`'s check inside `handleSave` itself
+  // guards — this effect only stops a *new* one from starting late.
+  useEffect(() => {
+    return () => { window.clearTimeout(autosaveTimerRef.current) }
+  }, [openedFileId])
+
+  // Switching the toolbar away from Edit mode flushes any pending autosave
+  // immediately, so View/Diff never shows content staler than what the
+  // reader just typed. Wraps the raw `setMode` published to the toolbar
+  // (below) rather than replacing it: View<->Diff and Edit-with-nothing-
+  // pending both stay plain, synchronous mode switches.
+  const handleSetMode = useCallback((nextMode: FileViewMode) => {
+    if (mode === 'edit' && nextMode !== 'edit' && hasDraft) handleSaveNow()
+    setMode(nextMode)
+  }, [mode, hasDraft, handleSaveNow])
 
   // Discards the current draft and re-fetches the path fresh — the
   // conflict notice's recovery action, since a version mismatch means the
   // draft's base is no longer valid to save over.
   const handleDiscardAndReload = useCallback(() => {
     if (openedFileId === null) return
+    window.clearTimeout(autosaveTimerRef.current)
     draftsRef.current.delete(openedFileId)
     setHasDraft(false)
     setSaveState({ phase: 'idle' })
@@ -539,10 +671,18 @@ export function FileView({
   // `hasDraft` exactly once) does not re-render the toolbar for nothing.
   useEffect(() => {
     modeStore.publish(
-      { path: openedPath, mode, canEdit, canDiff, dirty: hasDraft, save: saveState.phase },
-      { setMode, save: handleSave, discardAndReload: handleDiscardAndReload },
+      { path: openedPath, mode, canEdit, canDiff, dirty: hasDraft, save: saveState.phase, aiPredictionEnabled },
+      // `setMode` here is `handleSetMode`, not the raw state setter: the
+      // toolbar's View/Diff buttons must flush a pending autosave the same
+      // way leaving Edit any other way does. `save` stays wired to the
+      // plain `handleSave` — the toolbar's own Retry action on an error
+      // notice, not a debounce to cancel.
+      { setMode: handleSetMode, save: handleSave, discardAndReload: handleDiscardAndReload, toggleAiPrediction: handleToggleAiPrediction },
     )
-  }, [modeStore, openedPath, mode, canEdit, canDiff, hasDraft, saveState.phase, handleSave, handleDiscardAndReload])
+  }, [
+    modeStore, openedPath, mode, canEdit, canDiff, hasDraft, saveState.phase, aiPredictionEnabled,
+    handleSetMode, handleSave, handleDiscardAndReload, handleToggleAiPrediction,
+  ])
 
   // A closed tab leaves no controls behind in a toolbar that outlives it,
   // and no store behind in the map that keyed it.
@@ -644,7 +784,16 @@ export function FileView({
           labels={filePreviewLabels}
           resizeLabels={editorResizeLabels}
           onChange={handleEditChange}
-          onSaveRequested={handleSave}
+          onSaveRequested={handleSaveNow}
+          // Always a defined function (never `undefined`, which
+          // `exactOptionalPropertyTypes` refuses on an optional prop): the
+          // toolbar's own switch is checked *inside* it instead, since
+          // `FileEditor` reads this prop fresh on every pause point (see its
+          // own doc comment) — so toggling `aiPredictionEnabled` takes
+          // effect on the very next suggestion attempt, no remount.
+          predictSentence={context => aiPredictionEnabled
+            ? predictSentence(openedPath, langFromPath(openedPath), context.before, context.signal)
+            : Promise.resolve(null)}
           className={css.body}
         />
       )}

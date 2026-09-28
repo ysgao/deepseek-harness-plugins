@@ -26,6 +26,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 // Type-only: pulls this package's own generated Remote namespace merges.
 import type {} from 'dsh-plugins-api-workspace-file-controller/remote'
 import type {} from 'dsh-plugins-api-workspace-git-controller/remote'
+import type {} from 'dsh-plugins-api-file-sentence-controller/remote'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
@@ -54,7 +55,17 @@ const NS = 'conversation-files'
  * sub-keys are required alongside the generic 'remote': the ctx.remote[...]
  * property proxy is topology-sensitive and only resolves a namespace this
  * fiber's own inject names (see dsh-plugins-client-ui-workspace-enhanced's
- * apply.ts, which mounts both contributions). */
+ * apply.ts, which mounts both contributions).
+ *
+ * `remote.fileSentence` is deliberately NOT named here, unlike the other
+ * two: it backs only the optional model-backed ghost-text upgrade
+ * (`predictSentence`), a best-effort auxiliary call the tab must keep
+ * working entirely without — declaring it as a hard `inject` dependency
+ * would leave the WHOLE File tab (View/Edit/Diff, not merely predictions)
+ * pending forever in any composition where that one Remote contribution
+ * never mounts (missing package, a `$mount` failure specific to it). It is
+ * read optionally instead, the same `ctx.get(name)` pattern `workspaces`
+ * already uses below, inside `predictSentence` itself. */
 export const inject = ['slots', 'locale', 'remote', 'remote.workspace-files', 'remote.workspace-git']
 
 /** Unwrap a generated Remote call's result, rejecting with its typed `RemoteError` on failure. */
@@ -205,6 +216,20 @@ export function apply(ctx: Context): void {
           }
           return unwrap(ctx.remote['workspace-files'].writeFile({ workspaceId: owner, path, content, expectedVersion }, signal))
             .then(value => value.version)
+        },
+        predictSentence: (path, lang, before, signal) => {
+          // Optional: see this module's own `inject` doc comment on why
+          // this one namespace is read through `ctx.get` rather than a
+          // hard dependency. Absent (never mounted — the Host process
+          // itself needs restarting after installing/rebuilding
+          // dsh-plugins-api-file-sentence-controller, since a page reload
+          // alone only reloads the Client bundle — or a fresh session with
+          // no route yet, handled Host-side, not here) degrades to no
+          // suggestion, identically to every other failure mode
+          // `predictSentence`'s own doc comment already covers.
+          const fileSentence = ctx.get('remote.fileSentence')
+          if (fileSentence === undefined) return Promise.resolve(null)
+          return unwrap(fileSentence.predict({ sessionId, path, before, ...(lang === undefined ? {} : { lang }) }, signal))
         },
         // The session the tab is drawn for is the session the address names:
         // a document body reads its file through this address, and the file's

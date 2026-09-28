@@ -1,15 +1,16 @@
 # dsh-plugins-client-remotes-workspace-git
 
 Mounts this bundle's own generated Remote contributions on the Client:
-`dsh-plugins-api-workspace-file-controller` and
-`dsh-plugins-api-workspace-git-controller`. Without this, `ctx.remote
-['workspace-files']`/`['workspace-git']` are `undefined` in the browser even
-though both Host controllers boot and register their namespaces correctly —
-`dsh-typert-loader` only auto-discovers a package's Host `./typert` half (its
-own README names this a known limitation); the Client `./remote` half needs
-an explicit composition owner, which every reference to these two exports
-elsewhere in this bundle was only a type-only `import type {}` of, never a
-runtime one.
+`dsh-plugins-api-workspace-file-controller`,
+`dsh-plugins-api-workspace-git-controller`, and
+`dsh-plugins-api-file-sentence-controller`. Without this, `ctx.remote
+['workspace-files']`/`['workspace-git']`/`.fileSentence` are `undefined` in
+the browser even though every Host controller boots and registers its
+namespace correctly — `dsh-typert-loader` only auto-discovers a package's
+Host `./typert` half (its own README names this a known limitation); the
+Client `./remote` half needs an explicit composition owner, which every
+reference to these exports elsewhere in this bundle was only a type-only
+`import type {}` of, never a runtime one.
 
 ## Why its own plugin, not folded into another package
 
@@ -21,7 +22,7 @@ calls. It's vendored, so this bundle can't add rows to it without patching
 vendor source, which this repo's whole design forbids (see
 `../../../ARCHITECTURE.md`).
 
-An earlier revision mounted both contributions from
+An earlier revision mounted the first two contributions from
 `dsh-plugins-client-ui-workspace-enhanced`'s own `apply()` instead. That
 package's `apply()` also registers the core `sidebar.workspaces`/
 `conversation.hero.workspace` slots — the Workspace sidebar itself — so a
@@ -49,8 +50,14 @@ returns a no-op disposer instead of re-throwing.
 files` each inject `remote.workspace-files`/`remote.workspace-git` in their
 own `inject` array and simply stay pending forever per Cordis's ordinary
 lazy-activation semantics when this plugin's mount never succeeds —
-degrading only the feature that needs those two namespaces, while the rest
-of the app boots and works normally.
+degrading only the feature that needs those namespaces, while the rest
+of the app boots and works normally. `remote.fileSentence` is different
+again: `dsh-plugins-client-ui-conversation-files` deliberately does **not**
+name it in its own `inject` array (it reads it optionally, through
+`ctx.get('remote.fileSentence')`, only inside `predictSentence` itself) —
+naming it there would leave the *entire* File tab pending on a namespace
+that backs only its optional model-backed ghost-text upgrade. See that
+package's own `apply.ts` doc comment.
 
 ## Design
 

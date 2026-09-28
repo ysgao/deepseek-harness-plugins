@@ -14723,6 +14723,37 @@ importers:
 
   packages/workspace-git: {}
 
+  packages/workspace-git/api-file-sentence-controller:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../_vendor/deepseek-harness/vendor/schemastery
+        version: link:../../_vendor/deepseek-harness/vendor/schemastery
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/vendor/cordis
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/llm/llm
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/core/session
+      '@deepseek-ai/dsh-timeout':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/util/timeout
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/typert/protocol
+      '@deepseek-ai/dsh-util-values':
+        specifier: workspace:^
+        version: link:../../_vendor/deepseek-harness/packages/util/values
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
   packages/workspace-git/api-workspace-file-controller:
     dependencies:
       '@deepseek-ai/schemastery':
@@ -14821,6 +14852,9 @@ importers:
 
   packages/workspace-git/client-remotes-workspace-git:
     dependencies:
+      dsh-plugins-api-file-sentence-controller:
+        specifier: workspace:^
+        version: link:../api-file-sentence-controller
       dsh-plugins-api-workspace-file-controller:
         specifier: workspace:^
         version: link:../api-workspace-file-controller
@@ -14931,6 +14965,9 @@ importers:
 
   packages/workspace-git/client-ui-conversation-files:
     dependencies:
+      dsh-plugins-api-file-sentence-controller:
+        specifier: workspace:^
+        version: link:../api-file-sentence-controller
       dsh-plugins-api-workspace-file-controller:
         specifier: workspace:^
         version: link:../api-workspace-file-controller

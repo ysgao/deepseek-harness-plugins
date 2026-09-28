@@ -18,6 +18,7 @@ const HOST_PACKAGES = [
   'packages/web-search-webcli',
   'packages/workspace-git/api-workspace-git-controller',
   'packages/workspace-git/api-workspace-file-controller',
+  'packages/workspace-git/api-file-sentence-controller',
 ]
 
 const CLIENT_PACKAGES = [

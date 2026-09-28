@@ -12,6 +12,7 @@
     { "path": "../../_vendor/deepseek-harness/packages/api/gateway/tsconfig.client.json" },
     { "path": "../../_vendor/deepseek-harness/packages/typert/protocol" },
     { "path": "../api-workspace-file-controller" },
-    { "path": "../api-workspace-git-controller" }
+    { "path": "../api-workspace-git-controller" },
+    { "path": "../api-file-sentence-controller" }
   ]
 }

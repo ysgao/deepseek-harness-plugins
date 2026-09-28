@@ -70,12 +70,13 @@ host them. Nothing registering into the seat is a normal state — the tab
 then draws its own `FilePreview`, exactly as it did before the seat existed,
 and that fallback is deliberate rather than vestigial.
 
-**Controls: one component, two mount points.** View/Edit/Diff/Save live in
-`src/FileActions.tsx`. While the engine is drawing, they register into its
-own header toolbar through `sidebar.right.tab.document.actions`, so a file
-carries one row of controls rather than the engine's toolbar beneath this
-tab's header — and this tab then draws no header of its own, because the
-engine's already renders the path.
+**Controls: one component, two mount points.** View/Edit/Diff and the
+autosave status readout live in `src/FileActions.tsx`. While the engine is
+drawing, they register into its own header toolbar through
+`sidebar.right.tab.document.actions`, so a file carries one row of controls
+rather than the engine's toolbar beneath this tab's header — and this tab
+then draws no header of its own, because the engine's already renders the
+path.
 
 They cannot live *only* there: that toolbar is the engine's body, mounted
 only in View mode, so controls registered there and nowhere else would
@@ -90,6 +91,17 @@ the store compares before notifying so publishing on every render does not
 re-render the toolbar on every keystroke. Edit is offered for whatever
 `isTextKind` admits — Markdown, ontology, delimited and RTF included — so a
 text kind added later is not silently left out.
+
+**There is no Save button.** Edits autosave: every keystroke (re)arms a
+debounce (`FileView`'s `scheduleAutosave`, `AUTOSAVE_DEBOUNCE_MS`), and
+`FileActions` shows the result — Saving…/Saved/Unsaved changes — in the
+button's old place, `aria-live` so a screen reader hears the cycle the same
+way it once heard a button's label change. Leaving Edit mode (View/Diff) or
+Cmd/Ctrl+S in the editor flushes immediately instead of waiting the
+debounce out. A version conflict or a write failure still surfaces as an
+inline notice, same as before the button was removed — the conflict
+notice's "Discard changes and reload", and the error notice's own "Retry",
+which just re-runs the save.
 
 ## What still needs `conversationFileOpener`
 

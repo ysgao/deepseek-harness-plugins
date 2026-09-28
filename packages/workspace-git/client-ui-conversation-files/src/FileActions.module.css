@@ -38,3 +38,48 @@
 .unsaved {
   color: var(--dsw-alias-state-warn-primary);
 }
+
+/* The autosave status readout (Saved/Saving…/Unsaved changes) that replaced
+   the old Save button — a quiet passive indicator, not an action, so it gets
+   no border/background of its own (unlike .aiPrediction beside it, which is
+   also a toggle a reader clicks). */
+.autosaveStatus {
+  flex: none;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The model-backed ghost-text on/off switch (FileActions.tsx). Styled as a
+   quiet pill rather than a full Button: it is a persistent status readout
+   the reader glances at, not a primary action, so it stays visually lighter
+   than Save/View/Edit/Diff beside it. */
+.aiPrediction {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid var(--dsw-alias-separator-primary);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.aiPredictionOn {
+  color: var(--dsw-alias-label-secondary);
+  border-color: var(--dsw-alias-state-success-primary);
+}
+
+.aiPredictionDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.aiPredictionOn .aiPredictionDot {
+  background: var(--dsw-alias-state-success-primary);
+}
