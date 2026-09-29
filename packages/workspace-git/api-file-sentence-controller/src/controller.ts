@@ -47,24 +47,27 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
-/** Exact route and input size recorded before one auxiliary ghost-text dispatch — the "Model-visible ⟺ logged" record this namespace's own request needs, mirroring `dsh-session-title-llm`'s `session/title-llm-request`. */
-export interface FileSentenceRequestEventData {
-  /** Display path the prediction was requested for. */
-  readonly path: string
-  /** Grammar hint, when the caller resolved one. */
-  readonly lang?: string
-  /** Exact provider/model route used, read from the session's own current header. */
-  readonly route: { readonly provider: string; readonly model: string }
-  /** UTF-16 length of the (possibly truncated) input actually sent. */
-  readonly inputChars: number
-}
-
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    /** Log-only pre-dispatch record of one ghost-text auxiliary model request. */
-    'workspace-git/file-sentence-request': FileSentenceRequestEventData
-  }
-}
+/*
+ * This namespace deliberately appends NO Session event for its dispatch, and
+ * an out-of-repo plugin must not add one back.
+ *
+ * `KNOWN_SESSION_EVENT_TYPES` in `@deepseek-ai/dsh-session` is generated from
+ * the harness repository's own `SessionEventMap`, so a type declared out of
+ * tree is unknown to every reader by construction. `validateStoredEvents`
+ * then refuses the whole stored log — the conversation fails to load with
+ * `contains event type "…" unknown to this harness and not marked ignorable`
+ * — unless the persisted envelope carries `ignorable: true`, and
+ * `Session.append()` exposes no parameter that sets that marker (its only
+ * options argument is `SurfaceIntent`, for surface events). A declaration-
+ * merged event type therefore typechecks, writes, and bricks reload.
+ *
+ * The record also had no business in that log to begin with. Ghost text is
+ * an editor-local aid: the prediction is drawn in the File tab's buffer, is
+ * accepted or discarded by the keystroke after it, and never enters the
+ * conversation's derived message history. The Session is read here for one
+ * thing only — the route this conversation is already on — so the dispatch
+ * belongs to the editor, not to the conversation whose log it was corrupting.
+ */
 
 /** Deployment policy for the auxiliary ghost-text call. */
 export interface Config {
@@ -159,13 +162,6 @@ export class FileSentenceController extends TypertRemoteService {
       maxTokens: this.maxOutputTokens,
       sessionId: request.sessionId,
       signal: callDeadline.signal,
-    })
-
-    session.append('workspace-git/file-sentence-request', {
-      path: request.path,
-      ...(request.lang === undefined ? {} : { lang: request.lang }),
-      route: { provider: route.provider, model: route.model },
-      inputChars: before.length,
     })
 
     const assembler = new BlockAssembler()
