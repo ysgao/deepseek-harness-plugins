@@ -70,6 +70,15 @@ allowBuilds:
   # store-index rewriting only uses msgpackr's portable JavaScript codec.
   electron-winstaller: false
   msgpackr-extract: false
+  # Same package as vendor's own '@deepseek-ai/dsh-subprocess-local@file:
+  # packages/subprocess/subprocess-local' entry (packages/_vendor/deepseek-
+  # harness/pnpm-workspace.yaml) — restores node-pty's macOS spawn helper's
+  # executable bit. Reviewed there already; this entry exists only because
+  # pnpm computes the file: key relative to *this* workspace root, so the
+  # same package resolves to a different key string here than inside vendor's
+  # own nested workspace (surfaced by `pnpm --filter=@deepseek-ai/dsh deploy`,
+  # which operates against this outer workspace's graph).
+  '@deepseek-ai/dsh-subprocess-local@file:packages/_vendor/deepseek-harness/packages/subprocess/subprocess-local': true
 
 linkWorkspacePackages: true
 

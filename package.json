@@ -30,6 +30,8 @@
     "build:lib:client": "tsc -b tsconfig.client.json && tsdown --env.DSH_BUILD_FACE client",
     "build": "pnpm run build:lib:host && pnpm run build:lib:client && pnpm run install:plugins",
     "install:plugins": "node scripts/install-plugins.mjs",
+    "clone-deploy": "node scripts/deploy.mjs",
+    "pnpm-deploy": "node scripts/pnpm-deploy.mjs",
     "typecheck": "tsc -b tsconfig.host.json && tsc -b tsconfig.client.json",
     "test": "vitest run",
     "check:parity": "node scripts/check-replacement-parity.mjs",
