@@ -83,6 +83,105 @@ currently serving needs a restart to take effect, same as any other install
 boot"), so it deliberately isn't automated by this tool the way steps 1–2
 are; do it by hand, or through Settings > Plugins in a running `dsh` Web UI.
 
+### Worked example: share `$DSH_HOME`, use a new profile name, run on another port
+
+(Mechanically sound and verified end-to-end below — but see the caveat right
+after it before choosing this over the simpler alternative there.)
+
+A common shape of "the two" from the paragraph above: you already have a
+day-to-day dev checkout serving `dsh --profile web` against your real
+`~/.dsh` (its bundles `link:`ed straight to this checkout's `packages/**`,
+live-editable), and you now want the *deployed*, standalone engine +
+bundles from steps 1–2 running alongside it — sharing the same
+credentials/sessions/storages/settings under `~/.dsh`, but on a different
+port, and without the deployed instance's bundle code being your live dev
+source. Reusing the profile name `web` for this does not get you that: it
+is the *same* `package.json`/`node_modules` the live instance already
+reads, so wiring deployed bundles into it rewrites the live instance's
+dependencies too (and needs that instance restarted to notice — see
+above). Use a second profile **name** instead; `$DSH_HOME` stays shared,
+only the bundle wiring is separate:
+
+```sh
+# 1. Deploy the vendor engine once (step 1 above), e.g. to ~/dsh-app, and
+#    the three bundles into their own standalone copies (step 2 above),
+#    e.g. under ~/dsh-app/plugins/<name> — real files, not `link:`s back
+#    to this checkout.
+
+# 2. Seed a new profile (any name other than "web") from the shipped "web"
+#    template, so it gets `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app`
+#    without touching the existing "web" profile. `--dump-config` performs
+#    the same initialize-and-write a real boot does, but never starts
+#    listening — it's the way to seed a profile without booting it:
+~/dsh-app/lib/bin.js webprod --from-default-profile web --dump-config >/dev/null
+
+# 3. Wire in the deployed (non-symlinked) bundle copies:
+~/dsh-app/lib/bin.js plugin --profile webprod add ~/dsh-app/plugins/workspace-git
+~/dsh-app/lib/bin.js plugin --profile webprod add ~/dsh-app/plugins/anthropic-subscription
+~/dsh-app/lib/bin.js plugin --profile webprod add ~/dsh-app/plugins/mcp-connector
+
+# 4. Boot on a different port — `--port` (and `--host`, `--no-open`) are the
+#    web app's own flags, shown by `dsh web --help`, not launcher flags:
+~/dsh-app/lib/bin.js webprod --port 3081
+```
+
+Why the profile *name* matters here: a brand-new profile normally
+auto-initializes with only `@deepseek-ai/dsh-base` (verified — a fresh
+profile named e.g. `customname` gets just that plus whatever bundle you
+`add`). Only a profile literally named `web` auto-seeds
+`@deepseek-ai/dsh-web-app` too, because that name matches a shipped
+template of the same name (also verified). `--from-default-profile web`
+is how any *other* profile name gets that same base+web-app pair without
+colliding with the actual `web` profile on disk.
+
+What you get: `~/.dsh` is still the one shared home — same
+credentials/sessions/storages/settings the existing `web` profile (and
+whatever's already running against it) uses — but `webprod`'s
+`package.json` holds `link:`s to `~/dsh-app/plugins/*` (real, deployed
+files) instead of to this checkout's `packages/**`. Editing source here no
+longer affects what the `webprod`/3081 instance runs; that only changes
+when you re-deploy (step 2 above, rerun) and restart it. The `web` profile
+and whatever's already serving it are untouched throughout.
+
+### Caveat: a freshly-seeded profile starts blank — reusing `web` itself may be simpler
+
+The worked example above is mechanically sound (verified end-to-end here:
+the bundles wire in, the profile boots, it serves on the chosen port), but
+seeding a *new* profile name only gives it the bundle list — not anything
+else accumulated in the real `web` profile over time. Its
+`cordis.patch.yml` (everything Settings > Models, Settings > Plugins, and
+MCP connector registration write) starts empty, and any plugin installed
+into `web` beyond this repo's three README bundles (a terminal plugin, a
+web-search plugin, anything added ad hoc) has to be identified and
+re-`add`ed by hand — it does not carry over automatically. Diffing a real
+`web` profile against a freshly-seeded one is the fastest way to see what's
+missing before you rely on the new one:
+
+```sh
+diff ~/.dsh/profiles/web/package.json ~/.dsh/profiles/webprod/package.json
+wc -l ~/.dsh/profiles/web/cordis.patch.yml ~/.dsh/profiles/webprod/cordis.patch.yml
+```
+
+If what you actually want is "the exact same configured app, reachable on a
+different port" rather than "an isolated deployment that happens to share
+credentials," it's simpler to skip the second profile entirely and boot the
+*existing* `web` profile through the deployed engine directly:
+
+```sh
+~/dsh-app/lib/bin.js web --port 3081
+```
+
+Same shared `$DSH_HOME`, same profile, same Settings, every plugin you've
+ever installed into it — at the cost of the deployed instance's bundle code
+still being `link:`ed to this dev checkout (not the standalone copies from
+step 2), and the same "don't run `plugin add`/`remove` or Settings >
+Plugins from two instances of the same profile at once" care already noted
+under step 3 above. Two processes booting the identical profile
+concurrently is safe for just *serving*: each boot recomposes `cordis.yml`
+from the same bundle list + patch file, so the write is deterministic and
+idempotent — confirmed by running exactly this, on this machine, alongside
+an already-live `web` instance on another port, with no ill effects.
+
 ### What this mechanically proves, and one caveat
 
 Every claim above (self-contained, boots clean, real HTTP response, no
