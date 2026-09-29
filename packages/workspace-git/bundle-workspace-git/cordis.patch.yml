@@ -5,6 +5,15 @@
 # packages/bundle/web-app in the vendored harness (one row below disables
 # an existing one; nothing here rewrites vendored source).
 #
+# Every plugin named below is a real `dependencies` entry in this bundle's
+# own package.json, and must stay one. The dev workspace hoists these
+# packages where a bare specifier resolves anyway, so an undeclared row
+# loads fine here and fails only once the bundle is deployed standalone
+# (`scripts/pnpm-deploy.mjs`), where nothing but the declared closure is
+# copied — verified: file-sentence-controller, mounted below but missing
+# from `dependencies`, resolved in dev and raised ERR_MODULE_NOT_FOUND in a
+# deployed tree.
+#
 # file-sentence-controller is unlike the other two Host controllers: it
 # needs no `workspaceRegistry` at all (it never reads or writes a file — see
 # its own README), only `ctx.llm`/`ctx.sessions`, both mounted by
