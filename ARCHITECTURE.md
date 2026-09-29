@@ -307,6 +307,54 @@ merely a best practice: priority-based shadowing and the pristine-apply
 fallback both assume, and only fully hold under, a plugin tree where the
 row being replaced is genuinely absent, not merely out-shadowed.
 
+## A plugin in this repo cannot write a Session event
+
+`SessionEventMap` is declaration-merge-extensible, and `Session.append()`
+accepts whatever type is merged into it, so adding an out-of-tree event type
+looks like an ordinary supported extension. It is not, and the failure is
+delayed, total, and invisible until a restart.
+
+`KNOWN_SESSION_EVENT_TYPES` (`@deepseek-ai/dsh-session`) is *generated* from
+the harness repository's own `SessionEventMap` — nothing this repo declares
+can appear in it. On reload, `validateStoredEvents` refuses the **entire**
+stored log the moment it meets a type outside that set:
+
+```
+… contains event type "workspace-git/file-sentence-request" (seq 95) unknown
+to this harness and not marked ignorable; refusing to interpret the log
+```
+
+That refusal is correct: an unrecognised *required* event may change how the
+rest of the log is read, so skipping it could rebuild a wrong conversation.
+The documented escape is the envelope's `ignorable: true` marker, which says
+"a reader that does not know this type may skip it" — and `Session.append()`
+has no parameter that sets it. Its only options argument is `SurfaceIntent`,
+for surface events. So the marker exists, the read path honours it, and a
+mounted plugin has no way to write it.
+
+The symptom is distinctive, because the session header line is read by a
+different path than the events: **the conversation is listed with its correct
+title, and only its history fails to load.** Every conversation in which the
+feature ever fired is affected, including ones that were working before the
+offending build was installed — the records are durable.
+
+So: **no plugin in this repo appends a Session event, for any reason.** If a
+feature seems to need one, it is either not conversation state (an editor
+aid, a UI preference, a cache) and belongs in its own storage, or it genuinely
+is conversation state, and then it belongs upstream in a real pull request
+against `deepseek-ai/deepseek-harness` — Article II, the same as any other
+missing seam.
+
+`dsh-plugins-api-file-sentence-controller` 0.0.0 learned this the hard way:
+its File-editor ghost-text dispatch logged one
+`workspace-git/file-sentence-request` per call, which bricked four stored
+conversations. `pnpm run repair:sessions`
+(`scripts/repair-session-logs.mjs`) is the cleanup: it retrofits
+`ignorable: true` onto records this repo is known to have written, preserving
+every event and every `seq`, and refuses to touch an unknown type it does not
+own. Its allowlist is the historical record of this mistake; adding to it is
+not a way to keep writing events.
+
 ## Package inventory
 
 ### `packages/workspace-git/` — File manager + git

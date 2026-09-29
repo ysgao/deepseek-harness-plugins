@@ -7,5 +7,5 @@
  */
 export { FileSentenceController, FILE_SENTENCE_TIMEOUT_CODE } from './controller.ts'
 export { default } from './controller.ts'
-export type { Config, FileSentenceRequestEventData } from './controller.ts'
+export type { Config } from './controller.ts'
 export type * from './types.ts'

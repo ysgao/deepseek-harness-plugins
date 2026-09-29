@@ -245,5 +245,15 @@ something out.
    which is deliberate: that disagreement is precisely the window in which
    every fork hash in the file still describes the previous release.
 
+7. **Never append a Session event.** `SessionEventMap` is
+   declaration-merge-extensible and `Session.append()` will happily take an
+   out-of-tree type, but `KNOWN_SESSION_EVENT_TYPES` is generated from the
+   *harness* repo, so every reader refuses the whole stored log on restart —
+   the conversation keeps its title and loses its entire history. See
+   `ARCHITECTURE.md`'s "A plugin in this repo cannot write a Session event".
+   `pnpm run repair:sessions` (add `--apply`) repairs logs already written
+   that way; it skips any session a running harness holds the write lock on,
+   so quit the app before using it.
+
 Every package here targets `deepseek-ai/deepseek-harness` upstream
 directly.

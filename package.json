@@ -37,6 +37,7 @@
     "check:parity": "node scripts/check-replacement-parity.mjs",
     "check:vendor": "node scripts/check-vendor-pristine.mjs",
     "check:main-discipline": "node scripts/check-main-branch-discipline.mjs",
+    "repair:sessions": "node scripts/repair-session-logs.mjs",
     "postinstall": "node scripts/install-git-hooks.mjs"
   },
   "devDependencies": {

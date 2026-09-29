@@ -33,15 +33,46 @@ without it (see `dsh-plugins-client-ui-file-editing`'s own
 `sentencePrediction.ts`), never a required operation, so nothing here ever
 throws a user-visible error for an unavailable route or a declining model.
 
-## Auditability
+## No Session event — and why one must not be added back
 
-Every dispatched request appends a log-only `workspace-git/file-sentence-
-request` Session event (path, resolved route, and input length) before the
-model call — the `Model-visible ⟺ logged` invariant `@deepseek-ai/dsh-llm`
-callers keep, mirroring `dsh-session-title-llm`'s own `session/title-llm-
-request` record. The event carries no buffer text itself, only its length;
-the exact text sent is optionally visible through the model request itself,
-not duplicated into the log.
+A dispatch here writes nothing to the Session log. Two independent reasons,
+either one sufficient.
+
+**It is not conversation content.** Sentence prediction and autocompletion
+belong to the File editor: the suggestion is drawn in that buffer, accepted
+or dropped by the next keystroke, and never reaches the conversation's
+derived message history. The Session is consulted for exactly one fact — the
+route this conversation is already on — which does not make an editor
+keystroke part of the conversation's record.
+
+**And the log physically cannot carry it.** Unlike
+`dsh-session-title-llm`'s `session/title-llm-request` record for the
+equivalent auxiliary call, an out-of-tree plugin has no admissible event type
+to write:
+
+`KNOWN_SESSION_EVENT_TYPES` is generated from the harness repository's own
+`SessionEventMap`, so any type an out-of-tree plugin declares is unknown to
+every reader by construction. On reload, `validateStoredEvents` refuses the
+entire stored log rather than skipping the record — unless the persisted
+envelope carries `ignorable: true`, and `Session.append()` has no parameter
+that sets it (its sole options argument is `SurfaceIntent`, for surface
+events). A declaration-merged event type therefore typechecks, writes
+happily, and makes the conversation unloadable from the next launch on:
+
+```
+Failed to load history: … contains event type
+"workspace-git/file-sentence-request" (seq 95) unknown to this harness and
+not marked ignorable; refusing to interpret the log
+```
+
+Version 0.0.0 of this package did exactly that. The event was removed, and
+`pnpm run repair:sessions` retrofits `ignorable: true` onto the records
+already written by that build — see
+[`scripts/repair-session-logs.mjs`](../../../scripts/repair-session-logs.mjs).
+
+`Model-visible ⟺ logged` is satisfied: nothing this namespace sends or
+receives becomes a model-visible input to the conversation, so the
+conversation log stays a complete account of itself.
 
 ## Configuration
 
