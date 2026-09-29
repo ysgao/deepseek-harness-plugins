@@ -29,6 +29,24 @@ A pin bump is the one legitimate way the vendor changes, and it is not finished
 when the submodule moves — the parity file and every fork hash move with it, in
 the same commit. CONSTITUTION.md spells out that procedure.
 
+## Commit to a branch, not `main` — docs are the one exception
+
+CONSTITUTION.md Article VI: `main` only ever holds a state that has actually
+been built and booted. Start real work on a branch (`git checkout -b
+feat/<slug>`), build and boot-test it, merge locally once it works — never
+commit code straight onto `main`, even "just this once."
+
+The exception is narrow and mechanical, not a judgment call: a commit whose
+every changed path is documentation (`.md`/`.txt`, a licence file — see
+`DOC_ONLY_PATTERNS` in `scripts/check-main-branch-discipline.mjs`) may go
+straight to `main`, because it cannot affect what gets built. One non-doc
+path anywhere in the commit forfeits the exception for the whole thing.
+
+*Enforced by:* the same `pre-commit` hook as the vendor check, via
+`pnpm run check:main-discipline`. It rejects a commit on `main` that isn't
+doc-only and prints the branch command to run instead — so this rule holds
+even on a run that skipped reading this file first.
+
 ## Build
 
 `pnpm install`, then `pnpm run build:vendor` (builds the submodule), then

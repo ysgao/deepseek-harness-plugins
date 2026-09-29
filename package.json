@@ -36,6 +36,7 @@
     "test": "vitest run",
     "check:parity": "node scripts/check-replacement-parity.mjs",
     "check:vendor": "node scripts/check-vendor-pristine.mjs",
+    "check:main-discipline": "node scripts/check-main-branch-discipline.mjs",
     "postinstall": "node scripts/install-git-hooks.mjs"
   },
   "devDependencies": {

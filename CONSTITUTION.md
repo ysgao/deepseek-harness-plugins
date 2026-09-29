@@ -153,7 +153,8 @@ happens on a branch.
 Concretely:
 
 - **All development happens on a branch**, created from `main`, never by
-  committing to `main` directly.
+  committing to `main` directly — except the narrow, mechanically-decidable
+  exception below.
 - **The branch is built and boot-tested at a checkpoint before it merges** —
   "Testing procedures" in ARCHITECTURE.md names what that means: `pnpm run
   build`, the disposable-profile boot, and (for a replacement package or a
@@ -172,6 +173,29 @@ This is what makes it safe to keep developing `dsh` and its plugins with the
 very `dsh` build this repo produces: `main` is always the last state proven
 to build and boot, so switching back to it (or starting a fresh session
 against it) never hands you a broken tool.
+
+### Docs-only changes are exempt
+
+The reasoning above is entirely about what a commit can do to the *build*: a
+change committed straight to `main` is dangerous exactly to the extent that
+it might be broken and yet stands between the next session and a working
+`dsh`. A commit whose every changed path is documentation — prose, nothing
+`pnpm run build` reads — cannot do that, by construction. There is nothing
+for a branch or a boot-test checkpoint to protect against in that case, so
+that commit may go straight to `main`.
+
+The exact boundary of "documentation" is defined in exactly one place —
+`DOC_ONLY_PATTERNS` in `scripts/check-main-branch-discipline.mjs` — and not
+restated here, so the rule this article states and the rule the hook
+enforces cannot quietly drift apart the way the same fact written twice
+always eventually does. As adopted, that boundary is `.md`/`.txt` files and
+licence files; nothing under `packages/**`, `scripts/**`, or any build or
+tool config matches it. Widening it is a change to what this article
+permits onto `main` unreviewed, and gets the same scrutiny as any other
+amendment to this file.
+
+One non-doc path is enough to disqualify the whole commit, even one mixed
+into an otherwise all-docs change — there is no partial exemption.
 
 ### No pull request against this repo
 
@@ -193,14 +217,32 @@ in the web UI, not in the API or `gh` — and Support removes one only when it
 leaks a credential. An accidental PR against this repo is a permanent entry
 in its history.
 
-*Enforced by:* the observable state of `origin`, which carries exactly one
+*Enforced by:* two things, for the two different failure shapes this
+article names.
+
+Whether a commit reaches `main` *at all* while carrying anything beyond
+documentation is decidable from the staged diff alone, with no need to
+trust anyone's memory of having read this file — so it is mechanically
+gated: `pnpm run check:main-discipline`
+(`scripts/check-main-branch-discipline.mjs`), run automatically by the same
+`pre-commit` hook as Article II's check. It is a no-op on any branch other
+than `main`; on `main`, it refuses a commit whose staged paths are not all
+doc-only and prints the branch-creation command to fix it. This is the gate
+that used to not exist — the reason a change could be typed straight onto
+`main`, only to be shifted onto a branch afterward once someone noticed —
+and it is why that shifting is no longer a step anyone has to remember to
+take.
+
+Whether a *branch* actually got built and boot-tested before its merge is a
+different question — no hook can verify a human ran a checkpoint rather
+than skipped it — so that half is still enforced by discipline and by the
+plain fact that a broken `main` is immediately felt in the next session's
+own `dsh`, not by an automated gate.
+
+Separately, the observable state of `origin` still carries exactly one
 branch, `main`. A working branch pushed to `origin`, or a pull request open
 against this repo, is itself the violation rather than evidence of one; the
-remedy is to merge the work locally and delete the branch. That `origin`
-check cannot see whether a *local* commit landed on `main` before or after
-its build/boot checkpoint — that half is enforced by discipline (this
-article) and by the plain fact that a broken `main` is immediately felt in
-the next session's own `dsh`, not by an automated gate.
+remedy is to merge the work locally and delete the branch.
 
 ## VII. A build trusts only a checkout it can prove matches the pin
 

@@ -1,7 +1,13 @@
 #!/bin/sh
-# Article II gate. See scripts/check-vendor-pristine.mjs for what it checks and
-# why; see scripts/install-git-hooks.mjs for how this file becomes active.
-#
-# This is what makes Article II's "must be empty in every commit" true rather
-# than aspirational. To bypass it deliberately, `git commit --no-verify`.
-exec node "$(git rev-parse --show-toplevel)/scripts/check-vendor-pristine.mjs"
+# Two gates, run in sequence. Each is documented at its own script; see
+# scripts/install-git-hooks.mjs for how this file becomes active. To bypass
+# either deliberately, `git commit --no-verify`.
+set -e
+
+# Article II gate: the vendored submodule is never modified.
+# Makes "must be empty in every commit" true rather than aspirational.
+node "$(git rev-parse --show-toplevel)/scripts/check-vendor-pristine.mjs"
+
+# Article VI gate: `main` only takes doc-only commits directly; everything
+# else goes through a branch. No-ops on any branch other than `main`.
+node "$(git rev-parse --show-toplevel)/scripts/check-main-branch-discipline.mjs"
