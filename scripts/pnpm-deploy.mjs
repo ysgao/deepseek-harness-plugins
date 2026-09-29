@@ -51,6 +51,26 @@
  *
  * `--dev` keeps devDependencies (default: production-only, i.e. `--prod`).
  *
+ * Re-deploying over an existing target is the normal case (DEPLOYMENT.md's
+ * "that only changes when you re-deploy ... and restart it"), and
+ * `pnpm deploy` refuses it outright: `ERR_PNPM_DEPLOY_DIR_NOT_EMPTY`, with
+ * no `--force` in pnpm 11.7. Emptying the target first is the obvious
+ * workaround and the wrong one — it destroys a working deployment *before*
+ * knowing whether the new one deploys, backfills, and boots, and a failure
+ * anywhere in that sequence leaves nothing to run.
+ *
+ * So every run deploys into a sibling staging directory
+ * (`<target>.deploy-staging`) and only replaces the target once the boot
+ * probe has passed, by renaming within the same parent — the old tree moves
+ * aside first and is removed only after the new one is in place, so the
+ * target is never partially written. A failed run leaves the staging
+ * directory for inspection and the existing deployment untouched.
+ *
+ * A non-empty target that is NOT a previous deployment of this same package
+ * (no `package.json`, or one naming something else) is refused rather than
+ * replaced: at that point the path is someone else's data, and this script
+ * has no business deleting it.
+ *
  * A boot that is *going to fail* only prints its final summary after
  * attempting every configured plugin — verified here to take 30+ seconds
  * cold, well past a short fixed timeout. `bootProbe` therefore polls
@@ -87,7 +107,7 @@
  * coupling this script exists to remove.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
@@ -103,17 +123,102 @@ if (!pkgName || !targetArg) {
   usage()
   process.exit(1)
 }
-const target = resolve(process.cwd(), targetArg)
+/** Where the caller wants the finished deployment. */
+const finalTarget = resolve(process.cwd(), targetArg)
+/**
+ * Where everything below actually writes. Renamed onto `finalTarget` by
+ * `promote()` once the boot probe passes; a sibling, so the rename is a
+ * same-filesystem operation rather than a copy.
+ */
+const target = `${finalTarget}.deploy-staging`
 const prodFlag = rest.includes('--dev') ? [] : ['--prod']
+
+/**
+ * Refuse a target this script did not produce. A previous deployment of the
+ * same package is identifiable from its own `package.json` name — anything
+ * else at that path is unrelated data, and replacing it is not this
+ * script's call to make.
+ */
+function assertReplaceable() {
+  if (!existsSync(finalTarget)) return
+  let occupant
+  try {
+    occupant = JSON.parse(readFileSync(join(finalTarget, 'package.json'), 'utf8')).name
+  } catch {
+    occupant = undefined
+  }
+  if (occupant === pkgName) return
+  console.error(`pnpm-deploy: ${finalTarget} already exists and is not a deployment of ${pkgName}`)
+  console.error(occupant === undefined
+    ? '  it has no readable package.json — remove it by hand if it is really disposable'
+    : `  its package.json names "${occupant}" — deploy that package here, or choose another target`)
+  process.exit(1)
+}
+
+/**
+ * Swap the verified staging tree in: move any existing deployment aside,
+ * rename staging into place, then delete the old tree. The window in which
+ * `finalTarget` does not exist is one rename long, and the old tree is
+ * restored if the second rename fails.
+ */
+function promote() {
+  const displaced = `${finalTarget}.previous-${process.pid}`
+  const hadPrevious = existsSync(finalTarget)
+  if (hadPrevious) renameSync(finalTarget, displaced)
+  try {
+    renameSync(target, finalTarget)
+  } catch (error) {
+    if (hadPrevious) renameSync(displaced, finalTarget)
+    console.error(`pnpm-deploy: could not move ${target} into place: ${error.message}`)
+    console.error(`  the existing deployment at ${finalTarget} is unchanged`)
+    process.exit(1)
+  }
+  if (hadPrevious) rmSync(displaced, { recursive: true, force: true })
+  console.log(`pnpm-deploy: ${hadPrevious ? 'replaced' : 'created'} ${finalTarget}`)
+}
+
+/**
+ * pnpm records the settings of the last install it validated in
+ * `node_modules/.pnpm-workspace-state-v1.json`, and a `--filter ... deploy
+ * --prod` run overwrites the *root* workspace's copy with its own
+ * (`production: true`, `dev: false`, `filteredInstall: true`) even though it
+ * installed nothing here. The next `pnpm run <script>` in this checkout then
+ * sees dev dependencies present where the recorded state says production,
+ * decides the modules directory must be purged, and — with no TTY to confirm
+ * — aborts:
+ *
+ *   [ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY]
+ *   [ERROR] Command failed with exit code 1: pnpm install --production
+ *
+ * which reads as a broken checkout rather than as fallout from a deploy, and
+ * takes `pnpm run build`/`typecheck` down until someone runs a plain
+ * `pnpm install`. Deploying is a read-only operation as far as this
+ * checkout's own `node_modules` is concerned (verified: a plain `pnpm
+ * install` straight after reports "Already up to date"), so the honest state
+ * is the one from before the deploy. Snapshot it, restore it unconditionally.
+ */
+function preserveWorkspaceState(run) {
+  const statePath = join(REPO_ROOT, 'node_modules', '.pnpm-workspace-state-v1.json')
+  const saved = existsSync(statePath) ? readFileSync(statePath) : undefined
+  try {
+    return run()
+  } finally {
+    if (saved === undefined) rmSync(statePath, { force: true })
+    else writeFileSync(statePath, saved)
+  }
+}
 
 /** Runs `pnpm --filter=<pkgName> deploy <target> --legacy --offline [--prod]` from this repo's root. */
 function runDeploy() {
-  console.log(`pnpm-deploy: deploying ${pkgName} -> ${target}`)
+  console.log(`pnpm-deploy: deploying ${pkgName} -> ${finalTarget}`)
+  // Left behind by an earlier failed run; `pnpm deploy` needs it empty.
+  rmSync(target, { recursive: true, force: true })
   const args = [`--filter=${pkgName}`, 'deploy', target, '--legacy', '--offline', ...prodFlag]
-  const res = spawnSync('pnpm', args, { cwd: REPO_ROOT, stdio: 'inherit' })
+  const res = preserveWorkspaceState(
+    () => spawnSync('pnpm', args, { cwd: REPO_ROOT, stdio: 'inherit' }),
+  )
   if (res.status !== 0) {
-    console.error(`pnpm-deploy: \`pnpm ${args.join(' ')}\` exited ${res.status ?? `signal ${res.signal}`}`)
-    process.exit(res.status ?? 1)
+    abandonStaging(`\`pnpm ${args.join(' ')}\` exited ${res.status ?? `signal ${res.signal}`}`)
   }
 }
 
@@ -397,13 +502,23 @@ function backfill(missing, importedFrom) {
   return true
 }
 
+/** Report where the unfinished tree was left, then exit non-zero. */
+function abandonStaging(reason) {
+  console.error(`pnpm-deploy: ${reason}`)
+  console.error(`  staging tree left at ${target} for inspection`)
+  if (existsSync(finalTarget)) console.error(`  the existing deployment at ${finalTarget} is unchanged`)
+  process.exit(1)
+}
+
 async function main() {
+  assertReplaceable()
   runDeploy()
   const attempted = new Set()
   for (let round = 0; round < 20; round++) {
     const probe = await bootProbe()
     if (probe.ok) {
       console.log('pnpm-deploy: boot probe passed (no missing-module crash)')
+      promote()
       return
     }
     console.log(`pnpm-deploy: boot probe round ${round + 1}: ${probe.missing.size} missing module(s)`)
@@ -415,13 +530,9 @@ async function main() {
       if (backfill(missing, importedFrom)) progressed = true
       else console.error(`pnpm-deploy: could not backfill "${missing}" — the deployed directory may still boot without it`)
     }
-    if (!progressed) {
-      console.error('pnpm-deploy: no new module could be backfilled this round — giving up')
-      process.exit(1)
-    }
+    if (!progressed) abandonStaging('no new module could be backfilled this round — giving up')
   }
-  console.error('pnpm-deploy: too many boot-probe rounds — giving up')
-  process.exit(1)
+  abandonStaging('too many boot-probe rounds — giving up')
 }
 
 await main()

@@ -14818,6 +14818,9 @@ importers:
 
   packages/workspace-git/bundle-workspace-git:
     dependencies:
+      dsh-plugins-api-file-sentence-controller:
+        specifier: workspace:^
+        version: link:../api-file-sentence-controller
       dsh-plugins-api-workspace-file-controller:
         specifier: workspace:^
         version: link:../api-workspace-file-controller
