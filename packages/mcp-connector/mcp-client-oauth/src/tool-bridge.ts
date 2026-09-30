@@ -32,6 +32,7 @@ import { createMcpToolDefinition } from '@deepseek-ai/dsh-mcp-client'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 // Side-effect type import: declaration-merges `ctx.tools` onto Context.
 import type {} from '@deepseek-ai/dsh-tools'
+import { repairDanglingDefsRefs } from './schema-repair.ts'
 
 /** Resolved options relevant to tool bridging. */
 export interface ToolBridgeOptions {
@@ -126,7 +127,7 @@ export async function syncTools(
       name,
       rawName: tool.name,
       description: tool.description ?? '',
-      inputSchema: tool.inputSchema,
+      inputSchema: repairDanglingDefsRefs(tool.inputSchema),
       outputSchema: tool.outputSchema,
       taskRequired: tool.execution?.taskSupport === 'required',
       call: (args, execution) => client.callTool(
