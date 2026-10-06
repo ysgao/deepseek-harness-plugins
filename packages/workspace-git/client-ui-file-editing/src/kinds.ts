@@ -14,15 +14,25 @@
  * split is invisible to callers that do not care about it.
  * @module dsh-plugins-client-ui-file-editing/kinds
  */
+// Type-only: `./googleShortcut.ts` has no React/CSS graph of its own (plain
+// JSON parsing and a few regexes), but the import stays type-only anyway so
+// this module keeps its own "no runtime edge beyond what's defined here"
+// discipline — see the doc comment above.
+import type { GoogleShortcutKind } from './googleShortcut.ts'
+
+export type { GoogleShortcutKind } from './googleShortcut.ts'
 
 /**
  * Which body a file path selects (mirrors the caller's own extension
  * classification). `'pdf'`/`'docx'`/`'xlsx'`/`'pptx'` all parse the
  * caller-supplied raw bytes in-component (see this module's own doc comment);
  * the {@link FileTextKind} members are all plain text on disk and differ only
- * in what their body makes of that text.
+ * in what their body makes of that text. The three {@link GoogleShortcutKind}
+ * members are a third shape again: a `.gdoc`/`.gsheet`/`.gslides` shortcut's
+ * own bytes are plain JSON, but that JSON names a Google Doc/Sheet/Slide
+ * rather than holding its content — see {@link isGoogleShortcutKind}.
  */
-export type FilePreviewKind = FileTextKind | 'image' | 'external' | 'pdf' | 'docx' | 'xlsx' | 'pptx'
+export type FilePreviewKind = FileTextKind | 'image' | 'external' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | GoogleShortcutKind
 
 /**
  * Kinds whose content is text, and which a caller may therefore edit
@@ -48,6 +58,28 @@ const TEXT_KINDS: ReadonlySet<FilePreviewKind> = new Set<FileTextKind>([
  */
 export function isTextKind(kind: FilePreviewKind): kind is FileTextKind {
   return TEXT_KINDS.has(kind)
+}
+
+/** The {@link GoogleShortcutKind} members, behind {@link isGoogleShortcutKind}. */
+const GOOGLE_SHORTCUT_KINDS: ReadonlySet<FilePreviewKind> = new Set<GoogleShortcutKind>(['gdoc', 'gsheet', 'gslides'])
+
+/**
+ * Whether a kind is one of the three Google Drive shortcut kinds
+ * (`.gdoc`/`.gsheet`/`.gslides` — see `./googleShortcut.ts`'s own doc
+ * comment for what these files are). Edited and previewed like a
+ * {@link FileTextKind} — the same `canEdit`/Edit-mode toggle applies — but
+ * through a different editor (`GoogleDocEditor`, Google's own embedded
+ * editor, over `FileEditor`'s raw-text CodeMirror buffer), which is why
+ * these are deliberately NOT members of {@link FileTextKind}: they are
+ * never diffed (there is no meaningful text diff over a shortcut's own
+ * pointer JSON), and "editing" one never touches this app's own
+ * write/autosave pipeline — Google's own servers persist the edit the
+ * moment it happens, same as using docs.google.com directly.
+ * @param kind - the classified viewer kind.
+ * @returns whether the kind is one of the three Google shortcut kinds.
+ */
+export function isGoogleShortcutKind(kind: FilePreviewKind): kind is GoogleShortcutKind {
+  return GOOGLE_SHORTCUT_KINDS.has(kind)
 }
 
 /** Fetch/decode outcome for the currently previewed path, caller-resolved. */

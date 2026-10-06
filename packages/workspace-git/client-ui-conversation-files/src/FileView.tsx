@@ -22,6 +22,15 @@
  * highlighting, rendered Markdown, a detected ontology serialization, a
  * `.csv`'s table, an `.rtf`'s extracted text — the editor shows that same body
  * live in its preview pane, beside the plain editing buffer.
+ *
+ * A Google Drive shortcut file (`.gdoc`/`.gsheet`/`.gslides`,
+ * `isGoogleShortcutKind`) offers the same Edit toggle through the same
+ * button, but a different editor: `GoogleDocEditor`, Google's own real
+ * editor embedded in an iframe, with the read-only preview iframe kept
+ * alongside it — there is no local text to feed a CodeMirror buffer, since
+ * the shortcut carries only a file id. It never offers Diff (there is
+ * nothing meaningful to diff), and Edit mode writes nothing back through
+ * this tab's own save/autosave pipeline: Google persists the edit itself.
  * Unsaved edits live in an in-memory per-path draft cache (`draftsRef`), not
  * React state, so switching to another file (or to View/Diff) and back
  * never silently loses a draft — no native `beforeunload`/`confirm` dialog
@@ -43,11 +52,12 @@ import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 // in, almost never renders. `FileEditor` and `SideBySideDiff` are light
 // (CodeMirror and `diff`), and `./kinds.ts` holds no renderer at all.
 import { FileEditor } from 'dsh-plugins-client-ui-file-editing/src/FileEditor.tsx'
+import { GoogleDocEditor } from 'dsh-plugins-client-ui-file-editing/src/GoogleDocEditor.tsx'
 import { LazyFilePreview } from 'dsh-plugins-client-ui-file-editing/src/LazyFilePreview.tsx'
 import { SideBySideDiff } from 'dsh-plugins-client-ui-file-editing/src/SideBySideDiff.tsx'
-import { isContentMismatch, isTextKind } from 'dsh-plugins-client-ui-file-editing/src/kinds.ts'
+import { isContentMismatch, isGoogleShortcutKind, isTextKind } from 'dsh-plugins-client-ui-file-editing/src/kinds.ts'
 import type {
-  FileEditorResizeLabels, FilePreviewLabels, FilePreviewState, SideBySideDiffLabels,
+  FileEditorResizeLabels, FilePreviewLabels, FilePreviewState, GoogleLabels, SideBySideDiffLabels,
 } from 'dsh-plugins-client-ui-file-editing'
 import type { WorkspaceFileContent, WorkspaceFileVersion } from 'dsh-plugins-api-workspace-file-controller/types'
 import type { WorkspaceFileDiff } from 'dsh-plugins-api-workspace-file-controller/types'
@@ -272,6 +282,20 @@ export function FileView({
   viewRequest, completeViewRequest, readFile, openPath, getGitStatus, getFileDiff, writeFile, fileAddress,
   predictSentence, sessionId, modeStore, releaseModeStore, renderSlot, tFiles, t,
 }: FileViewProps) {
+  // Shared by `GoogleDocPreview` (nested into `filePreviewLabels.google`
+  // below, for View mode) and `GoogleDocEditor` (passed directly, for Edit
+  // mode) — the same object both read, so the two panes' copy never drifts
+  // apart. Declared ahead of `filePreviewLabels`, which closes over it.
+  const googleLabels: GoogleLabels = useMemo(() => ({
+    appName: (kind) => {
+      if (kind === 'gdoc') return tFiles('files.viewer.googleDocsApp')
+      if (kind === 'gsheet') return tFiles('files.viewer.googleSheetsApp')
+      return tFiles('files.viewer.googleSlidesApp')
+    },
+    previewPaneLabel: tFiles('files.edit.googlePreviewPane'),
+    invalid: tFiles('files.viewer.googleInvalid'),
+  }), [tFiles])
+
   const filePreviewLabels: FilePreviewLabels = useMemo(() => ({
     markdown: { code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('markdown.footnotes') },
     read: {
@@ -297,7 +321,8 @@ export function FileView({
       truncated: (shown, total) => tFiles('files.viewer.rtfTruncated', { shown, total }),
       empty: tFiles('files.viewer.rtfEmpty'),
     },
-  }), [t, tFiles])
+    google: googleLabels,
+  }), [t, tFiles, googleLabels])
 
   const editorResizeLabels: FileEditorResizeLabels = useMemo(() => ({
     ariaLabel: tFiles('files.edit.resizeAria'),
@@ -659,11 +684,18 @@ export function FileView({
   // what decides, so Markdown, ontology, delimited and RTF files are all
   // editable here without being enumerated.
   //
+  // A Google shortcut kind (`isGoogleShortcutKind`) is a second, narrower
+  // "editable" category: `canEdit` admits it exactly like a text kind (same
+  // Edit button, same toggle), but it never contributes to `canDiff` — there
+  // is no meaningful diff over a shortcut's own pointer JSON — and its Edit
+  // mode renders `GoogleDocEditor` below, not `FileEditor`.
+  //
   // Derived up here, above the resting early return, because the publish
   // effect below needs them and a hook cannot run after a return.
   const textKind = isTextKind(kind) ? kind : null
+  const googleKind = isGoogleShortcutKind(kind) ? kind : null
   const readyText = state.phase === 'ready' && state.content.kind === 'text' ? state.content.text : null
-  const canEdit = textKind !== null && readyText !== null
+  const canEdit = (textKind !== null || googleKind !== null) && readyText !== null
   const canDiff = textKind !== null && changed
 
   // What the toolbar draws. The store compares before notifying, so
@@ -671,7 +703,16 @@ export function FileView({
   // `hasDraft` exactly once) does not re-render the toolbar for nothing.
   useEffect(() => {
     modeStore.publish(
-      { path: openedPath, mode, canEdit, canDiff, dirty: hasDraft, save: saveState.phase, aiPredictionEnabled },
+      {
+        path: openedPath, mode, canEdit, canDiff,
+        // Whether Edit mode is the raw-text CodeMirror editor — gates
+        // `FileActions`' autosave-status/conflict/AI-prediction row, which
+        // means nothing for `GoogleDocEditor`'s own embedded editor (Google
+        // persists the edit itself; this app has no draft/save state for it
+        // at all).
+        textEditable: textKind !== null,
+        dirty: hasDraft, save: saveState.phase, aiPredictionEnabled,
+      },
       // `setMode` here is `handleSetMode`, not the raw state setter: the
       // toolbar's View/Diff buttons must flush a pending autosave the same
       // way leaving Edit any other way does. `save` stays wired to the
@@ -680,7 +721,7 @@ export function FileView({
       { setMode: handleSetMode, save: handleSave, discardAndReload: handleDiscardAndReload, toggleAiPrediction: handleToggleAiPrediction },
     )
   }, [
-    modeStore, openedPath, mode, canEdit, canDiff, hasDraft, saveState.phase, aiPredictionEnabled,
+    modeStore, openedPath, mode, canEdit, canDiff, textKind, hasDraft, saveState.phase, aiPredictionEnabled,
     handleSetMode, handleSave, handleDiscardAndReload, handleToggleAiPrediction,
   ])
 
@@ -774,7 +815,17 @@ export function FileView({
           )}
         </div>
       )}
-      {mode === 'edit' && canEdit && textKind !== null && (
+      {mode === 'edit' && canEdit && googleKind !== null && (
+        <GoogleDocEditor
+          key={openedFileId}
+          kind={googleKind}
+          text={editorText}
+          labels={googleLabels}
+          resizeLabels={editorResizeLabels}
+          className={css.body}
+        />
+      )}
+      {mode === 'edit' && canEdit && googleKind === null && textKind !== null && (
         <FileEditor
           key={openedFileId}
           path={openedPath}

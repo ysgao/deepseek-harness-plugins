@@ -35,14 +35,21 @@ Two things are added:
   addresses, forwards each to the File tab, and closes. When no File tab can
   take it (this package installed without the File-tab packages), it says so
   and stays put rather than closing into a dead end.
-- **Two renderers upstream has none for** (`./src/renderers.tsx`), registered
+- **The renderers upstream has none for** (`./src/renderers.tsx`), registered
   through the engine's own public registry at the `extension` band that
   outranks builtins: OWL/RDF ontologies (whose serialization is not decidable
-  from the suffix, so the body detects it from the content) and `.rtf`
-  (whose markup would otherwise be shown instead of its document). Nothing is
-  registered for code, Markdown, images, PDF, Office, spreadsheets or CSV —
-  the engine already does those at least as well, and a second implementation
-  at `extension` priority would silently outrank the better one.
+  from the suffix, so the body detects it from the content), `.rtf` (whose
+  markup would otherwise be shown instead of its document), and the three
+  Google Drive shortcut kinds — `.gdoc`/`.gsheet`/`.gslides` — whose bytes
+  are a pointer JSON, not the document itself, and which render Google's own
+  embedded read-only `/preview` (the matching in-app *editor*,
+  `GoogleDocEditor`, lives one package over in `dsh-plugins-client-ui-
+  conversation-files`'s `FileView`, which never goes through this engine at
+  all, the same as its `FileEditor` for a text kind — see `../../../
+  ARCHITECTURE.md`'s "Google Drive shortcut files"). Nothing is registered
+  for code, Markdown, images, PDF, Office, spreadsheets or CSV — the engine
+  already does those at least as well, and a second implementation at
+  `extension` priority would silently outrank the better one.
 
 ## The Host half, which is not browser code
 

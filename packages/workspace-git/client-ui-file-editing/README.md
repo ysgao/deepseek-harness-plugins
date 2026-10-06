@@ -1,17 +1,22 @@
 # dsh-plugins-client-ui-file-editing
 
 `FileEditor`, `FilePreview` (with its per-format bodies — `OntologyPreview`,
-`DelimitedPreview`, `RtfPreview`, and the PDF/Office ones), `SideBySideDiff`,
-a CodeMirror theme, and `useSplitRatio` — the generic file-editing primitives
-the File manager feature needs, kept in their own package instead of the
-shared `@deepseek-ai/dsh-client-ui-primitives`, which every other UI plugin
-depends on.
+`DelimitedPreview`, `RtfPreview`, `GoogleDocPreview`, and the PDF/Office
+ones), `GoogleDocEditor`, `SideBySideDiff`, a CodeMirror theme, and
+`useSplitRatio` — the generic file-editing primitives the File manager
+feature needs, kept in their own package instead of the shared
+`@deepseek-ai/dsh-client-ui-primitives`, which every other UI plugin depends
+on.
 
 Every *text* kind (`isTextKind`: `text`, `markdown`, `ontology`, `delimited`,
 `rtf`) is edited and diffed identically — one CodeMirror buffer over the
 file's raw text, and `SideBySideDiff`'s two-column text diff — whatever its
 read-only preview body makes of that text. In Edit mode that body renders
-live in the pane beside the buffer.
+live in the pane beside the buffer. A Google Drive shortcut kind
+(`isGoogleShortcutKind`: `gdoc`, `gsheet`, `gslides`) is editable the same
+way — same Edit button, same split-pane shape — but through `GoogleDocEditor`
+instead, never diffed, and never routed through this app's own save
+pipeline: see "Google Drive shortcut files" below.
 
 Ports `packages/client/ui-primitives/src/{FileEditor,FilePreview,
 SideBySideDiff}.tsx` (+ `.module.css`, `codemirror/theme.ts`,
@@ -33,6 +38,11 @@ SideBySideDiff}.tsx` (+ `.module.css`, `codemirror/theme.ts`,
 Legacy binary `.doc`/`.ppt` (pre-2007 OLE compound-file format) have no
 practical client-side parser and stay in the `external` ("open with default
 app") fallback, same as any other unrecognized extension.
+
+A Google Drive shortcut file (`.gdoc`/`.gsheet`/`.gslides`) previews through
+`GoogleDocPreview` and edits through `GoogleDocEditor` — see "Google Drive
+shortcut files" below; unlike every format above, there is no local document
+content to parse at all, only a pointer to one on Google's own servers.
 
 ## Editing-time assistance (spellcheck, autocompletion)
 
@@ -197,3 +207,51 @@ control words. Formatting (bold, italic, size, color, alignment, images) is
 deliberately out of scope for a preview — recovering it would mean
 implementing a real RTF reader, and the raw markup is one click away in Edit
 mode.
+
+## Google Drive shortcut files (`.gdoc`, `.gsheet`, `.gslides`)
+
+These are the small JSON files Google Drive Desktop (and Google Takeout)
+write in place of a native Google Doc/Sheet/Slide it cannot sync as a real
+document — a pointer (a file id, sometimes a sharing URL), never the
+document's own content. `src/googleShortcut.ts`'s `parseGoogleShortcut`
+resolves that pointer into a file id and doc type, tolerating the handful of
+shapes real writers use rather than committing to one exact schema:
+
+- a modern share link, `docs.google.com/<document|spreadsheets|presentation>/
+  d/<id>/...` — the only shape that can *override* the doc type the file's
+  own extension implies, since it names one explicitly;
+- the legacy shape the original Google Drive desktop client wrote,
+  `docs.google.com/open?id=<id>` — no doc type of its own, so the extension
+  decides;
+- a bare `resource_id` field (`"<type>:<id>"`, e.g. `"document:1AbCd..."`);
+- a bare `doc_id` field, for writers that include neither of the above.
+
+A shortcut this cannot resolve to a real-looking file id (unparsable JSON, or
+none of the above fields present) renders an error notice rather than
+guessing.
+
+**Previewed and edited, but never as text.** `FilePreviewKind` carries three
+members for this — `'gdoc'`, `'gsheet'`, `'gslides'` — kept out of
+`FileTextKind`/`isTextKind` on purpose: there is no local document content
+here to diff, and "editing" one never touches this package's own buffer
+concept at all.
+
+- **View mode (`GoogleDocPreview`)** embeds Google's own `/preview`
+  endpoint in an `<iframe>` — a cross-origin-embeddable, read-only viewer
+  Google serves specifically for third-party embedding (the same one
+  Gmail's and Classroom's own attachment previews use). Built fresh from the
+  resolved `docType`/`fileId`, never from whatever path the shortcut's own
+  `url` field happened to carry.
+- **Edit mode (`GoogleDocEditor`)** embeds Google's real editor (`/edit`) in
+  one pane, with the same read-only preview kept in a second pane beside
+  it, through the identical `useSplitRatio` divider `FileEditor` uses
+  between its own buffer and preview pane — so a caller offering Edit for a
+  Google file draws the same shape of split view it already draws for a
+  text file, just with two iframes instead of a CodeMirror buffer and a
+  rendered body.
+
+Nothing here goes through a caller's own save/autosave/version-guard
+pipeline: Google persists an edit the instant it happens, the same as using
+docs.google.com directly in an ordinary browser tab, so there is nothing for
+this package — or its caller — to write back. The shortcut file's own JSON
+never changes as a result of editing the document it names.

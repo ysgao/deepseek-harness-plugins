@@ -13,7 +13,12 @@
  * `.pptx` text-only extraction (`PptxPreview`, via `jszip`). Legacy binary
  * `.doc`/`.ppt` (pre-2007 OLE compound-file format) have no client-side
  * parser available and never classify to one of these kinds in the first
- * place — see the consuming packages' own `classify.ts`. Every other kind —
+ * place — see the consuming packages' own `classify.ts`. A Google Drive
+ * shortcut file (`.gdoc`/`.gsheet`/`.gslides`, `GoogleDocPreview`) is read
+ * the same way as every text kind above — its bytes are plain JSON — but
+ * renders Google's own embedded read-only viewer rather than the JSON
+ * itself; see `./googleShortcut.ts`'s own doc comment for what these files
+ * are. Every other kind —
  * external (unrecognized extension), too-large, error, or a ready read whose
  * content disagrees with what the classified kind expects (a mismatched
  * extension, e.g. real binary content behind a `.txt` extension, or the
@@ -34,6 +39,8 @@ import { MarkdownText, ReadBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownLabels, ReadBlockLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import { DelimitedPreview } from './DelimitedPreview.tsx'
 import { DocxPreview } from './DocxPreview.tsx'
+import { GoogleDocPreview } from './GoogleDocPreview.tsx'
+import type { GoogleLabels } from './GoogleDocPreview.tsx'
 import { toReadBlockLines } from './lines.ts'
 import { OntologyPreview } from './OntologyPreview.tsx'
 import { PdfPreview } from './PdfPreview.tsx'
@@ -57,6 +64,14 @@ export interface FilePreviewLabels {
   delimited: DelimitedLabels
   /** `RtfPreview`'s notices; unused by every other kind. */
   rtf: RtfLabels
+  /**
+   * `GoogleDocPreview`'s chrome; unused by every other kind. Nested here
+   * (unlike the byte kinds' own flat `xlsx*`/`pptx*` props) because a
+   * Google shortcut IS editable — the same `labels.google` object also
+   * reaches `GoogleDocEditor` in Edit mode, exactly as `delimited`/`rtf`
+   * already reach `FileEditor`'s own preview pane.
+   */
+  google: GoogleLabels
 }
 
 /** `DelimitedPreview`'s own two notices. */
@@ -203,6 +218,8 @@ export function FilePreview({
     )
   } else if (kind === 'markdown' && state.content.kind === 'text') {
     body = <MarkdownText text={state.content.text} labels={labels.markdown} />
+  } else if ((kind === 'gdoc' || kind === 'gsheet' || kind === 'gslides') && state.content.kind === 'text') {
+    body = <GoogleDocPreview kind={kind} text={state.content.text} labels={labels.google} />
   } else {
     // Reached only for kind === 'text' with a text read: every other
     // combination above either has its own branch or was already routed

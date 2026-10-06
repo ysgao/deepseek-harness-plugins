@@ -111,6 +111,19 @@ const DOCX_EXTENSIONS = new Set(['docx'])
 const XLSX_EXTENSIONS = new Set(['xlsx', 'xls'])
 /** Open XML PowerPoint decks (a text-only extraction; legacy binary `.ppt` never classifies to this kind). */
 const PPTX_EXTENSIONS = new Set(['pptx'])
+/**
+ * Google Drive "shortcut" files for a native Google Doc/Sheet/Slide — small
+ * JSON files Google Drive Desktop (and Google Takeout) write in place of a
+ * document it cannot sync as a real file, one extension per Google app. See
+ * `dsh-plugins-client-ui-file-editing`'s `googleShortcut.ts` for what the
+ * JSON itself holds and `GoogleDocPreview`/`GoogleDocEditor` for how it's
+ * previewed and edited. Three single-extension sets (not a lookup `Record`)
+ * so each branch below returns its own literal kind directly, with no
+ * `noUncheckedIndexedAccess`-mandated `| undefined` to narrow away.
+ */
+const GDOC_EXTENSIONS = new Set(['gdoc'])
+const GSHEET_EXTENSIONS = new Set(['gsheet'])
+const GSLIDES_EXTENSIONS = new Set(['gslides'])
 
 /**
  * Full base-name matches (case-insensitive) for known-text files that carry
@@ -177,6 +190,9 @@ export function viewerKindFor(path: string): FileViewerKind {
   if (DOCX_EXTENSIONS.has(ext)) return 'docx'
   if (XLSX_EXTENSIONS.has(ext)) return 'xlsx'
   if (PPTX_EXTENSIONS.has(ext)) return 'pptx'
+  if (GDOC_EXTENSIONS.has(ext)) return 'gdoc'
+  if (GSHEET_EXTENSIONS.has(ext)) return 'gsheet'
+  if (GSLIDES_EXTENSIONS.has(ext)) return 'gslides'
   return 'external'
 }
 

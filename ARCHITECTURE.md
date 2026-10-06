@@ -364,13 +364,13 @@ not a way to keep writing events.
 | `dsh-plugins-api-workspace-git-controller` | Typert Host controller: status, commit-all, fetch, pull --rebase, push, discard-all |
 | `dsh-plugins-api-workspace-file-controller` | Typert Host controller: list/read/write/create/diff (no delete), plus `watchDirectory`, a **workspace-scoped** directory-change stream |
 | `dsh-plugins-api-file-sentence-controller` | Typert Host controller: one auxiliary model call predicting the File editor's "next sentence" ghost text, using the calling **Session's own current model route** (`session.requestHeader()?.config`) — no workspace identity involved, no separately configured provider/model |
-| `dsh-plugins-client-ui-file-editing` | Standalone file editor/preview/side-by-side-diff components, no shared-package dependency; owns the local-heuristic ghost-text default (`sentencePrediction.ts`/`ghostText.ts`) and the `predictSentence` seam a caller wires the model-backed upgrade through |
+| `dsh-plugins-client-ui-file-editing` | Standalone file editor/preview/side-by-side-diff components, no shared-package dependency; owns the local-heuristic ghost-text default (`sentencePrediction.ts`/`ghostText.ts`) and the `predictSentence` seam a caller wires the model-backed upgrade through; also owns `GoogleDocPreview`/`GoogleDocEditor`, the read-only/embedded-edit bodies for a Google Drive shortcut file (`.gdoc`/`.gsheet`/`.gslides`) — see "Google Drive shortcut files" |
 | `dsh-plugins-client-ui-workspace-files` | Sidebar Files tree (live directory watch, auto-refresh toggle, reload, git status, create file/folder) and the `workspace.files` command; declares the optional `workspaceFilesNode` Context service — see "Files tree: why an optional service, not a slot" |
 | `dsh-plugins-client-remotes-workspace-git` | Mounts the three controllers' generated `/remote` Client contributions — see "Plugin isolation" |
 | `dsh-plugins-client-ui-workspace-enhanced` | Replaces `dsh-client-ui-workspace`'s own `sidebar.workspaces`/`conversation.hero.workspace` registrations; renders `workspaceFilesNode`'s `Component` as a Files sibling row — see "Replace, don't patch" |
-| `dsh-plugins-client-ui-conversation-files` | Registers a `'file'` entry into `dsh-client-ui-conversation`'s pristine `conversation.view` slot; populated through `conversationFileOpener`. Declares the `conversation.file.document` seat the preview engine is relocated onto, and contributes the tab's View/Edit/Diff/Save controls, plus the model-backed ghost-text on/off switch (Edit mode only, per-browser preference), to that engine's `sidebar.right.tab.document.actions` toolbar — see "File tab: a pristine slot, but a fork-only trigger" and "File tab controls: one toolbar, two mount points" |
+| `dsh-plugins-client-ui-conversation-files` | Registers a `'file'` entry into `dsh-client-ui-conversation`'s pristine `conversation.view` slot; populated through `conversationFileOpener`. Declares the `conversation.file.document` seat the preview engine is relocated onto, and contributes the tab's View/Edit/Diff/Save controls, plus the model-backed ghost-text on/off switch (Edit mode only, per-browser preference), to that engine's `sidebar.right.tab.document.actions` toolbar — see "File tab: a pristine slot, but a fork-only trigger" and "File tab controls: one toolbar, two mount points". Edit mode itself renders `GoogleDocEditor` for a Google Drive shortcut file, `FileEditor` for everything else — see "Google Drive shortcut files" |
 | `dsh-plugins-client-ui-conversation-enhanced` | Replaces `dsh-client-ui-conversation`'s own conversation-shell registration; provides the `conversationFileOpener` cross-session bridge |
-| `dsh-plugins-client-ui-document-host` | Replaces `dsh-client-ui-sidebar-documentpreview` by running its own `apply()` and redirecting one registration: the preview engine draws in the File tab instead of the right Sidebar. Adds the Sidebar hand-off and two renderers upstream lacks, and re-exports that row's **Host** half so its `__DSH_DOCUMENT_PREVIEW_CONFIG__` page injection survives the disable — see "Document preview: relocate the seat, never the renderers" |
+| `dsh-plugins-client-ui-document-host` | Replaces `dsh-client-ui-sidebar-documentpreview` by running its own `apply()` and redirecting one registration: the preview engine draws in the File tab instead of the right Sidebar. Adds the Sidebar hand-off and the renderers upstream lacks (ontology, RTF, and the three Google Drive shortcut kinds), and re-exports that row's **Host** half so its `__DSH_DOCUMENT_PREVIEW_CONFIG__` page injection survives the disable — see "Document preview: relocate the seat, never the renderers" and "Google Drive shortcut files" |
 | `dsh-plugins-bundle-workspace-git` | `cordis.patch.yml` bundle: does NOT mount `@deepseek-ai/dsh-workspace` itself (relies on the target profile's own `web-app` bundle — see "Two findings worth knowing" in the bundle's own README); disables four rows — replacing `ui-workspace`, `ui-conversation` and `ui-sidebar-documentpreview`, and retiring `ui-sidebar-files` outright |
 
 ### `packages/anthropic-subscription/` — Anthropic subscription authorization
@@ -692,8 +692,63 @@ a toolbar entry would have meant duplicating them. It publishes a flat
 snapshot into a per-session `FileModeStore` that both mounts read, and the
 store compares before notifying, so publishing on every render does not
 re-render the toolbar on every keystroke. Edit is offered for whatever
-`isTextKind` admits — Markdown, ontology, delimited and RTF included —
-rather than an enumeration that would silently omit a kind added later.
+`isTextKind` admits — Markdown, ontology, delimited and RTF included — or a
+Google Drive shortcut kind (see below) — rather than an enumeration that
+would silently omit a kind added later.
+
+#### Google Drive shortcut files
+
+`.gdoc`/`.gsheet`/`.gslides` are the small JSON files Google Drive Desktop
+(and Google Takeout) write in place of a native Google Doc/Sheet/Slide it
+cannot sync as a real document — a pointer (a file id, sometimes a sharing
+URL), never the document's own content. `dsh-plugins-client-ui-file-
+editing`'s `googleShortcut.ts` resolves that pointer into a file id and doc
+type, tolerating the few shapes real writers use (a modern `docs.google.com/
+<type>/d/<id>` URL, the legacy `open?id=` one, a bare `resource_id`, or a
+bare `doc_id`) rather than committing to one exact schema.
+
+**Treated as editable, through a different editor.** `isGoogleShortcutKind`
+sits beside `isTextKind` in `./kinds.ts`: a shortcut file is `canEdit` (the
+same Edit button a text file gets) but never a `FileTextKind` — it is never
+diffed (there is nothing meaningful to diff in a pointer's own JSON), and
+Edit mode renders a different component:
+
+- **View mode** (`GoogleDocPreview`) embeds Google's own `/preview`
+  endpoint — a cross-origin-embeddable, read-only viewer Google serves
+  specifically for third-party embedding (the same one Gmail's and
+  Classroom's own attachment previews use), built fresh from the resolved
+  `docType`/`fileId` rather than trusted from whatever path the shortcut's
+  own URL happened to carry.
+- **Edit mode** (`GoogleDocEditor`) embeds Google's real editor (`/edit`) in
+  one pane, with the same read-only preview kept in a second pane beside
+  it — the same split-pane shape `FileEditor` already uses for a text kind
+  (a `useSplitRatio` divider between the editing surface and a live
+  preview), so turning Edit on reads as the same feature for a Google file
+  as it does for a text file, not a second, different-looking one bolted
+  on. Nothing here goes through this app's own save/autosave/version-guard
+  pipeline: Google persists an edit the instant it happens, the same as
+  using docs.google.com directly, so there is no draft, no conflict, and
+  nothing to write back to the shortcut file itself (which never changes as
+  a result).
+
+**One more snapshot field, not a second toolbar.** `FileModeStore`'s
+`textEditable` sits beside `canEdit`: true for a text kind's Edit mode,
+false for a Google file's. `FileActions` reads it to decide whether to draw
+the autosave-status/conflict/AI-prediction row — none of which describes
+`GoogleDocEditor`'s own embedded editor — while the View/Edit/Diff toggle
+group itself stays unconditional, so the same three buttons keep working
+exactly as before.
+
+**Registered with the engine the same way ontology/RTF are, but only for
+View mode.** `dsh-plugins-client-ui-document-host`'s `renderers.tsx`
+registers three more `ctx.documentPreviews` entries (`extension` priority,
+one per shortcut kind) wrapping `GoogleDocPreview` — the engine has no
+reason to know these extensions exist otherwise, and without this
+registration an unconfigured composition would show the shortcut's own JSON
+as plain text instead. Edit mode needs no such registration at all: it
+never goes through the engine, composed in or not — `FileView` renders
+`GoogleDocEditor` directly, exactly as it already renders `FileEditor` for
+a text kind regardless of whether `client-ui-document-host` is installed.
 
 
 ### `packages/mcp-connector/` — MCP connectors with OAuth 2.0

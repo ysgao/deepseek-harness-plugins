@@ -142,6 +142,20 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
       truncated: (shown, total) => t('files.viewer.rtfTruncated', { shown, total }),
       empty: t('files.viewer.rtfEmpty'),
     },
+    // This dialog never shows Edit mode (no toggle exists here — see the
+    // module doc comment), so `GoogleDocPreview` only ever reads `appName`
+    // and `invalid` off this; `previewPaneLabel` exists purely to satisfy
+    // `GoogleLabels`' shape, same as `FilePreviewLabels` itself is a
+    // complete object here despite most kinds using only part of it.
+    google: {
+      appName: (googleKind) => {
+        if (googleKind === 'gdoc') return t('files.viewer.googleDocsApp')
+        if (googleKind === 'gsheet') return t('files.viewer.googleSheetsApp')
+        return t('files.viewer.googleSlidesApp')
+      },
+      previewPaneLabel: t('files.viewer.googlePreviewPane'),
+      invalid: t('files.viewer.googleInvalid'),
+    },
   }), [t])
 
   const binaryBase64 = state.phase === 'ready' && state.content.kind === 'binary' ? state.content.data : null

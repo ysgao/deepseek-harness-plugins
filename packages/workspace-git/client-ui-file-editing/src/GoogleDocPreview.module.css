@@ -1,0 +1,14 @@
+.frame {
+  display: block;
+  width: 100%;
+  height: 70vh;
+  border: none;
+}
+
+.notice {
+  margin: 0;
+  padding: 16px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  line-height: 20px;
+}

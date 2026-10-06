@@ -14,6 +14,13 @@
  *
  * It owns no state. Everything drawn comes from the snapshot `FileView`
  * publishes, and every action goes back through that store's handlers.
+ *
+ * `state.textEditable` narrows one row further than `state.canEdit` already
+ * does: a Google Drive shortcut file is `canEdit` (the Edit button shows,
+ * same as any text kind) but not `textEditable` (its Edit mode is
+ * `GoogleDocEditor`, Google's own embedded editor — the autosave status,
+ * conflict/error notices, and AI-prediction switch below describe this
+ * app's own save pipeline, which a Google file never goes through).
  * @module dsh-plugins-client-ui-conversation-files/FileActions
  */
 import { useEffect, useSyncExternalStore } from 'react'
@@ -72,7 +79,13 @@ export function FileActions({ store, owner, t }: FileActionsProps) {
 
   return (
     <div className={css.actions}>
-      {state.mode === 'edit' && (
+      {/* `state.textEditable` excludes a Google Drive shortcut file's Edit
+          mode (`GoogleDocEditor`): none of the autosave status, the
+          conflict/error notices, or the AI-prediction switch apply to it —
+          Google persists an edit the moment it happens, and this app keeps
+          no draft/save state for it at all. The View/Edit/Diff toggle group
+          below stays unconditional; only this row is text-editor-specific. */}
+      {state.mode === 'edit' && state.textEditable && (
         <>
           {state.save === 'conflict' && (
             <span className={css.conflict} role="alert">

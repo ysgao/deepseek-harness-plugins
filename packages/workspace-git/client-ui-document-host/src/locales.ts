@@ -1,6 +1,7 @@
 /**
- * This package's own `document-host` namespace. One key: the line the right
- * Sidebar shows when a file cannot be handed to the File tab.
+ * This package's own `document-host` namespace: the line the right Sidebar
+ * shows when a file cannot be handed to the File tab, this package's own
+ * ontology/RTF/Google-shortcut renderer titles and notices.
  *
  * Deliberately not added to the vendored preview engine's own
  * `sidebarDocumentPreview` dictionary, which this package re-registers
@@ -27,6 +28,10 @@ export const zh = {
   'renderer.expandAria': '展开其余 {count} 行',
   'renderer.collapse': '折叠',
   'renderer.expandRest': '展开其余 {count} 行',
+  'google.gdocApp': 'Google 文档',
+  'google.gsheetApp': 'Google 表格',
+  'google.gslidesApp': 'Google 幻灯片',
+  'google.invalid': '无法解析此 Google 文件链接',
 } satisfies Record<string, string>
 
 /** The `document-host` namespace key union. */
@@ -49,4 +54,8 @@ export const en = {
   'renderer.expandAria': 'Expand the remaining {count} lines',
   'renderer.collapse': 'Collapse',
   'renderer.expandRest': 'Expand the remaining {count} lines',
+  'google.gdocApp': 'Google Docs',
+  'google.gsheetApp': 'Google Sheets',
+  'google.gslidesApp': 'Google Slides',
+  'google.invalid': 'Couldn’t resolve this Google file link',
 } satisfies Record<DocumentHostKey, string>

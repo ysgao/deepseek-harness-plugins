@@ -1,7 +1,8 @@
 /**
  * File-editing primitives: FileEditor, FilePreview and its per-format bodies
- * (OntologyPreview, DelimitedPreview, RtfPreview, and the Office/PDF ones),
- * and SideBySideDiff. Pure
+ * (OntologyPreview, DelimitedPreview, RtfPreview, GoogleDocPreview, and the
+ * Office/PDF ones), GoogleDocEditor (the Google Drive shortcut file
+ * counterpart to FileEditor), and SideBySideDiff. Pure
  * React components with no Cordis registration, kept out of the shared
  * `@deepseek-ai/dsh-client-ui-primitives` package (which every other UI
  * plugin depends on) so this feature's own components don't widen that
@@ -17,7 +18,7 @@ export { FilePreview } from './FilePreview.tsx'
 // preview graph, because the barrel re-exports `FilePreview` above; a
 // consumer that wants only the classification should deep-import
 // `./src/kinds.ts` instead.
-export { isContentMismatch, isTextKind } from './kinds.ts'
+export { isContentMismatch, isGoogleShortcutKind, isTextKind } from './kinds.ts'
 export { LazyFilePreview } from './LazyFilePreview.tsx'
 export type { LazyFilePreviewProps } from './LazyFilePreview.tsx'
 export type {
@@ -36,6 +37,12 @@ export { detectOntologySyntax } from './ontology/syntax.ts'
 export type { OntologyDialect, OntologySyntax, OntologySyntaxProfile } from './ontology/syntax.ts'
 export { tokenizeOntologyLine } from './ontology/tokenize.ts'
 export type { OntologyToken, OntologyTokenKind } from './ontology/tokenize.ts'
+export { GoogleDocPreview } from './GoogleDocPreview.tsx'
+export type { GoogleDocPreviewProps, GoogleLabels } from './GoogleDocPreview.tsx'
+export { GoogleDocEditor } from './GoogleDocEditor.tsx'
+export type { GoogleDocEditorProps, GoogleDocEditorResizeLabels } from './GoogleDocEditor.tsx'
+export { parseGoogleShortcut } from './googleShortcut.ts'
+export type { GoogleDocType, GoogleShortcut, GoogleShortcutKind } from './googleShortcut.ts'
 export { SideBySideDiff } from './SideBySideDiff.tsx'
 export type { SideBySideDiffLabels, SideBySideDiffProps } from './SideBySideDiff.tsx'
 export { useSplitRatio } from './useSplitRatio.ts'

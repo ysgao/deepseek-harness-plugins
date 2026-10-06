@@ -39,8 +39,24 @@ export interface FileToolbarSnapshot {
   readonly path: string | null
   /** The current mode. */
   readonly mode: FileViewMode
-  /** Whether this file can be edited — any text kind (Markdown, ontology, delimited, RTF included) whose text has loaded. */
+  /**
+   * Whether this file can be edited — any text kind (Markdown, ontology,
+   * delimited, RTF included) whose text has loaded, or a Google Drive
+   * shortcut kind (`.gdoc`/`.gsheet`/`.gslides`) whose shortcut JSON has
+   * loaded. Which of the two decides what Edit mode itself draws — see
+   * {@link textEditable}.
+   */
   readonly canEdit: boolean
+  /**
+   * Whether `canEdit`'s Edit mode is the raw-text CodeMirror editor
+   * (`FileEditor`) rather than the embedded Google editor
+   * (`GoogleDocEditor`). Meaningless while `canEdit` is false. `FileActions`
+   * reads this to decide whether to draw the autosave-status/conflict/
+   * AI-prediction row — none of which applies to `GoogleDocEditor`, since
+   * Google persists an edit itself and this app keeps no draft/save state
+   * for it.
+   */
+  readonly textEditable: boolean
   /** Whether this file has a pending git change to diff against `HEAD`. */
   readonly canDiff: boolean
   /** Whether the open draft differs from what is on disk. */
@@ -60,7 +76,8 @@ export interface FileToolbarSnapshot {
 
 /** The resting snapshot: no file, nothing to offer. */
 export const RESTING_SNAPSHOT: FileToolbarSnapshot = {
-  path: null, mode: 'view', canEdit: false, canDiff: false, dirty: false, save: 'idle', aiPredictionEnabled: false,
+  path: null, mode: 'view', canEdit: false, textEditable: false, canDiff: false, dirty: false, save: 'idle',
+  aiPredictionEnabled: false,
 }
 
 /** What `FileView` publishes alongside its snapshot: the actions only it can perform. */
@@ -83,6 +100,7 @@ const NO_HANDLERS: FileToolbarHandlers = {
 /** Whether two snapshots say the same thing. */
 function same(left: FileToolbarSnapshot, right: FileToolbarSnapshot): boolean {
   return left.path === right.path && left.mode === right.mode && left.canEdit === right.canEdit
+    && left.textEditable === right.textEditable
     && left.canDiff === right.canDiff && left.dirty === right.dirty && left.save === right.save
     && left.aiPredictionEnabled === right.aiPredictionEnabled
 }

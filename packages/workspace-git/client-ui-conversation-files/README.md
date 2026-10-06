@@ -90,7 +90,13 @@ per-session `FileModeStore` (`src/mode-store.ts`) that both mounts read, and
 the store compares before notifying so publishing on every render does not
 re-render the toolbar on every keystroke. Edit is offered for whatever
 `isTextKind` admits — Markdown, ontology, delimited and RTF included — so a
-text kind added later is not silently left out.
+text kind added later is not silently left out, plus, separately, for a
+Google Drive shortcut kind (`isGoogleShortcutKind`: `.gdoc`/`.gsheet`/
+`.gslides`) — same Edit button, but `GoogleDocEditor` renders instead of
+`FileEditor`, and `FileModeStore`'s `textEditable` field is what tells
+`FileActions` not to draw the autosave-status/conflict/AI-prediction row
+for it (see `../client-ui-file-editing/README.md`'s own "Google Drive
+shortcut files").
 
 **There is no Save button.** Edits autosave: every keystroke (re)arms a
 debounce (`FileView`'s `scheduleAutosave`, `AUTOSAVE_DEBOUNCE_MS`), and
