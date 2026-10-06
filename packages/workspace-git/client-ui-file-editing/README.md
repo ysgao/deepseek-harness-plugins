@@ -14,9 +14,10 @@ file's raw text, and `SideBySideDiff`'s two-column text diff — whatever its
 read-only preview body makes of that text. In Edit mode that body renders
 live in the pane beside the buffer. A Google Drive shortcut kind
 (`isGoogleShortcutKind`: `gdoc`, `gsheet`, `gslides`) is editable the same
-way — same Edit button, same split-pane shape — but through `GoogleDocEditor`
-instead, never diffed, and never routed through this app's own save
-pipeline: see "Google Drive shortcut files" below.
+way — same Edit button — but through `GoogleDocEditor` instead: a single
+full iframe with no preview pane beside it (Google's own editor already is
+the fully rendered document), never diffed, and never routed through this
+app's own save pipeline: see "Google Drive shortcut files" below.
 
 Ports `packages/client/ui-primitives/src/{FileEditor,FilePreview,
 SideBySideDiff}.tsx` (+ `.module.css`, `codemirror/theme.ts`,
@@ -243,12 +244,12 @@ concept at all.
   resolved `docType`/`fileId`, never from whatever path the shortcut's own
   `url` field happened to carry.
 - **Edit mode (`GoogleDocEditor`)** embeds Google's real editor (`/edit`) in
-  one pane, with the same read-only preview kept in a second pane beside
-  it, through the identical `useSplitRatio` divider `FileEditor` uses
-  between its own buffer and preview pane — so a caller offering Edit for a
-  Google file draws the same shape of split view it already draws for a
-  text file, just with two iframes instead of a CodeMirror buffer and a
-  rendered body.
+  a single full iframe, with no second, read-only pane beside it — unlike
+  `FileEditor`'s own buffer-plus-preview split for a text kind, where the
+  editing surface (raw markup) and its reader-facing rendering are
+  genuinely different views. Google's `/edit` page already *is* the fully
+  rendered, reader-facing document, so a read-only pane next to it would
+  show the same thing twice.
 
 Nothing here goes through a caller's own save/autosave/version-guard
 pipeline: Google persists an edit the instant it happens, the same as using

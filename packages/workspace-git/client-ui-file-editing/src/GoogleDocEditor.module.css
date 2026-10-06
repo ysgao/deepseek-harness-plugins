@@ -1,60 +1,9 @@
-/* Mirrors FileEditor.module.css's own split geometry (same two-column grid
-   driven by a unitless custom property, same divider track) so a Google
-   file's Edit mode reads as the same feature as a text file's, not a
-   different one bolted on beside it. */
-
-.splitRoot {
-  display: grid;
-  grid-template-columns:
-    calc((100% - 8px) * var(--ds-google-editor-ratio, 0.5))
-    8px
-    calc((100% - 8px) * (1 - var(--ds-google-editor-ratio, 0.5)));
-  min-height: 0;
-  min-width: 0;
-  height: 100%;
-}
-
-.divider {
-  position: relative;
-  cursor: col-resize;
-  touch-action: none;
-  user-select: none;
-  background: var(--dsw-alias-markdown-code-block);
-}
-
-.divider::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 1px;
-  transform: translateX(-50%);
-  background: var(--dsw-alias-separator-primary);
-}
-
-.divider:focus-visible {
-  outline: none;
-}
-
-.pane {
+.root {
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
   height: 100%;
-}
-
-.paneLabel {
-  flex: none;
-  margin: 0;
-  padding: 6px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
 }
 
 .frame {

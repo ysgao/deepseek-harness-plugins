@@ -720,16 +720,16 @@ Edit mode renders a different component:
   `docType`/`fileId` rather than trusted from whatever path the shortcut's
   own URL happened to carry.
 - **Edit mode** (`GoogleDocEditor`) embeds Google's real editor (`/edit`) in
-  one pane, with the same read-only preview kept in a second pane beside
-  it — the same split-pane shape `FileEditor` already uses for a text kind
-  (a `useSplitRatio` divider between the editing surface and a live
-  preview), so turning Edit on reads as the same feature for a Google file
-  as it does for a text file, not a second, different-looking one bolted
-  on. Nothing here goes through this app's own save/autosave/version-guard
-  pipeline: Google persists an edit the instant it happens, the same as
-  using docs.google.com directly, so there is no draft, no conflict, and
-  nothing to write back to the shortcut file itself (which never changes as
-  a result).
+  a single full iframe — no second, read-only pane beside it, unlike
+  `FileEditor`'s own buffer-plus-preview split for a text kind. That split
+  exists there because the editing surface (raw markup) and the
+  reader-facing rendering of it are genuinely different views; Google's
+  `/edit` page already *is* the fully rendered, reader-facing document, so a
+  read-only pane next to it would show the same thing twice. Nothing here
+  goes through this app's own save/autosave/version-guard pipeline: Google
+  persists an edit the instant it happens, the same as using docs.google.com
+  directly, so there is no draft, no conflict, and nothing to write back to
+  the shortcut file itself (which never changes as a result).
 
 **One more snapshot field, not a second toolbar.** `FileModeStore`'s
 `textEditable` sits beside `canEdit`: true for a text kind's Edit mode,

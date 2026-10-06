@@ -140,9 +140,6 @@ function GoogleDocumentBody(
       if (googleKind === 'gsheet') return t('google.gsheetApp')
       return t('google.gslidesApp')
     },
-    // Unused here: this body has only the one pane (View mode never offers
-    // the split editor/preview layout `GoogleDocEditor` draws).
-    previewPaneLabel: '',
     invalid: t('google.invalid'),
   }
   return <GoogleDocPreview kind={kind} text={content.text} labels={labels} />

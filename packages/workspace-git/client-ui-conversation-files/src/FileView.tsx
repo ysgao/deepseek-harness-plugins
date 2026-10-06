@@ -26,9 +26,11 @@
  * A Google Drive shortcut file (`.gdoc`/`.gsheet`/`.gslides`,
  * `isGoogleShortcutKind`) offers the same Edit toggle through the same
  * button, but a different editor: `GoogleDocEditor`, Google's own real
- * editor embedded in an iframe, with the read-only preview iframe kept
- * alongside it — there is no local text to feed a CodeMirror buffer, since
- * the shortcut carries only a file id. It never offers Diff (there is
+ * editor embedded in a single full iframe — there is no local text to feed
+ * a CodeMirror buffer (the shortcut carries only a file id), and no second
+ * preview pane beside it either, unlike a text kind: Google's `/edit` page
+ * already *is* the fully rendered document, so a read-only pane next to it
+ * would just show the same thing twice. It never offers Diff (there is
  * nothing meaningful to diff), and Edit mode writes nothing back through
  * this tab's own save/autosave pipeline: Google persists the edit itself.
  * Unsaved edits live in an in-memory per-path draft cache (`draftsRef`), not
@@ -284,15 +286,14 @@ export function FileView({
 }: FileViewProps) {
   // Shared by `GoogleDocPreview` (nested into `filePreviewLabels.google`
   // below, for View mode) and `GoogleDocEditor` (passed directly, for Edit
-  // mode) — the same object both read, so the two panes' copy never drifts
-  // apart. Declared ahead of `filePreviewLabels`, which closes over it.
+  // mode) — the same object both read, so the two never drift apart.
+  // Declared ahead of `filePreviewLabels`, which closes over it.
   const googleLabels: GoogleLabels = useMemo(() => ({
     appName: (kind) => {
       if (kind === 'gdoc') return tFiles('files.viewer.googleDocsApp')
       if (kind === 'gsheet') return tFiles('files.viewer.googleSheetsApp')
       return tFiles('files.viewer.googleSlidesApp')
     },
-    previewPaneLabel: tFiles('files.edit.googlePreviewPane'),
     invalid: tFiles('files.viewer.googleInvalid'),
   }), [tFiles])
 
@@ -821,7 +822,6 @@ export function FileView({
           kind={googleKind}
           text={editorText}
           labels={googleLabels}
-          resizeLabels={editorResizeLabels}
           className={css.body}
         />
       )}

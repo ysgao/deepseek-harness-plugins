@@ -18,12 +18,10 @@ import { parseGoogleShortcut } from './googleShortcut.ts'
 import type { GoogleShortcutKind } from './googleShortcut.ts'
 import css from './GoogleDocPreview.module.css'
 
-/** Localized chrome shared by this body and `GoogleDocEditor`'s own two panes. */
+/** Localized chrome shared by this body and `GoogleDocEditor`'s own body. */
 export interface GoogleLabels {
-  /** "Google Docs"/"Google Sheets"/"Google Slides", given the shortcut's own kind — used as the iframe `title` here, and as the editing pane's heading plus its own iframe `title` in `GoogleDocEditor`. */
+  /** "Google Docs"/"Google Sheets"/"Google Slides", given the shortcut's own kind — used as both components' iframe `title`. */
   appName: (kind: GoogleShortcutKind) => string
-  /** The read-only pane's own heading in `GoogleDocEditor`; unused by this View-mode body, which has only the one pane. */
-  previewPaneLabel: string
   /** Shown instead of the iframe when the shortcut's own content could not be resolved to a real file id. */
   invalid: string
 }
