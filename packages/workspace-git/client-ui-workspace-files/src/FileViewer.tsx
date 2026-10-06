@@ -148,6 +148,7 @@ export function FileViewer({ path, readFile, openPath, onClose, t }: FileViewerP
         if (googleKind === 'gsheet') return t('files.viewer.googleSheetsApp')
         return t('files.viewer.googleSlidesApp')
       },
+      openInNewTab: t('files.viewer.googleOpenInNewTab'),
       invalid: t('files.viewer.googleInvalid'),
     },
   }), [t])

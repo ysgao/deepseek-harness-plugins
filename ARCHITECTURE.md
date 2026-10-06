@@ -731,6 +731,23 @@ Edit mode renders a different component:
   directly, so there is no draft, no conflict, and nothing to write back to
   the shortcut file itself (which never changes as a result).
 
+**Sandboxed against its own sign-in redirect.** `accounts.google.com`
+refuses to render inside any iframe at all (`X-Frame-Options: DENY`), so
+when the embedded document needs a sign-in it hasn't completed, Google's
+own script has exactly one way to show that page: navigate the TOP-level
+browsing context, not just this iframe. Unsandboxed, that takes the
+reader's whole browser tab with it — this app's File tab replaced by
+Google's full-page site. Both components' iframes set `sandbox`
+(`googleShortcut.ts`'s `GOOGLE_IFRAME_SANDBOX`) with neither
+`allow-top-navigation` nor `allow-top-navigation-by-user-activation`
+present, which blocks exactly that escape, unconditionally. The necessary
+consequence — sign-in becomes uncompletable through the embed itself, since
+blocking the escape blocks the only way that refusal can ever resolve — is
+why both bodies pair the iframe with a plain, always-visible "open in a new
+tab" link: a reader signs in there, in a tab they chose to open, and
+Google's session cookies (shared across the whole browser, not scoped to
+one frame) make the embedded iframe here work on the very next reload.
+
 **One more snapshot field, not a second toolbar.** `FileModeStore`'s
 `textEditable` sits beside `canEdit`: true for a text kind's Edit mode,
 false for a Google file's. `FileActions` reads it to decide whether to draw

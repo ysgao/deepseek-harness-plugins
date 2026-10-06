@@ -22,12 +22,19 @@
  * `onChange`, and reports no changes upward. The shortcut file itself (the
  * small JSON this app reads) never changes as a result of editing the real
  * document, so there is nothing for this app to write back either.
+ *
+ * `sandbox` (`GOOGLE_IFRAME_SANDBOX`) keeps a sign-in redirect from
+ * hijacking this app's own tab, and the "open in a new tab" link beside the
+ * frame is what a reader uses instead when one is actually needed — see
+ * that constant's own doc comment for why both exist together. This is the
+ * pane where a reader is most likely to hit it: editing is the action that
+ * requires Google to know who they are.
  */
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { GoogleLabels } from './GoogleDocPreview.tsx'
-import { parseGoogleShortcut } from './googleShortcut.ts'
+import { GOOGLE_IFRAME_SANDBOX, parseGoogleShortcut } from './googleShortcut.ts'
 import type { GoogleShortcutKind } from './googleShortcut.ts'
 import css from './GoogleDocEditor.module.css'
 
@@ -58,7 +65,13 @@ export function GoogleDocEditor({ kind, text, labels, className }: GoogleDocEdit
 
   return (
     <div className={clsx(css.root, className)}>
-      <iframe className={css.frame} src={shortcut.editUrl} title={appName} />
+      <div className={css.header}>
+        <span className={css.appName}>{appName}</span>
+        <a className={css.openLink} href={shortcut.editUrl} target="_blank" rel="noopener noreferrer">
+          {labels.openInNewTab}
+        </a>
+      </div>
+      <iframe className={css.frame} src={shortcut.editUrl} title={appName} sandbox={GOOGLE_IFRAME_SANDBOX} />
     </div>
   )
 }

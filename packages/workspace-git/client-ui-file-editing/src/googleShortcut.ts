@@ -23,6 +23,54 @@
 /** The three shortcut kinds this package recognizes. */
 export type GoogleShortcutKind = 'gdoc' | 'gsheet' | 'gslides'
 
+/**
+ * `sandbox` tokens both `GoogleDocPreview` and `GoogleDocEditor` set on
+ * their iframe, deliberately omitting `allow-top-navigation`/
+ * `allow-top-navigation-by-user-activation`.
+ *
+ * Google's own sign-in page (`accounts.google.com`) refuses to render
+ * inside ANY iframe — it sets `X-Frame-Options: DENY`, which is not
+ * something this app can negotiate around — so when the embedded document
+ * needs a sign-in it has not yet completed, its own script's only way to
+ * show that page at all is to navigate the TOP-level browsing context
+ * (`window.top.location = ...`), escaping the iframe entirely. Without
+ * `sandbox` that escape takes the reader's whole browser tab with it,
+ * replacing this app's File tab with Google's own full-page site. Omitting
+ * both top-navigation tokens here blocks exactly that: a sandboxed frame
+ * with neither token present cannot navigate the top browsing context, by
+ * any means, user-gesture-initiated or not — so a reader clicking "Sign in"
+ * inside the embed stays inside the File tab, full stop.
+ *
+ * That necessarily means sign-in itself cannot be completed through this
+ * embed when the browser holds no Google session yet — the X-Frame-Options
+ * refusal above is unconditional, sandboxed or not, so blocking the escape
+ * blocks the only path Google's own page has to show its sign-in UI at
+ * all. `GoogleDocPreview`/`GoogleDocEditor` both pair this with a visible
+ * "open in a new tab" link for exactly that case: the reader completes
+ * sign-in there, in a tab they chose to open, and Google's session cookies
+ * (shared across the whole browser, not scoped to one tab or frame) make
+ * the embedded iframe here work on the very next reload.
+ *
+ * Every other token is what Google's own apps need to function at all:
+ * `allow-scripts` (both are full JS web apps), `allow-same-origin` (so the
+ * frame keeps its own origin rather than becoming opaque — safe to pair
+ * with `allow-scripts` here specifically because this iframe's origin
+ * (`docs.google.com`) never matches this app's own, so the classic
+ * same-origin sandbox-escape risk the two tokens combined otherwise carry
+ * does not apply), `allow-forms` (text input throughout the editor UI),
+ * `allow-popups`/`allow-popups-to-escape-sandbox` (the share dialog, print
+ * preview, "Explore", and other Google UI that opens its own window,
+ * unsandboxed once open), `allow-modals` (native `alert`/`confirm`, e.g. an
+ * unsaved-changes prompt), `allow-downloads` (exporting a file), and
+ * `allow-storage-access-by-user-activation` (the Storage Access API a
+ * third-party-cookie-restricted browser may require before Google's own
+ * frame can read its cookies at all).
+ */
+export const GOOGLE_IFRAME_SANDBOX = [
+  'allow-scripts', 'allow-same-origin', 'allow-forms', 'allow-popups', 'allow-popups-to-escape-sandbox',
+  'allow-modals', 'allow-downloads', 'allow-storage-access-by-user-activation',
+].join(' ')
+
 /** Which Google editor a shortcut opens — also the first path segment of every modern `docs.google.com` share link for it. */
 export type GoogleDocType = 'document' | 'spreadsheets' | 'presentation'
 

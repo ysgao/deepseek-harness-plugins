@@ -294,6 +294,7 @@ export function FileView({
       if (kind === 'gsheet') return tFiles('files.viewer.googleSheetsApp')
       return tFiles('files.viewer.googleSlidesApp')
     },
+    openInNewTab: tFiles('files.viewer.googleOpenInNewTab'),
     invalid: tFiles('files.viewer.googleInvalid'),
   }), [tFiles])
 

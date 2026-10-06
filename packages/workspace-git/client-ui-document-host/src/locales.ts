@@ -31,6 +31,7 @@ export const zh = {
   'google.gdocApp': 'Google 文档',
   'google.gsheetApp': 'Google 表格',
   'google.gslidesApp': 'Google 幻灯片',
+  'google.openInNewTab': '在新标签页中打开',
   'google.invalid': '无法解析此 Google 文件链接',
 } satisfies Record<string, string>
 
@@ -57,5 +58,6 @@ export const en = {
   'google.gdocApp': 'Google Docs',
   'google.gsheetApp': 'Google Sheets',
   'google.gslidesApp': 'Google Slides',
+  'google.openInNewTab': 'Open in a new tab',
   'google.invalid': 'Couldn’t resolve this Google file link',
 } satisfies Record<DocumentHostKey, string>

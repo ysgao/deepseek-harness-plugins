@@ -11,10 +11,15 @@
  * body in this package, this one reads nothing from the file's own bytes
  * beyond that id. Edit mode uses a different body (`./GoogleDocEditor.tsx`),
  * with Google's real editor embedded instead of this read-only viewer.
+ *
+ * `sandbox` (`GOOGLE_IFRAME_SANDBOX`) keeps a sign-in redirect from
+ * hijacking this app's own tab, and the "open in a new tab" link beside the
+ * frame is what a reader uses instead when one is actually needed — see
+ * that constant's own doc comment for why both exist together.
  */
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { parseGoogleShortcut } from './googleShortcut.ts'
+import { GOOGLE_IFRAME_SANDBOX, parseGoogleShortcut } from './googleShortcut.ts'
 import type { GoogleShortcutKind } from './googleShortcut.ts'
 import css from './GoogleDocPreview.module.css'
 
@@ -22,6 +27,8 @@ import css from './GoogleDocPreview.module.css'
 export interface GoogleLabels {
   /** "Google Docs"/"Google Sheets"/"Google Slides", given the shortcut's own kind — used as both components' iframe `title`. */
   appName: (kind: GoogleShortcutKind) => string
+  /** The "open in a new tab" link's own text — see `GOOGLE_IFRAME_SANDBOX`'s doc comment for why it exists. */
+  openInNewTab: string
   /** Shown instead of the iframe when the shortcut's own content could not be resolved to a real file id. */
   invalid: string
 }
@@ -42,5 +49,16 @@ export interface GoogleDocPreviewProps {
 export function GoogleDocPreview({ kind, text, labels }: GoogleDocPreviewProps): ReactNode {
   const shortcut = useMemo(() => parseGoogleShortcut(kind, text), [kind, text])
   if (shortcut === null) return <p className={css.notice} role="alert">{labels.invalid}</p>
-  return <iframe className={css.frame} src={shortcut.previewUrl} title={labels.appName(kind)} />
+  const appName = labels.appName(kind)
+  return (
+    <div className={css.root}>
+      <div className={css.header}>
+        <span className={css.appName}>{appName}</span>
+        <a className={css.openLink} href={shortcut.previewUrl} target="_blank" rel="noopener noreferrer">
+          {labels.openInNewTab}
+        </a>
+      </div>
+      <iframe className={css.frame} src={shortcut.previewUrl} title={appName} sandbox={GOOGLE_IFRAME_SANDBOX} />
+    </div>
+  )
 }

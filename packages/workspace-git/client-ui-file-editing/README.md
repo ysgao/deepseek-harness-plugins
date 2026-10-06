@@ -256,3 +256,16 @@ pipeline: Google persists an edit the instant it happens, the same as using
 docs.google.com directly in an ordinary browser tab, so there is nothing for
 this package — or its caller — to write back. The shortcut file's own JSON
 never changes as a result of editing the document it names.
+
+**Both iframes are `sandbox`ed against their own sign-in redirect**
+(`googleShortcut.ts`'s `GOOGLE_IFRAME_SANDBOX`, which omits
+`allow-top-navigation`/`allow-top-navigation-by-user-activation`
+specifically). `accounts.google.com` refuses to render inside any iframe at
+all, so an unauthenticated embed's only way to show its sign-in page is to
+navigate the whole top-level browser tab — unsandboxed, that replaces
+whatever hosted this component with Google's own full-page site. Blocking
+that escape necessarily means sign-in can't be completed through the embed
+itself, which is why both components pair their iframe with a plain,
+always-visible "open in a new tab" link instead: sign in there, and
+Google's session cookies (shared across the whole browser) make the
+embedded iframe work on the next reload.

@@ -140,6 +140,7 @@ function GoogleDocumentBody(
       if (googleKind === 'gsheet') return t('google.gsheetApp')
       return t('google.gslidesApp')
     },
+    openInNewTab: t('google.openInNewTab'),
     invalid: t('google.invalid'),
   }
   return <GoogleDocPreview kind={kind} text={content.text} labels={labels} />
