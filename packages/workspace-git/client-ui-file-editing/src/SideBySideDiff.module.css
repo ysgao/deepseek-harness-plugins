@@ -2,11 +2,22 @@
    banner row, markdown code-block font) so the diff view reads as the same
    family. Two independent gutter+content column pairs sit side by side in one
    CSS grid, split by a draggable divider track (--dsl-sbs-diff-ratio, from
-   useSplitRatio) between them; each row keeps `white-space: pre` and the
-   whole grid scrolls horizontally, since folding a source line destroys the
-   indentation a diff is read by. The divider spans every row via
-   `grid-row: 1 / -1` so it scrolls with the columns it separates; rows
-   (`display: contents`) place their four cells explicitly around its track. */
+   useSplitRatio) between them. The divider spans every row via
+   `grid-row: 1 / -1` so it stays aligned with the columns it separates; rows
+   (`display: contents`) place their four cells explicitly around its track.
+
+   `.content` wraps (`white-space: pre-wrap` plus `overflow-wrap: anywhere`,
+   the same pair `dsh-client-ui-deliverables`'s own `FileDiff.module.css`
+   uses for its `[data-review-wrap]` mode) and also carries `min-width: 0`,
+   overriding a grid item's automatic minimum size (which otherwise lets a
+   line's own intrinsic width win, growing the item past its track instead
+   of wrapping within it — `FileEditor.module.css`'s own split view carries
+   the same guard on `.editorPane`/`.previewPane` for the identical reason).
+   Without both together, a long old-side line has nothing confining it to
+   its own half of the row and paints straight over the new-side cells next
+   to it; wrapping instead of scrolling means every row's height is just
+   whatever its longest wrapped side needs, with no separate horizontal
+   scroll affordance to manage. */
 
 .block {
   --dsl-sbs-diff-radius: 12px;
@@ -63,8 +74,6 @@
     calc((100% - 2 * var(--dsl-sbs-diff-gutter) - var(--dsl-sbs-diff-divider-width)) * (1 - var(--dsl-sbs-diff-ratio, 0.5)));
   padding: 12px 0;
   font: var(--dsw-font-markdown-code-block);
-  overflow-x: auto;
-  overflow-y: hidden;
 }
 
 /* A row's four cells lay out directly in the body's grid tracks (no nested
@@ -129,9 +138,11 @@
 }
 
 .content {
+  min-width: 0;
   min-height: var(--dsl-sbs-diff-line-height);
   line-height: var(--dsl-sbs-diff-line-height);
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   color: var(--dsw-alias-label-primary);
 }
 
