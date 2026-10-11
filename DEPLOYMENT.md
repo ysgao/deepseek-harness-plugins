@@ -54,6 +54,76 @@ no dependency on this checkout remaining. Verified here: all four
 needed at all — they don't ship a `dsh` CLI, so there's nothing for the
 boot-probe step to exercise on its own; step 3 is their real test.
 
+### Troubleshooting: `ERR_PNPM_NO_OFFLINE_META` on a fresh real dependency
+
+Every `@deepseek-ai/*` package in this workspace is a `workspace:*` link
+except one: `@deepseek-ai/libreoffice-kit`, a real npm-published package
+`packages/_vendor/deepseek-harness/packages/bundle/web-app` depends on
+(`^0.1.1`). If a vendor pin bump ever adds another real (non-workspace)
+dependency under a scope that has so far been 100% workspace links, step 1
+or 2 above can fail even though nothing in this repo changed and the
+package is already sitting in this checkout's own `node_modules` — fully
+installed, nothing missing:
+
+```
+[ERR_PNPM_NO_OFFLINE_META] Failed to resolve @deepseek-ai/libreoffice-kit@>=0.1.1 <0.2.0-0 in package mirror
+  /Users/you/Library/Caches/pnpm/v11/metadata/registry.npmjs.org/@deepseek-ai/libreoffice-kit.jsonl
+
+This error happened while installing a direct dependency of .../packages/bundle/web-app
+pnpm-deploy: `pnpm --filter=<whatever you asked for> deploy ... --legacy --offline --prod` exited 1
+```
+
+Note the message names `web-app` even when you asked to deploy a package
+that has no dependency on `web-app` at all (verified case: deploying
+`dsh-plugins-bundle-workspace-git` hit this). That's not a bug in the
+filter — `--legacy` deploy on a *shared* workspace lockfile (the `[WARN]
+Shared workspace lockfile detected but configuration forces legacy deploy
+implementation` line right above it is the tell) resolves the **entire**
+lockfile across all ~364 projects in this monorepo before carving out just
+the one package's closure to copy, so any one project's unresolvable
+dependency anywhere in the workspace blocks every `--offline` deploy, not
+just deploys of that project.
+
+The actual cause: resolving a semver *range* (`^0.1.1`, not the lockfile's
+exact pinned `0.1.1`) offline needs pnpm's local registry-metadata mirror —
+one `.jsonl` file per package under `~/Library/Caches/pnpm/v11/metadata/
+registry.npmjs.org/<scope>/<name>.jsonl` — and that scope has never needed
+one before, so the file has never been created. A plain `pnpm install` in
+this checkout never fills it either: the lockfile already has everything
+pinned, so a frozen install never needs to query the registry (confirmed:
+a normal `pnpm install` here prints "Lockfile is up to date, resolution
+step is skipped" and touches no network at all).
+
+**Fix — a one-time cache warm-up, from a real terminal with real internet
+access** (this will not work from a network-sandboxed shell; it genuinely
+needs to reach `registry.npmjs.org`): rerun the exact deploy command that
+failed, once, without `--offline`, against a throwaway target, then discard
+it and rerun the real command normally:
+
+```sh
+pnpm --filter=<the package that failed> deploy /tmp/warm-pnpm-cache --legacy --prod
+rm -rf /tmp/warm-pnpm-cache
+# now the normal, fully-offline command succeeds:
+node scripts/pnpm-deploy.mjs <the package that failed> /path/to/target
+```
+
+Verified end to end: this writes
+`~/Library/Caches/pnpm/v11/metadata/registry.npmjs.org/@deepseek-ai/
+libreoffice-kit.jsonl` (a two-line file — a `{"etag":...,"modified":...}`
+cache header, then the full package packument on one line — the same
+format every other cached scope already has), and every subsequent
+`--offline` deploy in this checkout, for any package, succeeds from then
+on. This is a one-time, per-machine, per-newly-introduced-package fix, not
+something to repeat per deploy — the cache persists in `~/Library/Caches/
+pnpm` across runs and across which package you're deploying.
+
+If step 1/2 still fails the same way after that, check that the warm-up
+command actually ran with network reachable (no proxy/VPN blocking
+`registry.npmjs.org`) and that it named the *same* package the real error
+blamed, not the package you asked to deploy — re-read the "direct
+dependency of ..." line, since (per above) it can legitimately be a
+different, unrelated project in the workspace.
+
 ### 3. Wire the bundles into a running `dsh` (optional, manual)
 
 The deployed engine from step 1 and the deployed bundles from step 2 are
