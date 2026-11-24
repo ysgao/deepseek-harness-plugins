@@ -647,6 +647,8 @@ export class McpConnectorRegistry extends Service {
   /** One reconcile pass; see {@link reconcile}. */
   private async reconcileOnce(override?: readonly McpConnectorDefinition[]): Promise<void> {
     const wanted = new Map<string, { definition: McpConnectorDefinition; signature: string }>()
+    /** Enabled definitions that cannot be mounted as written, by id, with the reason. */
+    const invalid = new Map<string, string>()
     for (const definition of override ?? this.definitions()) {
       if (!definition.enabled) continue
       let signature: string
@@ -661,11 +663,14 @@ export class McpConnectorRegistry extends Service {
         // An invalid definition is reported as a failed mount rather than
         // thrown: the other connectors must still reconcile, and a surface
         // needs the reason next to the connector it belongs to.
-        this.mounts.set(definition.id, {
-          signature: '',
-          fiber: undefined as unknown as Fiber,
-          error: error instanceof Error ? error.message : String(error),
-        })
+        //
+        // Held aside rather than recorded here. The sweep below drops every
+        // mount this pass does not want, and an invalid definition is by
+        // construction not in `wanted` — so recording it at this point put the
+        // reason in the map and took it straight back out in the same pass,
+        // leaving the connector to surface as `disabled` with nothing said
+        // about why.
+        invalid.set(definition.id, error instanceof Error ? error.message : String(error))
         continue
       }
       wanted.set(definition.id, { definition, signature })
@@ -683,6 +688,14 @@ export class McpConnectorRegistry extends Service {
           this.ctx.logger.error(error)
         }
       }
+    }
+
+    // After the sweep, never before it: a connector that has just become
+    // invalid still had a live fiber above, and that fiber has to be disposed
+    // under its own id before this records the refusal in its place.
+    for (const [id, error] of invalid) {
+      this.mounts.set(id, { signature: '', fiber: undefined as unknown as Fiber, error })
+      this.ctx.logger.error(`mcp-connector(${id}): ${error}`)
     }
 
     // Mounts run concurrently. Each mount is dominated by network I/O (an
