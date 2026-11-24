@@ -112,6 +112,65 @@ export class McpConnectorInvalidError extends Error {
 }
 
 /**
+ * Query parameters an authorization server puts on the redirect it sends back.
+ *
+ * Their presence in a configured `redirectUri` means the *callback* URL was
+ * stored where the registered redirect URI belongs — see
+ * {@link assertRedirectUri}.
+ */
+const CALLBACK_PARAMS = ['code', 'state', 'error'] as const
+
+/** Where a connector receives its authorization redirect when it names nowhere else. */
+const DEFAULT_REDIRECT_URI = 'http://127.0.0.1:33418/mcp-oauth/callback'
+
+/**
+ * Refuse a `redirectUri` that is not one.
+ *
+ * The failure this exists for: the sign-in flow asks a human to paste the
+ * callback URL their browser landed on when the loopback listener cannot be
+ * reached (see `promptForCallback` in `mcp-client-oauth`), and that URL is
+ * easy to paste one field over, into the connector's own `redirectUri`. The
+ * field took any string, so the paste was stored verbatim and the connector
+ * then sent `redirect_uri=<a URL with last attempt's code on it>` on every
+ * subsequent authorization request. No authorization server matches that
+ * against its registration, so sign-in failed forever after, with a mismatch
+ * error naming neither the field at fault nor the stray paste that set it.
+ *
+ * Judged on the way in, where the paste can still be pointed at.
+ *
+ * @param id - the connector the URI belongs to, for the message.
+ * @param redirectUri - the configured value.
+ * @throws {McpConnectorInvalidError} when it cannot serve as a redirect URI.
+ */
+function assertRedirectUri(id: string, redirectUri: string): void {
+  let url: URL
+  try {
+    url = new URL(redirectUri)
+  } catch {
+    throw new McpConnectorInvalidError(
+      `connector "${id}" has a redirectUri that is not an absolute URL: "${redirectUri}"`,
+    )
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new McpConnectorInvalidError(
+      `connector "${id}" has a redirectUri whose scheme is "${url.protocol}"; an MCP OAuth redirect is http or https`,
+    )
+  }
+  const returned = CALLBACK_PARAMS.filter(param => url.searchParams.has(param))
+  if (returned.length === 0) return
+  // Deliberately reports origin + path only. The value being refused carries a
+  // live authorization code, and this message reaches a log, a CLI transcript,
+  // and the Settings page alike.
+  throw new McpConnectorInvalidError(
+    `connector "${id}" has a redirectUri carrying ${returned.join(', ')} `
+    + `(${url.origin}${url.pathname}?…) — that is the callback URL an authorization server returned, `
+    + 'not the redirect URI to register. Paste a callback URL at the sign-in prompt that asks for it; '
+    + `leave redirectUri unset to use ${DEFAULT_REDIRECT_URI}, or set it with `
+    + `dsh --profile mcp set ${id} --redirect-uri ${DEFAULT_REDIRECT_URI}`,
+  )
+}
+
+/**
  * Turn a failed sign-in into the message every surface shows.
  *
  * Lives here rather than in either surface because both must say the same
@@ -204,6 +263,8 @@ export function buildClientConfig(definition: McpConnectorDefinition): McpClient
   if (definition.transport === 'streamable-http') {
     return { transport: 'streamable-http', ...shared, url: definition.url, headers: definition.headers ?? {} }
   }
+  const redirectUri = definition.redirectUri ?? DEFAULT_REDIRECT_URI
+  assertRedirectUri(definition.id, redirectUri)
   return {
     transport: 'streamable-http-oauth',
     ...shared,
@@ -215,7 +276,7 @@ export function buildClientConfig(definition: McpConnectorDefinition): McpClient
       // connector keeps its client pair in the credential record next to its
       // tokens, which `McpOAuthProvider` reads through its own store when the
       // config carries none. See `McpOAuthGrant.clientConfigured`.
-      redirectUri: definition.redirectUri ?? 'http://127.0.0.1:33418/mcp-oauth/callback',
+      redirectUri,
       ...definition.scope === undefined || definition.scope === '' ? {} : { scope: definition.scope },
       clientName: `dsh (${definition.id})`,
     },
