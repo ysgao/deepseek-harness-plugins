@@ -38,14 +38,21 @@ function fakeCredentialsContext(): Context {
   } as unknown as Context
 }
 
-/** A provider over a fresh in-memory record, with the URLs it hands the human. */
-function subject(): { provider: McpOAuthProvider; store: McpOAuthStore; opened: URL[] } {
-  const ctx = fakeCredentialsContext()
+/** The server URL the provider under test authorizes against. */
+const SERVER_URL = 'https://mcp.atlassian.com/v2/mcp'
+
+/** A provider over an in-memory record, with the URLs it hands the human. */
+function subject(serverUrl = SERVER_URL, ctx = fakeCredentialsContext()): {
+  provider: McpOAuthProvider
+  store: McpOAuthStore
+  opened: URL[]
+  ctx: Context
+} {
   const provider = new McpOAuthProvider(ctx, 'atlassian', {
     redirectUri: 'http://127.0.0.1:33418/mcp-oauth/callback',
-  })
+  }, serverUrl)
   const opened: URL[] = []
-  return { provider, store: new McpOAuthStore(ctx, 'atlassian'), opened }
+  return { provider, store: new McpOAuthStore(ctx, 'atlassian'), opened, ctx }
 }
 
 /** One round of what the SDK does when it decides authorization is needed. */
@@ -108,6 +115,56 @@ describe('one authorization request per attempt', () => {
     const { provider, store } = subject()
     await provider.saveCodeVerifier('unattended')
     expect((await store.read()).codeVerifier).toBe('unattended')
+  })
+})
+
+describe('cached discovery is bound to the server URL it was discovered for', () => {
+  /** What the SDK caches after discovering Atlassian's v1 server. */
+  const v1Discovery = {
+    authorizationServerUrl: 'https://mcp.atlassian.com/',
+    authorizationServerMetadata: {
+      issuer: 'https://mcp.atlassian.com',
+      authorization_endpoint: 'https://mcp.atlassian.com/v1/authorize',
+      token_endpoint: 'https://mcp.atlassian.com/v1/token',
+      response_types_supported: ['code'],
+    },
+  }
+
+  it('hands the SDK the cache it saved, under the same URL', async () => {
+    const { provider } = subject()
+    await provider.saveDiscoveryState(v1Discovery)
+    expect(await provider.discoveryState()).toEqual(v1Discovery)
+  })
+
+  it('reads as absent once the connector points at another URL', async () => {
+    const { provider: before, ctx } = subject('https://mcp.atlassian.com/v1/mcp')
+    await before.saveDiscoveryState(v1Discovery)
+
+    // The same connector, its URL edited to the v2 server. Atlassian's v2 is a
+    // different OAuth resource with a different authorization server; the SDK
+    // reuses whatever cache it is handed without consulting the resource again,
+    // so handing it v1's would send every sign-in and refresh to v1's token
+    // endpoint with v1's client — and v2 answers `invalid_token` to the result.
+    const { provider: after, store } = subject('https://mcp.atlassian.com/v2/mcp', ctx)
+    expect(await after.discoveryState()).toBeUndefined()
+    // Absent to the SDK, not erased: nothing is lost until the fresh discovery
+    // overwrites it, and a revert of the URL edit finds it still there.
+    expect((await store.read()).discoveryState).toEqual(v1Discovery)
+  })
+
+  it('reads a record from before the stamp existed as absent, so it is discovered once more', async () => {
+    const { provider, store } = subject()
+    await store.merge({ discoveryState: v1Discovery })
+    expect(await provider.discoveryState()).toBeUndefined()
+  })
+
+  it('forgets the stamp with the cache when the SDK invalidates discovery', async () => {
+    const { provider, store } = subject()
+    await provider.saveDiscoveryState(v1Discovery)
+    await provider.invalidateCredentials('discovery')
+    const grant = await store.read()
+    expect(grant.discoveryState).toBeUndefined()
+    expect(grant.discoveredFor).toBeUndefined()
   })
 })
 

@@ -184,11 +184,80 @@ describe('signing out keeps the client', () => {
     expect(after.clientConfigured).toBe(true)
   })
 
+  it('drops a client that Dynamic Client Registration minted, and the cached discovery', async () => {
+    const store = new McpOAuthStore(fakeCredentialsContext(), 'atlassian')
+    // What a DCR sign-in leaves behind: a client the server issued, no
+    // `clientConfigured`, and the discovery it was registered through.
+    await store.merge({
+      clientInformation: { client_id: 'Ram1Dx0W2MAbSAgA', client_id_issued_at: 1_789_740_687 },
+      discoveryState: { authorizationServerUrl: 'https://mcp.atlassian.com/' },
+      discoveredFor: 'https://mcp.atlassian.com/v1/mcp',
+      tokens: { access_token: 'a', refresh_token: 'r', token_type: 'Bearer' },
+      obtainedAt: 1,
+    })
+
+    await store.forgetGrant()
+
+    const after = await store.read()
+    expect(after.tokens).toBeUndefined()
+    // Atlassian's own instruction for a server that moved: "clear cached
+    // clientIds or .well-known credentials". A sign-out that kept them would
+    // sign back in through the old authorization server, as before.
+    expect(after.clientInformation).toBeUndefined()
+    expect(after.discoveryState).toBeUndefined()
+    expect(after.discoveredFor).toBeUndefined()
+  })
+
   it('still removes everything when the whole record goes', async () => {
     const ctx = fakeCredentialsContext()
     const store = new McpOAuthStore(ctx, 'gmail')
     await store.setConfiguredClient('client-id', 'client-secret')
     await store.clear()
     expect((await store.read()).clientInformation).toBeUndefined()
+  })
+})
+
+describe('status() of tokens stamped by a server the client no longer is', () => {
+  it('reports authorized while both stamps agree', async () => {
+    const store = new McpOAuthStore(fakeCredentialsContext(), 'atlassian')
+    await store.merge({
+      clientInformation: { client_id: 'c', issuer: 'https://auth.atlassian.com/tenant' },
+      tokens: { access_token: 'a', refresh_token: 'r', token_type: 'Bearer', issuer: 'https://auth.atlassian.com/tenant' },
+      obtainedAt: 1,
+    })
+    expect((await store.status()).authorized).toBe(true)
+  })
+
+  it('reports unauthorized once the client re-registers under a server the tokens were never issued by', async () => {
+    const store = new McpOAuthStore(fakeCredentialsContext(), 'atlassian')
+    // The record a connector edited from v1 to v2 leaves behind after its
+    // first post-edit mount attempt: `auth()` re-registered the client against
+    // the newly-discovered v2 issuer (see the `discoveryState`/`discoveredFor`
+    // tests), but the v1 tokens it found alongside that client are still
+    // exactly what it discarded in memory before doing so — nothing ever
+    // calls `saveTokens(undefined)` to make that discard durable.
+    await store.merge({
+      clientInformation: { client_id: 'new-v2-client', issuer: 'https://auth.atlassian.com/tenant' },
+      tokens: { access_token: 'stale-v1', refresh_token: 'stale-v1-refresh', token_type: 'Bearer', issuer: 'https://mcp.atlassian.com' },
+      obtainedAt: 1,
+    })
+    const status = await store.status()
+    // Not renewed from here either: a token the SDK itself already treats as
+    // unusable is not what "renews automatically" should promise a surface.
+    expect(status.authorized).toBe(false)
+    expect(status.renewable).toBe(false)
+    // The client id is still worth showing — a human looking at "not signed
+    // in, but a client is configured" is exactly the state that is true.
+    expect(status.clientConfigured).toBe(true)
+  })
+
+  it('does not second-guess a grant from before either stamp existed', async () => {
+    const store = new McpOAuthStore(fakeCredentialsContext(), 'atlassian')
+    await store.merge({
+      clientInformation: { client_id: 'c' },
+      tokens: { access_token: 'a', refresh_token: 'r', token_type: 'Bearer' },
+      obtainedAt: 1,
+    })
+    expect((await store.status()).authorized).toBe(true)
   })
 })

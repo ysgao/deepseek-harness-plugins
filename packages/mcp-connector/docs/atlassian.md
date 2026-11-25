@@ -5,7 +5,7 @@ worse version of the other.
 
 | | Remote (`streamable-http-oauth`) | Local (`stdio`) |
 |---|---|---|
-| Server | Atlassian's `https://mcp.atlassian.com/v1/mcp` | `uvx mcp-atlassian`, a Python server built on FastMCP |
+| Server | Atlassian's `https://mcp.atlassian.com/v2/mcp` | `uvx mcp-atlassian`, a Python server built on FastMCP |
 | Credential | OAuth grant, refreshed automatically | a Jira/Confluence API token |
 | Client registration | RFC 7591, automatic | n/a |
 | Runs | nothing locally | a Python child process per `dsh` |
@@ -26,21 +26,25 @@ that server's whole tool generation back with a logged error.
 
 ```sh
 ./dsh --profile mcp add atlassian --label "Atlassian" \
-    --url https://mcp.atlassian.com/v1/mcp
+    --url https://mcp.atlassian.com/v2/mcp
 ./dsh --profile mcp login atlassian
 ```
 
-That is the whole configuration. There is no client id to create, because
-`mcp.atlassian.com` is its own authorization server and publishes a
-`registration_endpoint`:
+That is the whole configuration. There is no client id to create: `/v2/mcp`
+publishes an RFC 9728 protected-resource document naming its authorization
+server as a per-tenant host under `auth.atlassian.com`, not `mcp.atlassian.com`
+itself —
 
 ```console
-$ curl -s https://mcp.atlassian.com/.well-known/oauth-authorization-server | jq '{issuer, registration_endpoint}'
-{"issuer": "https://mcp.atlassian.com",
- "registration_endpoint": "https://mcp.atlassian.com/v1/register"}
+$ curl -s https://mcp.atlassian.com/.well-known/oauth-protected-resource/v2/mcp \
+    | jq '{resource, authorization_servers, scopes_supported: (.scopes_supported | length)}'
+{"resource": "https://mcp.atlassian.com/v2/mcp",
+ "authorization_servers": ["https://auth.atlassian.com/<tenant>"],
+ "scopes_supported": 38}
 ```
 
-So the first sign-in registers a client itself and stores it in the credential
+— and that authorization server publishes a `registration_endpoint`, so the
+first sign-in registers a client itself and stores it in the credential
 record, PKCE `S256`, alongside the tokens. Nothing to paste, no console, and
 nothing for a second machine to copy but the grant.
 
@@ -49,18 +53,42 @@ tools. That is not an error — an OAuth connector contributes nothing before it
 is authorized, and unlike Google's servers this one answers an unauthenticated
 request with `401`, so there is nothing to enumerate in the meantime.
 
-Two facts about this server worth knowing, because both are departures from
-the Google case:
+Two facts about v2 worth knowing, because both read differently from v1 (see
+"Moving off `/v1/mcp`" below) and from the Google case:
 
-- It publishes **no** RFC 9728 protected-resource document
-  (`/.well-known/oauth-protected-resource` is a 404), so discovery falls back
-  to the authorization-server metadata on its own origin. That fallback is
-  also what surfaced the nested-`undefined` write bug described in
-  `mcp-client-oauth`'s README — fixed, but the shape is worth recognising if a
-  future server behaves the same way.
-- It publishes no `scopes_supported`, so nothing is requested by default. If
-  consent errors on scope, set them explicitly with `--scope`, including
-  `offline_access` if a refresh token is wanted.
+- Unlike v1, it publishes an RFC 9728 protected-resource document and a full
+  `scopes_supported` list, so nothing needs `--scope` by default.
+- Its authorization server is a different **host** from the resource server
+  (`auth.atlassian.com`, not `mcp.atlassian.com`) and from one Atlassian site
+  to the next (the path segment after it is per-tenant) — worth knowing before
+  assuming an authorization URL seen once is the same for every site.
+
+### Moving off `/v1/mcp`
+
+A connector still pointed at `https://mcp.atlassian.com/v1/mcp` keeps working
+today, but Atlassian's own migration notice says v1 traffic starts exposing v2
+behavior automatically from March 1, 2027, and names the fix for a client that
+breaks when that happens as clearing its "cached clientIds or `.well-known`
+credentials" — because v1 and v2 are different OAuth resources with different
+authorization servers, and a client or token obtained against one is not
+valid against the other.
+
+Editing the connector's `--url` from v1 to v2 (or back) is exactly this
+package's `discoveredFor` guard: a cached RFC 9728 and authorization-server
+discovery is only ever reused for the URL it was discovered under, so an
+edited URL re-discovers rather than keeps signing in through the old
+resource's authorization server with its client. The registry remounts on
+every definition edit, so that re-discovery runs within the same edit —
+including registering a fresh client against the new authorization server,
+unattended, since this server supports Dynamic Client Registration. The
+tokens obtained under the old URL are left in the credential record rather
+than discarded (nothing in the OAuth flow calls back in to erase them), but
+`status` stops reporting them as `authorized` the moment their issuer stamp
+no longer matches the freshly-registered client's — which is immediately
+after that first remount, not after a tool call fails. Signing out
+(`./dsh --profile mcp logout atlassian`) after an edit clears both the stale
+tokens and the superseded discovery cache outright, rather than leaving them
+in the record unauthorized but present.
 
 ## Local: `mcp-atlassian` over stdio
 

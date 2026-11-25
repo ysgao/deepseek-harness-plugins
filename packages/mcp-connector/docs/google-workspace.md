@@ -165,6 +165,19 @@ A client *secret* is required either way: `accounts.google.com` advertises only
 `client_secret_post` / `client_secret_basic` token-endpoint auth. **One client
 serves every connector.**
 
+**Select *Use this client for an AI-powered agent*.** Google added this
+toggle to the client's own settings (Google Auth Platform → Clients) after
+these MCP servers shipped, and a user-delegated client created without it, or
+left unticked on an existing one, is rejected — not at sign-in, where
+everything succeeds, but on every subsequent `tools/list` and `tools/call`,
+each answering `401` with `WWW-Authenticate: ... error="invalid_token"` and no
+other detail, for a token that is otherwise entirely valid (right audience,
+right scopes, not expired — `oauth2.googleapis.com/tokeninfo` accepts it
+without complaint). See "Troubleshooting" below for that exact symptom, and
+Google's own [Rejected requests from user-delegated OAuth
+clients](https://developers.google.com/workspace/guides/configure-mcp-servers#rejected-requests)
+for the three ways to fix an existing client that cannot be reached this way.
+
 ## 6. Add the connectors
 
 ```sh
@@ -269,6 +282,7 @@ metadata, which is why the field exists and why it is not documented as dead.
 | A tool call says the API "has not been used in project NNN before or it is disabled", for a project you did not configure | The APIs were enabled in the wrong project. `NNN` is the client id's numeric prefix — the project owning the client is the only one that counts. See steps 2 and 3. |
 | One connector works and the rest fail identically | Same cause: that one product's MCP service is enabled in the client's project and the others are not. |
 | Sign-in succeeds, tool calls return `PERMISSION_DENIED` | The `*mcp.googleapis.com` service is not enabled (step 3's second command), or the scope was never granted. |
+| `oauth.authorized: true`, `renewable: true`, every `tools/list`/`tools/call` still 401s `error="invalid_token"` — for a token `tokeninfo` itself accepts | The client is missing *Use this client for an AI-powered agent* (step 5). Tick it on the existing client (Google Auth Platform → Clients), or create a client that has it and re-run step 7 — no re-enrollment, no new APIs, needed. |
 | `invalid_scope` at authorization | The request asks for every published scope; the consent screen lists fewer. See step 4. |
 | `renewable: false` after a successful sign-in | A build predating the `access_type=offline` request. Rebuild, restart, and sign in again. |
 | `Invalid PKCE code_verifier` | A build predating the one-authorization-request-per-attempt fix, where a retrying mount minted a second verifier over the first. Rebuild and retry. |

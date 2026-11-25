@@ -97,6 +97,19 @@ export interface McpOAuthGrant {
   codeVerifier?: string
   /** Cached RFC 9728 + authorization-server discovery, so a later attempt skips the round trips. */
   discoveryState?: OAuthDiscoveryState
+  /**
+   * The MCP server URL {@link discoveryState} was discovered for.
+   *
+   * The cache is only valid for that one URL, and the SDK never re-discovers
+   * while a cache exists — so a connector whose URL is edited (Atlassian's
+   * `/v1/mcp` to `/v2/mcp`, which also moved to a different authorization
+   * server) would otherwise keep signing in against the old server's token
+   * endpoint, with the old server's client, forever: the new server answers
+   * `invalid_token` to every token that produces, and nothing names the stale
+   * cache as the reason. The provider treats a cache stamped with any other URL,
+   * or with none (a record written before this field existed), as absent.
+   */
+  discoveredFor?: string
   /** Epoch milliseconds at which {@link tokens} was written, for a "signed in since" surface. */
   obtainedAt?: number
 }
