@@ -141,11 +141,14 @@ export class McpOAuthProvider implements OAuthClientProvider {
    * @param ctx - context carrying `ctx.credentials`.
    * @param serverName - the connector this provider authorizes.
    * @param config - the human-configured OAuth client half.
+   * @param serverUrl - the MCP server URL this provider authorizes against;
+   *   the cached discovery is bound to it (see {@link discoveryState}).
    */
   constructor(
     ctx: Context,
     private readonly serverName: string,
     private readonly config: McpOAuthConfig,
+    private readonly serverUrl: string,
   ) {
     this.store = new McpOAuthStore(ctx, serverName)
   }
@@ -298,12 +301,26 @@ export class McpOAuthProvider implements OAuthClientProvider {
 
   /** @inheritdoc */
   async saveDiscoveryState(discoveryState: OAuthDiscoveryState): Promise<void> {
-    await this.store.merge({ discoveryState })
+    await this.store.merge({ discoveryState, discoveredFor: this.serverUrl })
   }
 
-  /** @inheritdoc */
+  /**
+   * The cached discovery, only while it is the discovery for *this* server URL.
+   *
+   * The SDK reuses a cache unconditionally — `authInternal` takes the cached
+   * `authorizationServerUrl` and never looks at the protected resource again
+   * while one exists. A cache obtained for a previous URL of the same connector
+   * therefore has to read as absent here, or the sign-in that follows a URL
+   * edit runs against the previous server's authorization server and client.
+   * Reading it as absent costs one fresh discovery; the SDK then compares the
+   * stored client's and tokens' `issuer` stamps against what it found, and
+   * discards and re-registers what no longer matches, on its own.
+   * @inheritdoc
+   */
   async discoveryState(): Promise<OAuthDiscoveryState | undefined> {
-    return (await this.store.read()).discoveryState
+    const grant = await this.store.read()
+    if (grant.discoveredFor !== this.serverUrl) return undefined
+    return grant.discoveryState
   }
 
   /**
@@ -336,7 +353,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
         await this.store.merge({ codeVerifier: undefined })
         return
       case 'discovery':
-        await this.store.merge({ discoveryState: undefined })
+        await this.store.merge({ discoveryState: undefined, discoveredFor: undefined })
     }
   }
 

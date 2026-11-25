@@ -172,6 +172,37 @@ export function grantedScopes(grant: McpOAuthGrant): readonly string[] | undefin
 }
 
 /**
+ * Whether stored tokens could still be presented to the server its client was
+ * last registered with.
+ *
+ * Mirrors a check the SDK already makes and already acts on, just not where a
+ * listing surface can see it: `auth()` stamps both `tokens.issuer` and
+ * `clientInformation.issuer` from the same resolved issuer on every
+ * successful grant, and discards tokens whose stamp does not match the
+ * issuer it resolves next time (`discardIfIssuerMismatch`). A connector whose
+ * URL moved to another authorization server — what {@link discoveredFor}
+ * guards during discovery — re-registers a client under the new issuer on
+ * its very next mount attempt without anyone signing in again, which leaves
+ * exactly this mismatch sitting in the stored record: a fresh client, and
+ * tokens the SDK already privately stopped trusting. Reported as `authorized`
+ * regardless, the connector looked signed in while every call failed with
+ * nothing to explain why.
+ *
+ * Returns `true` when either stamp is absent — a grant predating one of the
+ * two stamps, or a test fixture — rather than second-guess a record this
+ * check cannot actually judge.
+ *
+ * @param grant - the grant to judge.
+ * @returns whether the stored tokens and client agree on which server issued them.
+ */
+function issuedByCurrentServer(grant: McpOAuthGrant): boolean {
+  const tokenIssuer = grant.tokens?.issuer
+  const clientIssuer = grant.clientInformation?.issuer
+  if (tokenIssuer === undefined || clientIssuer === undefined) return true
+  return tokenIssuer === clientIssuer
+}
+
+/**
  * Narrow one stored record to this package's payload. A record written by
  * something else — an `api-key` record filed under a colliding key, or a
  * payload from a future version — reads as empty rather than throwing: the
@@ -220,13 +251,25 @@ export class McpOAuthStore {
    * @returns the grant as it stands after the write.
    */
   async merge(patch: McpOAuthGrantPatch): Promise<McpOAuthGrant> {
+    return this.update(() => patch)
+  }
+
+  /**
+   * {@link merge}, with the patch decided from the record as it stands under
+   * the write exclusion — for an edit whose shape depends on what is stored.
+   *
+   * @param decide - computes the patch from the current grant.
+   * @returns the grant as it stands after the write.
+   */
+  private async update(decide: (current: McpOAuthGrant) => McpOAuthGrantPatch): Promise<McpOAuthGrant> {
     let next: McpOAuthGrant = EMPTY
     await this.ctx.credentials.modifyRecord(this.key, (current) => {
+      const grant = readGrant(current)
       // An explicitly-undefined field is removed rather than stored, at every
       // depth: the record round-trips through JSON, where an `undefined` value
       // and an absent key are the same thing on the way back but not on the
       // way in — and the seam refuses the whole record over one of them.
-      next = pruneUndefined({ ...readGrant(current), ...patch, version: 1 }) as McpOAuthGrant
+      next = pruneUndefined({ ...grant, ...decide(grant), version: 1 }) as McpOAuthGrant
       return Promise.resolve({ kind: 'grant', payload: next })
     })
     return next
@@ -244,20 +287,32 @@ export class McpOAuthStore {
   }
 
   /**
-   * Forget the tokens, keeping the client they were obtained with — the
-   * "sign out" path.
+   * Forget everything the next sign-in can obtain again by itself, keeping
+   * only a client the human registered by hand — the "sign out" path.
    *
    * The distinction is the one {@link McpOAuthGrant.clientConfigured} exists
    * for. A hand-registered client pair is not part of the grant: nothing can
    * recreate it, so discarding it turns "sign in again" into "go find your
    * client id and secret again" — and against an authorization server with no
    * Dynamic Client Registration, which is Google's, into a connector that
-   * cannot be signed in at all until a human pastes the pair back. The
-   * `codeVerifier` goes with the tokens because it belongs to an attempt that
-   * is over.
+   * cannot be signed in at all until a human pastes the pair back.
+   *
+   * A pair minted by Dynamic Client Registration goes, along with the cached
+   * discovery: the next sign-in discovers and registers afresh, which is what
+   * a provider that has moved its server asks for ("clear cached client ids",
+   * in Atlassian's words for its v1-to-v2 move) and what a human signing out
+   * and back in to recover from a rejected token expects to have happened.
+   * The `codeVerifier` goes because it belongs to an attempt that is over.
    */
   async forgetGrant(): Promise<void> {
-    await this.merge({ tokens: undefined, obtainedAt: undefined, codeVerifier: undefined })
+    await this.update(current => ({
+      tokens: undefined,
+      obtainedAt: undefined,
+      codeVerifier: undefined,
+      discoveryState: undefined,
+      discoveredFor: undefined,
+      ...current.clientConfigured === true ? {} : { clientInformation: undefined },
+    }))
   }
 
   /**
@@ -297,7 +352,7 @@ export class McpOAuthStore {
       ...clientId === undefined ? {} : { clientId },
     }
     const tokens = grant.tokens
-    if (tokens === undefined) return { authorized: false, renewable: false, ...client }
+    if (tokens === undefined || !issuedByCurrentServer(grant)) return { authorized: false, renewable: false, ...client }
     return {
       ...client,
       authorized: true,

@@ -150,7 +150,7 @@ between them: Atlassian's own remote server over OAuth, which registers its
 client itself and needs no API token at all —
 
 ```sh
-./dsh --profile mcp add atlassian --url https://mcp.atlassian.com/v1/mcp
+./dsh --profile mcp add atlassian --url https://mcp.atlassian.com/v2/mcp
 ./dsh --profile mcp login atlassian
 ```
 
@@ -180,11 +180,12 @@ registered byte for byte — RFC 6749 §3.1.2.3 has the authorization server
 compare `redirect_uri` exactly.
 
 That is Google's situation, not the general one. A server that publishes an
-RFC 7591 `registration_endpoint` — Atlassian's `https://mcp.atlassian.com/v1/mcp`
-does — registers its own client during the first sign-in, and the provider
-stores what comes back, so there is nothing to create and nothing to paste.
-Neither surface gates sign-in on a stored client for that reason; a server that
-truly needs one says so when the attempt fails. That diagnosis is written once,
+RFC 7591 `registration_endpoint` — Atlassian's `https://mcp.atlassian.com/v2/mcp`
+does, at the per-tenant authorization server its own RFC 9728 metadata names —
+registers its own client during the first sign-in, and the provider stores
+what comes back, so there is nothing to create and nothing to paste. Neither
+surface gates sign-in on a stored client for that reason; a server that truly
+needs one says so when the attempt fails. That diagnosis is written once,
 in `connector-registry`'s `signInFailure`, and both the CLI and the Settings
 page render it — a page that explained a failure differently from the terminal
 would be two answers to one question.

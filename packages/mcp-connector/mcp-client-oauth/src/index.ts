@@ -296,7 +296,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // stored bearer token: a connector authorized in an earlier session must
   // reconnect on boot without anyone signing in again.
   const oauth = config.transport === 'streamable-http-oauth'
-    ? new McpOAuthProvider(ctx, config.serverName, config.oauth)
+    ? new McpOAuthProvider(ctx, config.serverName, config.oauth, config.url)
     : undefined
   if (oauth !== undefined && config.transport === 'streamable-http-oauth') {
     const { serverName, url } = config
