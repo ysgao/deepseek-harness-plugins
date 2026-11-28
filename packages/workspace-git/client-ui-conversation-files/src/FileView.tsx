@@ -68,6 +68,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ConversationFocus } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/views.ts'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 // The seat this tab declares (./document-seat.ts) is filled by
@@ -149,10 +150,15 @@ export interface FileViewInjected {
 }
 
 /**
- * The File view's own opaque `viewRequest.focus` payload (see
- * `ConvViewOwnerProps`'s JSDoc): JSON-encoded by the `conversationFileOpener`
- * provider so a requester's own `workspaceId`, when it has one, survives
- * the hand-off through the generic view-request channel.
+ * The File view's own decoded `viewRequest.focus` payload: the `file`-kind
+ * {@link ConversationFocus} the `conversationFileOpener` provider
+ * (`dsh-plugins-client-ui-conversation-enhanced`) addresses this tab with,
+ * carrying a requester's own `workspaceId` when it has one through the
+ * generic view-request channel. Before vendor pin 841f76d3's `ConversationFocus`
+ * rework, `viewRequest.focus` was a bare `string` and this package
+ * JSON-encoded its own `{ path, workspaceId }` pair into it by convention;
+ * the `file` kind this package's own `declare module` merge
+ * (`apply.ts`) adds to `ConversationFocusMap` now carries that pair natively.
  */
 interface OpenFileFocus {
   readonly path: string
@@ -205,21 +211,22 @@ export type FileViewProps =
   & PropsRenderSlots<'conversation.file.document'>
 
 /**
- * Parse the File view's own opaque `focus` payload — a JSON-encoded
- * {@link OpenFileFocus} written by the `conversationFileOpener` provider.
- * Never expected to fail within one coordinated deploy of both packages;
- * guarded rather than left to throw across a serialization boundary.
- * @param focus - the raw `viewRequest.focus` string.
- * @returns the decoded path/workspaceId pair, or null if it doesn't parse.
+ * Narrow the View's `focus` payload to the `file`-kind {@link OpenFileFocus}
+ * pair, or null for any other focus kind (or none). `ConversationFocus` is
+ * a real tagged union now (see this file's own `ConversationFocusMap`
+ * merge in `apply.ts`), so this is a plain kind check — no parsing, nothing
+ * that can throw across a serialization boundary the way the pre-0.2.3
+ * JSON-encoded-string convention could.
+ * @param focus - the View's current `viewRequest.focus`, or undefined when no request is pending.
+ * @returns the path/workspaceId pair for a `file`-kind focus, else null.
  */
-function parseOpenFileFocus(focus: string): OpenFileFocus | null {
-  try {
-    const parsed: unknown = JSON.parse(focus)
-    if (typeof parsed !== 'object' || parsed === null || !('path' in parsed) || typeof parsed.path !== 'string') return null
-    return parsed as OpenFileFocus
-  } catch {
-    return null
-  }
+function parseOpenFileFocus(focus: ConversationFocus | undefined): OpenFileFocus | null {
+  if (focus === undefined || focus.kind !== 'file') return null
+  // `exactOptionalPropertyTypes`: `OpenFileFocus.workspaceId` is optional
+  // (absent) or `WorkspaceId`, never an explicit `undefined` property.
+  return focus.workspaceId === undefined
+    ? { path: focus.path }
+    : { path: focus.path, workspaceId: focus.workspaceId }
 }
 
 /**

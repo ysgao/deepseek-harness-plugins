@@ -8,23 +8,71 @@
     "src"
   ],
   "references": [
-    { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-primitives" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-slots" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-renderer" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-session" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/locale/tsconfig.client.json" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-layout" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-workspace" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-sidebar" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-conversation/tsconfig.client.json" },
-    { "path": "../../_vendor/deepseek-harness/packages/api/gateway/tsconfig.client.json" },
-    { "path": "../../_vendor/deepseek-harness/packages/api/remotes/tsconfig.client.json" },
-    { "path": "../../_vendor/deepseek-harness/packages/api/session-controller/tsconfig.client.json" },
-    { "path": "../../_vendor/deepseek-harness/packages/api/workspace-controller/tsconfig.client.json" },
-    { "path": "../../_vendor/deepseek-harness/packages/workspace/workspace" },
-    { "path": "../../_vendor/deepseek-harness/packages/core/session" },
-    { "path": "../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" },
-    { "path": "../client-ui-workspace-files" }
+    {
+      "path": "../../_vendor/deepseek-harness/vendor/cordis"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-primitives"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-slots"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-renderer"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-session"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/locale/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-layout"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-workspace/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-sidebar"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-conversation/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/api/gateway/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/api/remote-access/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/api/remotes/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/api/session-controller/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/api/workspace-controller/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/config"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/product-analytics/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-context-menu"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-session-status/tsconfig.client.json"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/workspace/workspace"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/core/session"
+    },
+    {
+      "path": "../client-ui-workspace-files"
+    }
   ]
 }

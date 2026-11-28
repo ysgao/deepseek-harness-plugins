@@ -14,10 +14,22 @@
  * File preview requested before any turn is not silently hidden behind the
  * Hero screen. See ../ARCHITECTURE.md's "File tab: a pristine slot, but a
  * fork-only trigger".
+ *
+ * Ported forward from this pin bump: the draft-seed effect (manually
+ * reading `useInput`/the stored draft and calling `inputActions.setDraft`)
+ * was replaced by `bindDraftPersistence` + `inputActions.persistDraft()` --
+ * the Session input now owns seeding its own content before this
+ * persistence writer attaches, so `useInput`/the stored-draft read are
+ * gone entirely. `inspectCall` gained a sibling `inspectRequest` (one model
+ * request's inspector, alongside the existing tool-call one), and the
+ * one-shot `viewRequest` is now read through `restoredViewRequest` (a
+ * vendor-owned validating accessor) instead of a bare `?? null`.
  */
 import { useEffect } from 'react'
 import { conversationPhase } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/snapshot.ts'
 import { resolveActiveView } from '@deepseek-ai/dsh-client-ui-conversation/src/client/view-selection.ts'
+import { restoredViewRequest } from '@deepseek-ai/dsh-client-ui-conversation/src/client/stores.ts'
+import type { ConversationFocus } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/views.ts'
 // Cross-package import, not a local copy -- see ./ConversationMainPanel.tsx's
 // own doc comment.
 import css from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/ConversationRoot.module.css'
@@ -25,7 +37,7 @@ import type { EnhancedConversationSessionProps } from './ConversationSession.tsx
 
 /**
  * Renders the active Session view inside the resident scrollport and keeps
- * the input draft mirrored while blank Hero chrome is visible. Also drains
+ * the input draft persisted while blank Hero chrome is visible. Also drains
  * one pending conversationFileOpener request per render, addressed to
  * this Session's own id, by calling this Session's own openView action --
  * the only way to reach a live per-session store instance from outside its
@@ -35,27 +47,26 @@ import type { EnhancedConversationSessionProps } from './ConversationSession.tsx
  * @returns the active view area, or null while the Session remains blank and has never shown a file.
  */
 export function EnhancedDefaultConversationViews({
-  view, useSession, useConversation, useConversationViews, useInput, inputActions, useStore, actions,
-  renderSlot, bindDraftMirror, openView, useInspectCall, usePendingFileOpen, completePendingFileOpen, useEverOpenedFile,
+  view, useSession, useConversation, useConversationViews, inputActions, useStore, actions,
+  renderSlot, bindDraftPersistence, openView, useInspectCall, useInspectRequest,
+  usePendingFileOpen, completePendingFileOpen, useEverOpenedFile,
 }: EnhancedConversationSessionProps) {
   const tabs = useConversationViews(value => value)
   const inspectCall = useInspectCall(value => value)
+  const inspectRequest = useInspectRequest(value => value)
   const selectedId = useStore(s => s.view)
   const active = resolveActiveView(tabs, selectedId)
   const session = useSession(s => s)
   const conversation = useConversation(s => s)
-  const inputState = useInput(s => s)
-  const storedDraft = useStore(s => s.draft)
-  const viewRequest = useStore(s => s.viewRequest ?? null)
+  const viewRequest = useStore(s => restoredViewRequest(s.viewRequest))
   const pendingFileOpen = usePendingFileOpen(value => value)
   const everOpenedFile = useEverOpenedFile(value => value)
 
   useEffect(() => {
-    if (inputState.draft === '' && storedDraft !== '') inputActions.setDraft(storedDraft)
-    const unmirror = bindDraftMirror(actions.setDraft)
-    return () => { unmirror() }
-    // Mount-only (deps pinned to inputActions): later store writes come from
-    // the machine mirror, not this seed effect.
+    const unbindDraftPersistence = bindDraftPersistence(actions.setDraft)
+    inputActions.persistDraft()
+    return () => { unbindDraftPersistence() }
+    // The Session input owns content before this persistence writer is attached.
   }, [inputActions])
 
   // A Session's persisted store -- its View selection included -- is
@@ -83,15 +94,24 @@ export function EnhancedDefaultConversationViews({
   // 'file' is dsh-plugins-client-ui-conversation-files's own registered
   // conversation.view id -- the only consumer of this focus payload shape
   // (see that package's FileView.tsx OpenFileFocus/parseOpenFileFocus).
-  // Deps pinned to pendingFileOpen alone, the same convention the draft-mirror
-  // effect above uses: openView/completePendingFileOpen are fresh closures
-  // every render (apply.ts's inject() recreates them), but both close over
-  // this same Session instance's unchanging sessionId, so including them
-  // would rerun this drain on every unrelated render instead of only when a
-  // new request actually arrives.
+  // Deps pinned to pendingFileOpen alone, the same convention the draft-
+  // persistence effect above uses: openView/completePendingFileOpen are
+  // fresh closures every render (apply.ts's inject() recreates them), but
+  // both close over this same Session instance's unchanging sessionId, so
+  // including them would rerun this drain on every unrelated render instead
+  // of only when a new request actually arrives.
   useEffect(() => {
     if (pendingFileOpen === undefined) return
-    openView('file', JSON.stringify({ path: pendingFileOpen.path, workspaceId: pendingFileOpen.workspaceId }))
+    // ConversationFocus is a declaration-merge-extensible union (upstream's
+    // own ConversationFocusMap doc comment: "Plugins add kinds by
+    // declaration merging"); dsh-plugins-client-ui-conversation-files owns
+    // the 'file' view/kind and is expected to declaration-merge a matching
+    // 'file' entry into ConversationFocusMap as part of its own port of
+    // this pin bump (out of scope for this row -- see this package's
+    // report). The cast below is this fork's only way to express that
+    // payload until that merge lands; FileView.tsx's own OpenFileFocus
+    // parsing needs the same coordinated update.
+    openView('file', { kind: 'file', path: pendingFileOpen.path, workspaceId: pendingFileOpen.workspaceId } as unknown as ConversationFocus)
     completePendingFileOpen()
   }, [pendingFileOpen])
 
@@ -101,6 +121,7 @@ export function EnhancedDefaultConversationViews({
     <div className={css.viewArea}>
       {viewId !== undefined && renderSlot('conversation.view', {
         inspectCall,
+        inspectRequest,
         viewRequest,
         openView,
         completeViewRequest: actions.completeViewRequest,

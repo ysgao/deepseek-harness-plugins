@@ -1,6 +1,6 @@
 /**
  * Models settings and product-onboarding plugin, browser half. It registers
- * the Models page plus the ordered internal-testing and official-DeepSeek
+ * the Models page plus the ordered preview-notice and official-DeepSeek
  * onboarding dialogs, whose UI shares this package's modal wrapper. The Host
  * settings and credential contracts stay behind their existing wire APIs.
  *
@@ -19,10 +19,12 @@
  * keys) and reuse everything else -- CustomProviderCard,
  * DeepSeekModelsEditor, DeepSeekOnboardingDialog, WelcomeNotice,
  * welcome-store, store, operations, schema-operations, slot-contract,
- * EditorFooter, ModelListEditor, apiKey, ModelsSection.module.css,
- * onboarding-copy, onboarding-config -- unchanged, imported as real values
- * from that package's own ./src/* export (its own convention;
- * "./src/*": "./src/*" in its exports map), not copied.
+ * EditorFooter, FoldSection, ModelListEditor, ModelReasoningEfforts,
+ * RetryPolicyEditor, ApiKeyInput, useInvalidFocus, protocol-label,
+ * protocol-rules, apiKey, ModelsSection.module.css, onboarding-copy --
+ * unchanged, imported as real values from that package's own ./src/*
+ * export (its own convention; "./src/*": "./src/*" in its exports map),
+ * not copied.
  *
  * cordis.patch.yml disables the original ui-settings-models row and
  * inserts this one instead, so no sibling instance of the reused files'
@@ -59,7 +61,36 @@
  * ../../../../tsdown.client-plugin-preset.ts), which has no bare-specifier
  * or .ts-extension resolution mechanism at runtime for an arbitrary
  * module path -- only for this bundle's own statically-known dependencies.
+ *
+ * Vendor pin 841f76d3 (tag dsh-v0.2.3-alpha.3) note: the pristine plugin's
+ * own apply() gained a second parameter,
+ * `config: SyncedConfig<ModelsConfig>` (Host-synced "offer the browser
+ * credential-onboarding step automatically" choice, replacing the old
+ * page-global `__DSH_MODELS_ONBOARDING__` mechanism this file used to
+ * read, which vendor removed outright -- `onboarding-config.ts` no
+ * longer exists upstream). That sync channel is correlated by the
+ * *package name* of the Client entry against a matching Host-side entry
+ * of the SAME package name that declares the Config schema (see the
+ * pristine package's own `src/index.ts`, which exists for exactly that
+ * declaration and nothing else). This package's own `src/index.ts` (not
+ * forked; out of this row's tracked fork list) declares no such schema,
+ * and wiring one up is a Host-side change this package's own scope does
+ * not reach from here. Rather than depend on a sync channel that would
+ * silently never deliver a value for this renamed entry (and risk a
+ * crash reading a field off whatever empty config object cordis hands an
+ * unmatched entry), `automatic` below is computed locally with the exact
+ * same effective default the pristine schema declares
+ * (`credentialOnboarding: true`) -- so behavior is unchanged from today
+ * for every deployment that never configured a non-default value through
+ * that channel (which is every deployment using this replacement, since
+ * the channel was never reachable for the ORIGINAL row either without
+ * the Host explicitly pointing it at this package's name). A real fix
+ * threading a live value through would additionally touch this
+ * package's own Host-side `src/index.ts` to declare a matching `Config`
+ * schema -- tracked as follow-up, not attempted here since it is outside
+ * the four files this row's fork list covers.
  */
+import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // Type-only: pulls the shell's SlotMap merge (the 'settings.section' entry).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -97,10 +128,10 @@ import {
   createSettingsSchemaOperations,
 } from '@deepseek-ai/dsh-client-ui-settings-models/src/client/schema-operations.ts'
 import { en, zh, type ModelsKey } from './locales.ts'
-import { WELCOME_NOTICE_SETTINGS_NAMESPACE } from '@deepseek-ai/dsh-client-ui-settings-models/src/onboarding-copy.ts'
 import {
-  Config as OnboardingConfig, ONBOARDING_CONFIG_GLOBAL,
-} from '@deepseek-ai/dsh-client-ui-settings-models/src/onboarding-config.ts'
+  de as vendorDe, es as vendorEs, fr as vendorFr, ja as vendorJa, pt as vendorPt, ru as vendorRu,
+} from '@deepseek-ai/dsh-client-ui-settings-models/src/client/locales.ts'
+import { WELCOME_NOTICE_SETTINGS_NAMESPACE } from '@deepseek-ai/dsh-client-ui-settings-models/src/onboarding-copy.ts'
 
 export type { ModelsSectionInjected, ModelsSectionProps } from './ModelsSection.tsx'
 export type {
@@ -109,7 +140,7 @@ export type {
 export type { ModelsKey } from './locales.ts'
 export type { IAuthorization } from './authorization-runtime.ts'
 
-declare module '@deepseek-ai/dsh-client-ui-slots' {
+declare module '@deepseek-ai/dsh-client-ui-slots/client' {
   interface LocaleNamespaceMap {
     /** The Models page + product-onboarding copy, plus this package's own sign-in keys. */
     'settings.models': ModelsKey
@@ -118,6 +149,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Dictionary namespace owned by this plugin. */
 const NS = 'settings.models'
+
+/**
+ * Credential-onboarding choice while no live Host-synced value reaches this
+ * renamed entry (see this file's own doc comment) -- equals the pristine
+ * package's own Config schema default (`credentialOnboarding.default(true)`),
+ * so behavior is unchanged from what this row has always effectively done.
+ */
+const ABSENT_CREDENTIAL_ONBOARDING = true
 
 export type {
   ModelsSettingsState, ProviderDirectoryEntry, ProviderRow,
@@ -164,6 +203,33 @@ export const inject = [
 ]
 
 /**
+ * This fork's four `signIn*` keys (see `en`/`zh` in `./locales.ts`), in
+ * English, layered on top of each of vendor's own `ja`/`es`/`fr`/`de`/`ru`/`pt`
+ * dictionaries (imported unforked, directly from `dsh-client-ui-settings-models`).
+ * Registering vendor's own richer translations for every language it ships,
+ * rather than falling back to raw keys for the whole Models section in any
+ * language but English/Chinese just because this row was replaced, is a
+ * deliberate choice (see this row's `adds` entry in
+ * scripts/replacement-parity.json) — but `LocaleDictOf<'settings.models'>`
+ * requires every registered dictionary to carry this fork's own keys too, and
+ * nobody has translated them into these six languages. English is the
+ * honest placeholder until someone does; not silently wrong, not a build
+ * break either.
+ */
+const signInEnglishFallback = {
+  signInChooseMethod: en.signInChooseMethod,
+  signInSubmit: en.signInSubmit,
+  signInDecline: en.signInDecline,
+  signInCancel: en.signInCancel,
+}
+const ja = { ...vendorJa, ...signInEnglishFallback }
+const es = { ...vendorEs, ...signInEnglishFallback }
+const fr = { ...vendorFr, ...signInEnglishFallback }
+const de = { ...vendorDe, ...signInEnglishFallback }
+const ru = { ...vendorRu, ...signInEnglishFallback }
+const pt = { ...vendorPt, ...signInEnglishFallback }
+
+/**
  * Register the Models section once the settings.section declaration is on
  * the ledger, wire its store to the connection, and keep it fresh on every
  * pushed invalidation (settings, credentials, or provider topology).
@@ -174,13 +240,18 @@ export function apply(ctx: ClientContext): void {
   let deepSeekOnboardingInjected: () => DeepSeekOnboardingInjected
   let welcomeInjected: () => WelcomeNoticeInjected
   let t: ModelsSectionInjected['t']
-  let credentialOnboarding = false
+  const nativeShell = 'dshDesktop' in globalThis
+  // Whether the official-DeepSeek step opens on its own; the native shell owns its own onboarding.
+  // See this file's own doc comment for why this does not follow a live Host-synced config value.
+  const automatic = {
+    getSnapshot: () => !nativeShell && ABSENT_CREDENTIAL_ONBOARDING,
+    subscribe: () => () => {},
+  }
   try {
-    const page = globalThis as Partial<Record<typeof ONBOARDING_CONFIG_GLOBAL, unknown>>
-    const payload = page[ONBOARDING_CONFIG_GLOBAL]
-    const configured = OnboardingConfig(payload === undefined ? {} : payload)
-    credentialOnboarding = configured.credentialOnboarding && !('dshDesktop' in globalThis)
-    ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-anthropic-subscription: copy dictionaries')
+    ctx.effect(
+      () => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }),
+      'ui-settings-anthropic-subscription: copy dictionaries',
+    )
 
     // Optional: see the inject doc comment above for why remote.authorization
     // is required here, nested, instead of in this plugin's own top-level
@@ -223,9 +294,9 @@ export function apply(ctx: ClientContext): void {
       t,
     })
     deepSeekOnboardingInjected = (): DeepSeekOnboardingInjected => ({
-      automatic: credentialOnboarding,
+      track: (name, attributes) => ctx.get('productAnalytics')?.track(name, attributes),
       controller,
-      hooks: { models: controller.store },
+      hooks: { models: controller.store, automatic },
       operations,
       schema,
       t,
@@ -296,7 +367,7 @@ export function apply(ctx: ClientContext): void {
       return []
     }
   })
-  if (!('dshDesktop' in globalThis)) {
+  if (!nativeShell) {
     ctx.slots.inject('settings.onboarding', () => {
       try {
         return ctx.slots.register({

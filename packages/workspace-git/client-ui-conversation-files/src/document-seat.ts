@@ -81,9 +81,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
  *
  * Every field the right Sidebar's own factory derives from the dock's live
  * layout store has a settled counterpart here, because the File tab's layout
- * is not negotiable: one pane, always expanded, never fullscreen. What
- * genuinely varies — which file, which navigation, whether the tab is the
- * selected view — comes from the context the tab supplies.
+ * is not negotiable: one pane, always expanded, never fullscreen, never
+ * floating — the File tab is a docked conversation view, never hosted in a
+ * floating panel, so `panel.isFloating` is always `false`. What genuinely
+ * varies — which file, which navigation, whether the tab is the selected
+ * view — comes from the context the tab supplies.
  * @param _standard - framework standard props; the session is already in the context's records.
  * @param context - the File tab's own description of what it is showing.
  * @returns the tab information hook the relocated bodies read.
@@ -108,7 +110,7 @@ export const fileDocumentTabInfoFactory: SlotHookFactory<'conversation.file.docu
       // tab is on screen. Bodies that skip work while collapsed would
       // otherwise never load anything.
       sidebar: { expanded: true, fullscreen: false },
-      panel: { id: FILE_TAB_PANE_ID },
+      panel: { id: FILE_TAB_PANE_ID, isFloating: false },
       tab: {
         ...tab,
         visible,

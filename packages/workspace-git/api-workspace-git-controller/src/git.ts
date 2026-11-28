@@ -53,13 +53,16 @@ export interface WorkspaceGitStatus {
  * Run one `git` subcommand through the shared no-shell runner. `signal` stays
  * optional on every function in this module (an unset caller lifetime simply
  * never aborts); {@link runNativeCommand} itself requires a signal, so an
- * absent one is backed by a controller nothing ever triggers.
+ * absent one is backed by a controller nothing ever triggers. `runNativeCommand`
+ * gained a required 4th `window` parameter upstream (explicit GUI visibility,
+ * `windowsHide` on Windows) — `'hidden'`, since a Host-side git subprocess has
+ * no window to show.
  * @param args - argv after `git` (never a shell string).
  * @param signal - caller lifetime; abort terminates the child and rejects with the abort reason.
  * @returns captured stdout/stderr on exit 0.
  */
 function runGit(args: readonly string[], signal: AbortSignal | undefined): Promise<{ stdout: string; stderr: string }> {
-  return runNativeCommand('git', args, signal ?? new AbortController().signal)
+  return runNativeCommand('git', args, signal ?? new AbortController().signal, 'hidden')
 }
 
 /** Thrown by a write action when its target directory is outside any git working tree. */

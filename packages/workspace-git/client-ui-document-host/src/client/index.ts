@@ -7,8 +7,11 @@
  * never the renderers" — and is a superset of it by construction rather
  * than by inventory: it runs that plugin's own `apply()`, so every tab type,
  * dictionary, service, seat, chip title and renderer it registers is
- * registered here too, including ones added in a later release. One
- * registration is redirected (`../relocate.ts`) and two are added:
+ * registered here too, including ones added in a later release — for
+ * example `0.2.3-alpha.3`'s compaction-summary tab, which shares the file
+ * preview's own parent slot but is not itself relocated (see
+ * `../relocate.ts`'s module doc for why that redirect is keyed, not blanket).
+ * One registration is redirected (`../relocate.ts`) and two are added:
  *
  * - the File tab's document seat now carries the engine, answering
  *   `useTabInfo()` from the tab's own state (that seat is declared by
@@ -39,6 +42,11 @@ import {
   inject as documentPreviewInject,
 } from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/src/client/index.ts'
 import { TEXTPREVIEW_ID } from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/src/client/definition.ts'
+// Type-only: the engine's Host-synced Config shape, so this package's own
+// Config (re-exported unchanged in `../index.ts`) and the browser face it
+// hands to `applyDocumentPreview` describe the same fields.
+import type { DocumentPreviewConfig } from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/src/types.ts'
+import type { SyncedConfig } from '@deepseek-ai/dsh-client-config/types'
 import { relocatingContext, VENDOR_SEAT } from '../relocate.ts'
 import { HandoffBody, type HandoffInjected } from '../HandoffBody.tsx'
 import { registerHostRenderers } from '../renderers.tsx'
@@ -66,13 +74,23 @@ export const inject = [...documentPreviewInject]
 
 /**
  * Register the relocated preview engine and its right-Sidebar hand-off.
+ *
+ * `config` is this package's OWN synced Config, not a value computed here:
+ * `@deepseek-ai/dsh-client-modules` resolves it from this row's Host-side
+ * schema — which `../index.ts` re-exports unchanged as this package's own
+ * `Config` — and hands it to `apply()` as its second parameter, the same way
+ * it would hand it to the vendor plugin's own `apply()` had that row stayed
+ * enabled. Passed straight through: the engine reads `config.office`/
+ * `config.excel` itself and falls back to its own schema defaults for a field
+ * the Host never sent.
  * @param ctx - Client root Context.
+ * @param config - this row's Host-synced preview limits.
  */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: SyncedConfig<DocumentPreviewConfig>): void {
   // The engine first: it declares the File-tab seat's children (the document
   // slots every renderer registers into), so nothing else here can run
   // before its registration exists.
-  applyDocumentPreview(relocatingContext(ctx))
+  applyDocumentPreview(relocatingContext(ctx), config)
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'document-host: dictionaries')
   const t = ctx.locale.bind(NS)
@@ -88,7 +106,8 @@ export function apply(ctx: Context): void {
   }
   // Registered under the engine's own implementation id, into the seat the
   // engine's body just vacated: the `text` tab type still claims every
-  // `dsh-resource://file/**` address, and this is what it now draws.
+  // `dsh-resource://file/session/<sessionId>/<path>` address, and this is
+  // what it now draws.
   ctx.effect(() => ctx.slots.inject(VENDOR_SEAT, () => ctx.slots.register(
     { name: VENDOR_SEAT, key: TEXTPREVIEW_ID, locale: NS, inject: (): HandoffInjected => injected },
     HandoffBody,

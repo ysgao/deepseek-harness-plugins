@@ -608,8 +608,10 @@ export class McpConnectorRegistry extends Service {
     // that did not declare the dependency, and this service deliberately does
     // not — the connector list is readable in a composition with no tool
     // registry at all (the CLI's own profile is exactly that), it just has
-    // nothing to report under `tools` there.
-    const tools = this.ctx.get('tools')?.schemas().map(schema => schema.name).filter(name => name.startsWith(prefix))
+    // nothing to report under `tools` there. `schemas()` was renamed/folded
+    // into `getAll()` (`ToolDefinition[]`, a superset of the old `ToolSchema[]`
+    // `schemas()` returned) as of vendor pin 841f76d3.
+    const tools = this.ctx.get('tools')?.getAll().map(tool => tool.name).filter(name => name.startsWith(prefix))
       ?? []
     let health: McpConnectorHealth = 'disabled'
     if (mount !== undefined) health = mount.error === undefined && tools.length > 0 ? 'connected' : 'failed'

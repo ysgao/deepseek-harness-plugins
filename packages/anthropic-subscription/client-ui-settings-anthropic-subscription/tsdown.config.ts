@@ -35,5 +35,9 @@ export default defineConfig([
     // (cordis.patch.yml), so no sibling instance exists to duplicate shared
     // identity against.
     extraInlineSafe: /^@deepseek-ai\/dsh-client-ui-settings-models\/src\//,
+    // dsh-client-ui-primitives IS a sibling plugin that stays installed and
+    // instantiated (nothing here disables its row) — mirror this package's
+    // own package.json dsh.client.external declaration, verbatim.
+    clientExternal: ['@deepseek-ai/dsh-client-ui-primitives/client'],
   }),
 ])

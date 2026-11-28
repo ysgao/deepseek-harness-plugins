@@ -12,7 +12,7 @@
  * publication, and the same model-facing tool names — a server moved across
  * keeps working without an edit. The third transport,
  * `streamable-http-oauth`, is what this package adds, and it is genuinely
- * additive: at vendor pin `0d1f5000` `dsh-mcp-client` offers a spawned stdio
+ * additive: at vendor pin `841f76d3` `dsh-mcp-client` offers a spawned stdio
  * child with env vars or a Streamable HTTP URL with a static `headers`
  * dictionary, and neither can carry a bearer token that expires every hour.
  * Google's official Gmail (`https://gmailmcp.googleapis.com/mcp/v1`) and Drive
@@ -29,11 +29,11 @@
  * @module dsh-plugins-mcp-client-oauth
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
-import { DEFAULT_MAX_INSTRUCTION_BYTES, RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from './connection.ts'
+import { DEFAULT_CLOSE_TIMEOUT_MS, DEFAULT_MAX_INSTRUCTION_BYTES, RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from './connection.ts'
 import type { ReconnectConfig } from './connection.ts'
 import { registerServerContext } from './server-context.ts'
 import { McpOAuthProvider } from './oauth/provider.ts'
@@ -132,6 +132,8 @@ export interface StdioConfig {
   failOnStartupError: boolean
   /** Maximum UTF-8 bytes of attributed server instructions (default 32768). */
   maxInstructionBytes?: number
+  /** Budget for transport closure and local cleanup in milliseconds (default 5000). */
+  closeTimeoutMs?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
 }
@@ -156,6 +158,8 @@ export interface StreamableHttpConfig {
   failOnStartupError: boolean
   /** Maximum UTF-8 bytes of attributed server instructions (default 32768). */
   maxInstructionBytes?: number
+  /** Budget for transport closure and local cleanup in milliseconds (default 5000). */
+  closeTimeoutMs?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
 }
@@ -189,6 +193,8 @@ export interface StreamableHttpOAuthConfig {
   failOnStartupError: boolean
   /** Maximum UTF-8 bytes of attributed server instructions (default 32768). */
   maxInstructionBytes?: number
+  /** Budget for transport closure and local cleanup in milliseconds (default 5000). */
+  closeTimeoutMs?: number
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
 }
@@ -196,13 +202,13 @@ export interface StreamableHttpOAuthConfig {
 /** Configuration for one stdio, Streamable HTTP, or OAuth Streamable HTTP MCP server. */
 export type Config = StdioConfig | StreamableHttpConfig | StreamableHttpOAuthConfig
 
-type StdioConfigInput = Omit<StdioConfig, 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'failOnStartupError'>
-  & Partial<Pick<StdioConfig, 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'failOnStartupError'>>
-type StreamableHttpConfigInput = Omit<StreamableHttpConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError'>
-  & Partial<Pick<StreamableHttpConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError'>>
+type StdioConfigInput = Omit<StdioConfig, 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs'>
+  & Partial<Pick<StdioConfig, 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs'>>
+type StreamableHttpConfigInput = Omit<StreamableHttpConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs'>
+  & Partial<Pick<StreamableHttpConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs'>>
 type StreamableHttpOAuthConfigInput =
-  Omit<StreamableHttpOAuthConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError' | 'label' | 'oauth'>
-  & Partial<Pick<StreamableHttpOAuthConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError' | 'label'>>
+  Omit<StreamableHttpOAuthConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs' | 'label' | 'oauth'>
+  & Partial<Pick<StreamableHttpOAuthConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs' | 'label'>>
   & { oauth?: Partial<McpOAuthConfig> }
 type ConfigInput = StdioConfigInput | StreamableHttpConfigInput | StreamableHttpOAuthConfigInput
 
@@ -232,6 +238,7 @@ export const Config = z.union([
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
     maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
+    closeTimeoutMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(DEFAULT_CLOSE_TIMEOUT_MS),
     reconnect: Reconnect,
   }),
   z.object({
@@ -242,6 +249,7 @@ export const Config = z.union([
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
     maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
+    closeTimeoutMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(DEFAULT_CLOSE_TIMEOUT_MS),
     reconnect: Reconnect,
   }),
   z.object({
@@ -254,6 +262,7 @@ export const Config = z.union([
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
     maxInstructionBytes: z.number().step(1).min(1).default(DEFAULT_MAX_INSTRUCTION_BYTES),
+    closeTimeoutMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(DEFAULT_CLOSE_TIMEOUT_MS),
     reconnect: Reconnect,
   }),
 ]) as unknown as z<ConfigInput, Config>
@@ -277,7 +286,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // Reserve the namespace next: a duplicate `serverName` fails THIS instance
   // at load with an actionable error and leaves the earlier instance intact.
   ctx.effect(() => {
-    const owner = scopeOf(ctx) ?? ctx.root
+    const owner = scopeOf(ctx) ?? ctx[Context.root]
     let names = activeServerNames.get(owner)
     if (!names) {
       names = new Set()

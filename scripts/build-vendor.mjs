@@ -53,8 +53,12 @@ const vendorDir = join('packages', '_vendor', 'deepseek-harness')
 const vendorAbs = join(repoRoot, vendorDir)
 
 // The exact directories tsdown's own workspace config discovers when it
-// builds the vendor (see its `tsdown.config.ts`: `workspace: ['vendor/*',
-// 'packages/*/*', 'apps/cli', 'apps/desktop-host']`). Mirrored here, not
+// builds the vendor (see its `tsdown.config.ts`, which as of vendor pin
+// 841f76d3 globs `['vendor/*/package.json', 'vendor/im/*/package.json',
+// 'packages/*/*/package.json']` through its own `workspacePackageGlobs`
+// helper rather than listing bare directories — `vendor/im` holds a second,
+// deeper tier of real packages (`vendor/im/<pkg>`) alongside the flat
+// `vendor/<pkg>` tier, and is not itself a package). Mirrored here, not
 // imported from there, because the failure mode this guards against is a
 // checkout old enough that the config on disk might not even be the one
 // that shipped this list — the check has to work from what a *pinned*
@@ -62,7 +66,18 @@ const vendorAbs = join(repoRoot, vendorDir)
 function workspaceMemberDirs() {
   const dirs = []
   const vendorGlob = join(vendorAbs, 'vendor')
-  for (const name of safeReaddir(vendorGlob)) dirs.push(join(vendorGlob, name))
+  for (const name of safeReaddir(vendorGlob)) {
+    // `vendor/im` is a namespace directory one tier deeper (`vendor/im/*`),
+    // not a package itself — it never carries its own package.json, so
+    // treating it like every other `vendor/*` entry would misreport it as
+    // orphaned debris from a previous pin.
+    if (name === 'im') {
+      const imGlob = join(vendorGlob, name)
+      for (const imName of safeReaddir(imGlob)) dirs.push(join(imGlob, imName))
+      continue
+    }
+    dirs.push(join(vendorGlob, name))
+  }
   const packagesGlob = join(vendorAbs, 'packages')
   for (const group of safeReaddir(packagesGlob)) {
     const groupPath = join(packagesGlob, group)
@@ -205,6 +220,34 @@ function assertBuildEnvironment() {
 }
 
 assertBuildEnvironment()
+
+// Relink the vendor's own workspace members to the vendor's own store.
+//
+// Vendor members are folded into THIS workspace (pnpm-workspace.yaml), so a
+// root `pnpm install` writes their `node_modules` links into the ROOT store,
+// while `vitest` and friends still resolve up to the vendor's own
+// `node_modules`. The two stores hold the same versions but different
+// physical copies, and at vendor pin 841f76d3 that mix fails the vendor's
+// client aggregate check (`tsc -p tsconfig.client.json`: TS2883, "inferred
+// type ... cannot be named without a reference to 'Procedure' from
+// '@vitest/spy'", in five vendor test fixtures). A vendor-local
+// `install --frozen-lockfile` reports "Already up to date" and leaves the
+// links alone, so `--force` is what actually relinks; it takes seconds once
+// the store is warm. Root typechecks and builds pass in either state, so only
+// this vendor build needs the relink — and it is idempotent, so running it
+// every time costs less than a failed build explaining itself.
+//
+// Frozen on purpose: the vendor's lockfile is part of the pinned tree and
+// must not move (CONSTITUTION.md Article II).
+const relink = spawnSync(
+  'pnpm',
+  ['--dir', vendorDir, 'install', '--frozen-lockfile', '--force'],
+  { cwd: repoRoot, stdio: 'inherit', env: { ...process.env, CI: 'true' }, shell: process.platform === 'win32' },
+)
+if (relink.error !== undefined || relink.signal !== null || relink.status !== 0) {
+  console.error('[build-vendor] relinking the vendor workspace to its own store failed; not building against a mixed layout')
+  process.exit(relink.status ?? 1)
+}
 
 const result = spawnSync(
   'pnpm',

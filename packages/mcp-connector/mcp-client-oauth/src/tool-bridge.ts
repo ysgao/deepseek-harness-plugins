@@ -22,22 +22,52 @@
  * tool names it already had — a name change would silently invalidate every
  * prompt, transcript, and allowlist referring to them.
  *
+ * At vendor pin `841f76d3` the swap itself picked up two real changes, both
+ * ported here:
+ *
+ * 1. The bridge now compiles and checks each tool's advertised `outputSchema`
+ *    itself (via the SDK's own `AjvJsonSchemaValidator`, from the SDK's own
+ *    public `./validators/ajv` export — not a vendor internal), and the
+ *    schema is no longer also handed to `client.callTool`'s own
+ *    `toolDefinition`, which used to make the SDK re-validate the same thing
+ *    and report a failure indistinguishable from a server's own JSON-RPC
+ *    error.
+ * 2. A registry conflict on this server's `mcp__<serverName>__` namespace
+ *    always rejects now (`McpToolRegistrationError`) instead of toggling
+ *    between "contain" (silently register zero tools) and "throw" by whether
+ *    `failOnStartupError` was set. `connection.ts`'s supervisor is what
+ *    decides what a thrown registration failure means for the connection,
+ *    uniformly for the initial sync and every later re-sync — see that
+ *    file's own doc comment.
+ *
+ * Not ported: the vendor's new generation-aware session-refusal retry
+ * (`McpSessionRefused`/`McpCallRecovery`/`sendAgain`), its on-demand tool
+ * loading (`McpToolLoader`), and its credential-template secret redaction
+ * (`redact`). All three are wired through vendor-internal modules this
+ * package does not fork (`status.ts`, `tool-loading.ts`, `credentials.ts`)
+ * and are no part of `ToolBridgeOptions`'s own four fields, so adopting them
+ * would mean forking additional vendor files beyond the four this package is
+ * recorded against in `scripts/replacement-parity.json`. A call this server
+ * refused for its session still fails outright rather than being retried
+ * once the reconnect completes — a real, bounded simplification, not a
+ * silent drop, since the call failure is reported the same way an ordinary
+ * disconnect already was.
+ *
  * @module dsh-plugins-mcp-client-oauth/tool-bridge
  */
 
 import { createHash } from 'node:crypto'
-import type { Client } from '@modelcontextprotocol/client'
+import type { Client, JsonSchemaType, Tool } from '@modelcontextprotocol/client'
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/client/validators/ajv'
 import type { Context } from '@deepseek-ai/cordis'
-import { createMcpToolDefinition } from '@deepseek-ai/dsh-mcp-client'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { createMcpToolDefinition, McpLocalError, McpToolError } from '@deepseek-ai/dsh-mcp-client'
+import type { ToolDefinition, ToolExecution } from '@deepseek-ai/dsh-tools'
 // Side-effect type import: declaration-merges `ctx.tools` onto Context.
 import type {} from '@deepseek-ai/dsh-tools'
 import { repairDanglingDefsRefs } from './schema-repair.ts'
 
 /** Resolved options relevant to tool bridging. */
 export interface ToolBridgeOptions {
-  /** Whether a registry conflict is contained or rejects this synchronization. */
-  registrationFailure: 'contain' | 'throw'
   /** The connector's stable local namespace. */
   serverName: string
   /** Timeout per tool call in milliseconds. */
@@ -46,6 +76,21 @@ export interface ToolBridgeOptions {
 
 /** State for one sync generation: the current set of disposers keyed by public name. */
 export type ToolDisposers = Map<string, () => void>
+
+/**
+ * Registration failed after the prior generation was removed and partial
+ * registrations were rolled back.
+ *
+ * Mirrors the vendor's own `McpToolRegistrationError` (`tools.ts`, not
+ * re-exported from the package entry), built the same way over the
+ * importable {@link McpLocalError} so `connection.ts` can distinguish "the
+ * server namespace is squatted" from an ordinary transport failure.
+ */
+export class McpToolRegistrationError extends McpLocalError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, 'MCP_TOOL_REGISTRATION_FAILED', options)
+  }
+}
 
 /**
  * DeepSeek function-name contract: at most 64 characters. Wire-protocol
@@ -81,6 +126,48 @@ export function publicToolName(serverName: string, rawName: string): string {
   return `${normalized.slice(0, MAX_PUBLIC_NAME_LENGTH - HASH_LENGTH - 1)}_${hash}`
 }
 
+/** A tool's compiled structured-output check, or why its advertised output schema cannot be compiled. */
+type OutputCheck = { compileError: string } | {
+  /**
+   * @param structured - `structuredContent` of a successful result.
+   * @returns why the value violates the advertised output schema, or undefined when it conforms.
+   */
+  check(structured: unknown): string | undefined
+}
+
+/** Diagnostic text for a caught value, without pulling in the vendor's own unexported `describeError`. */
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message || error.name : String(error)
+}
+
+/**
+ * Compile one tool's advertised output schema with the validator the SDK uses on Node.
+ * @param validators - validator provider shared by one listing.
+ * @param tool - listed tool; a tool without `outputSchema` needs no check.
+ * @returns the check, a compile failure, or undefined without an output schema.
+ */
+function compileOutputCheck(validators: AjvJsonSchemaValidator, tool: Tool): OutputCheck | undefined {
+  if (tool.outputSchema === undefined) return undefined
+  let validate: ReturnType<AjvJsonSchemaValidator['getValidator']>
+  try {
+    // The listed schema is the wire object the SDK passes to the same provider; only its optional `$schema` typing differs.
+    validate = validators.getValidator(tool.outputSchema as JsonSchemaType)
+  } catch (error) {
+    return { compileError: describeError(error) }
+  }
+  return {
+    check(structured) {
+      if (structured === undefined) return 'the tool has an output schema but returned no structured content'
+      try {
+        const result = validate(structured)
+        return result.valid ? undefined : `structured content does not match the output schema: ${result.errorMessage}`
+      } catch (error) {
+        return `structured content could not be validated: ${describeError(error)}`
+      }
+    },
+  }
+}
+
 /**
  * Sync the MCP server's tool list into the harness ToolRuntime.
  *
@@ -93,9 +180,10 @@ export function publicToolName(serverName: string, rawName: string): string {
  * 2. Swap: dispose the previous generation, register the new one. A registry
  *    conflict here can only mean a foreign registration squats on this
  *    server's `mcp__<serverName>__` namespace — the partial generation is
- *    rolled back (zero tools from this server) and logged. Initial strict
- *    synchronization may propagate the conflict so its parent transaction
- *    rejects; ordinary clients and later re-syncs return an empty map.
+ *    rolled back (zero tools from this server), logged, and rejected with
+ *    {@link McpToolRegistrationError} so the supervisor closes the failed
+ *    connection generation, for the initial sync and every later re-sync
+ *    alike.
  *
  * @param client - Connected MCP Client instance used to list and call tools.
  * @param ctx - Cordis context providing the `tools` service for registration.
@@ -116,6 +204,7 @@ export async function syncTools(
   const response = client.getServerCapabilities()?.tools === undefined
     ? { tools: [] }
     : await client.listTools(undefined, { cacheMode: 'refresh' })
+  const outputValidators = new AjvJsonSchemaValidator()
   for (const tool of response.tools) {
     const name = publicToolName(opts.serverName, tool.name)
     if (definitions.has(name)) {
@@ -123,6 +212,11 @@ export async function syncTools(
         `mcp-client-oauth(${opts.serverName}): server listed tool "${tool.name}" more than once — invalid tool list`,
       )
     }
+    // The bridge checks structured output itself: the SDK reports its local check as a
+    // ProtocolError indistinguishable from a server's own JSON-RPC error, so the schema is
+    // withheld from the SDK's own `toolDefinition` and checked here instead.
+    const { outputSchema: _outputSchema, ...callDefinition } = tool
+    const outputCheck = compileOutputCheck(outputValidators, tool)
     definitions.set(name, createMcpToolDefinition(ctx, {
       name,
       rawName: tool.name,
@@ -130,10 +224,24 @@ export async function syncTools(
       inputSchema: repairDanglingDefsRefs(tool.inputSchema),
       outputSchema: tool.outputSchema,
       taskRequired: tool.execution?.taskSupport === 'required',
-      call: (args, execution) => client.callTool(
-        { name: tool.name, arguments: args },
-        { signal: execution.signal, timeout: opts.toolCallTimeoutMs, toolDefinition: tool },
-      ),
+      call: async (args, execution: ToolExecution) => {
+        if (outputCheck !== undefined && 'compileError' in outputCheck) {
+          throw new McpToolError(
+            `Tool "${tool.name}" returned an invalid MCP result: its output schema cannot be compiled: ${outputCheck.compileError}`,
+            'MCP_INVALID_RESULT',
+          )
+        }
+        const result = await client.callTool(
+          { name: tool.name, arguments: args },
+          { signal: execution.signal, timeout: opts.toolCallTimeoutMs, toolDefinition: callDefinition },
+        )
+        if (result.isError === true) return result
+        const failure = outputCheck === undefined ? undefined : outputCheck.check(result.structuredContent)
+        if (failure !== undefined) {
+          throw new McpToolError(`Tool "${tool.name}" returned an invalid MCP result: ${failure}`, 'MCP_INVALID_RESULT')
+        }
+        return result
+      },
     }))
   }
 
@@ -152,8 +260,7 @@ export async function syncTools(
     ctx.logger.error(
       `mcp-client-oauth(${opts.serverName}): tool registration failed, no tools registered: ${String(error)}`,
     )
-    if (opts.registrationFailure === 'throw') throw error
-    return new Map()
+    throw new McpToolRegistrationError('MCP tool registration failed', { cause: error })
   }
   return disposers
 }

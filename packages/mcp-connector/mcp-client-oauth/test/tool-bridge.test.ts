@@ -36,8 +36,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { NativeToolRegistry } from '@deepseek-ai/dsh-tools/pipeline'
 import { syncTools } from '../src/tool-bridge.ts'
 import type { ToolBridgeOptions } from '../src/tool-bridge.ts'
 
@@ -98,8 +100,14 @@ function mockClientWithSchema(inputSchema: Record<string, unknown>) {
 
 async function mountRegistry(): Promise<Context> {
   const ctx = new Context()
+  // SystemPrompt injects `sessionProjections`, which this registry provides.
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  // At vendor pin 841f76d3 the ToolRuntime registers nothing until a root
+  // registry is set (the vendor's own mcp-client tests do the same); in a
+  // real Host that is the tool-registry-native plugin's job.
+  ctx.tools.setRoot(new NativeToolRegistry())
   return ctx
 }
 
@@ -107,7 +115,7 @@ describe('syncTools schema repair (LM Studio $defs regression)', () => {
   it('registers the tool with every $ref/$defs inlined, not the server\'s raw schema', async () => {
     const ctx = await mountRegistry()
     const client = mockClientWithSchema(REAL_SHEETS_UPDATE_SPREADSHEET_SCHEMA)
-    const opts: ToolBridgeOptions = { registrationFailure: 'throw', serverName: 'sheets', toolCallTimeoutMs: 60_000 }
+    const opts: ToolBridgeOptions = { serverName: 'sheets', toolCallTimeoutMs: 60_000 }
 
     try {
       await syncTools(client as never, ctx, opts, new Map())
@@ -139,7 +147,7 @@ describe('syncTools schema repair (LM Studio $defs regression)', () => {
     const ctx = await mountRegistry()
     const plainSchema = { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] }
     const client = mockClientWithSchema(plainSchema)
-    const opts: ToolBridgeOptions = { registrationFailure: 'throw', serverName: 'sheets', toolCallTimeoutMs: 60_000 }
+    const opts: ToolBridgeOptions = { serverName: 'sheets', toolCallTimeoutMs: 60_000 }
 
     try {
       await syncTools(client as never, ctx, opts, new Map())

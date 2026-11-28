@@ -9,6 +9,22 @@
  * `dsh-plugins-api-workspace-file-controller`/`-git-controller` Typert
  * namespaces, not the fork-extended `dsh-api-workspace-controller` client
  * model the fork's own `ui-conversation-files` called.
+ *
+ * Also declaration-merges a `file` kind into `ConversationFocusMap` and
+ * registers a trivial `ConversationViewDefinition` (`accepts: ['file']`) for
+ * the `file` target with `ctx.uiConversation.views` — vendor's own
+ * `ConversationSession.openView`/`.inspect` (`dsh-client-ui-conversation`,
+ * since its 0.2.x rework) refuse to activate ANY `conversation.view` tab
+ * whose target has no matching registered definition with that focus kind
+ * in `accepts`, so without this the Files sidebar tree's/Chat's/this
+ * bundle's own `conversationFileOpener` cross-session bridge
+ * (`dsh-plugins-client-ui-conversation-enhanced`) would queue a File-tab
+ * open request that silently never activates the tab. The definition's
+ * `create()` never produces a real `ConversationViewNode` — this View draws
+ * entirely through `FileView` below, outside the Node/snapshot timeline the
+ * registry otherwise drives (contrast `dsh-client-ui-chat`'s/`-trajectory`'s
+ * own registrations, which do build real Nodes) — so it is a deliberately
+ * inert builder, present only to satisfy `accepts`.
  * @module dsh-plugins-client-ui-conversation-files/apply
  */
 import type { Context } from '@deepseek-ai/cordis'
@@ -31,8 +47,9 @@ import type {} from 'dsh-plugins-api-file-sentence-controller/remote'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-// Type-only: pulls the 'conversation.view' SlotMap row.
+// Type-only: pulls the 'conversation.view' SlotMap row and the ctx.uiConversation Context merge.
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ConversationViewDefinition } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/conversation.ts'
 // Type-only: pulls the SlotMap rows the preview engine declares, chiefly
 // 'sidebar.right.tab.document.actions' — the toolbar seat the File tab's own
 // controls register into below. Types only; nothing from this package is
@@ -48,10 +65,46 @@ import { registerTextViewers } from './text-viewers.tsx'
 import { FileModeStores } from './mode-store.ts'
 import { en, zh } from './locales.ts'
 
+declare module '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/views.ts' {
+  interface ConversationFocusMap {
+    /**
+     * Open the File tab to a workspace-relative path. `workspaceId` lets the
+     * requester (e.g. the Files sidebar tree) name its own resolved
+     * workspace explicitly, the same way `ConversationFileOpener.openFile`
+     * (`dsh-plugins-client-ui-conversation-enhanced`) does — see that
+     * service's own doc comment.
+     */
+    file: { readonly path: string; readonly workspaceId: WorkspaceId | undefined }
+  }
+}
+
+/**
+ * Registered with `ctx.uiConversation.views` purely so `accepts: ['file']`
+ * lets `openView`/`.inspect` activate this tab for a `file`-kind focus
+ * request — see this module's own doc comment. `create()` never emits a
+ * real Node: nothing anywhere asks the `file` target for one, since
+ * `FileView` (registered below) draws this tab's entire content itself.
+ */
+const fileViewDefinition: ConversationViewDefinition = {
+  target: 'file',
+  accepts: ['file'],
+  create: () => ({
+    empty: undefined,
+    replace: () => undefined,
+    apply: () => undefined,
+  }),
+}
+
 /** Dictionary namespace owned by this plugin. */
 const NS = 'conversation-files'
 
-/** Services required by the File view. The two specific 'remote.<namespace>'
+/** Services required by the File view. `uiConversation` is named because
+ * `apply()` reads `ctx.uiConversation.views` to register the `file` view
+ * target: the vendor's reflect service throws `cannot get property
+ * "uiConversation" without inject` for a service this fiber's `inject` does
+ * not name, and that throw inside the `conversation.view` callback leaves the
+ * File tab unregistered (so the Files tree falls back to its modal preview).
+ * The two specific 'remote.<namespace>'
  * sub-keys are required alongside the generic 'remote': the ctx.remote[...]
  * property proxy is topology-sensitive and only resolves a namespace this
  * fiber's own inject names (see dsh-plugins-client-ui-workspace-enhanced's
@@ -66,7 +119,7 @@ const NS = 'conversation-files'
  * never mounts (missing package, a `$mount` failure specific to it). It is
  * read optionally instead, the same `ctx.get(name)` pattern `workspaces`
  * already uses below, inside `predictSentence` itself. */
-export const inject = ['slots', 'locale', 'remote', 'remote.workspace-files', 'remote.workspace-git']
+export const inject = ['slots', 'locale', 'uiConversation', 'remote', 'remote.workspace-files', 'remote.workspace-git']
 
 /** Unwrap a generated Remote call's result, rejecting with its typed `RemoteError` on failure. */
 async function unwrap<T>(promise: Promise<RemoteResult<T>>): Promise<T> {
@@ -152,102 +205,112 @@ export function apply(ctx: Context): void {
       .find(item => item.sessionIds.includes(targetSessionId))?.workspaceId
   }
 
-  ctx.slots.inject('conversation.view', () => ctx.slots.register({
-    name: 'conversation.view',
-    id: 'file',
-    order: 5,
-    label: () => tFiles('view.file'),
-    locale: 'conversation',
-    // The document seat: where `dsh-plugins-client-ui-document-host` puts the
-    // vendored preview engine's own renderers, so a file previews in the
-    // middle of the app instead of the right Sidebar. Declared here because
-    // this entry is the parent that draws it, and a slot has exactly one
-    // declaring entry. Nothing registering into it is a normal state — the
-    // tab then draws its own `FilePreview`, as it always has.
-    children: {
-      'conversation.file.document': {
-        kind: 'single',
-        scope: 'session',
-        inject: { hooks: { tabInfo: fileDocumentTabInfoFactory } },
+  ctx.slots.inject('conversation.view', () => {
+    // Gated on the same slot the tab itself waits for: by the time
+    // 'conversation.view' exists, `dsh-client-ui-conversation`'s own apply()
+    // has already constructed `ctx.uiConversation` (same synchronous call),
+    // so this is a safe place to register into it too.
+    ctx.effect(
+      () => ctx.uiConversation.views.register(fileViewDefinition),
+      'dsh-plugins-client-ui-conversation-files: file view-registry target',
+    )
+    return ctx.slots.register({
+      name: 'conversation.view',
+      id: 'file',
+      order: 5,
+      label: () => tFiles('view.file'),
+      locale: 'conversation',
+      // The document seat: where `dsh-plugins-client-ui-document-host` puts the
+      // vendored preview engine's own renderers, so a file previews in the
+      // middle of the app instead of the right Sidebar. Declared here because
+      // this entry is the parent that draws it, and a slot has exactly one
+      // declaring entry. Nothing registering into it is a normal state — the
+      // tab then draws its own `FilePreview`, as it always has.
+      children: {
+        'conversation.file.document': {
+          kind: 'single',
+          scope: 'session',
+          inject: { hooks: { tabInfo: fileDocumentTabInfoFactory } },
+        },
       },
-    },
-    // Cached per session, and deliberately so. The framework calls this on
-    // every render, and a fresh object here means fresh `fileAddress`,
-    // `readFile` and `writeFile` identities every time — which churns
-    // `FileView`'s `documentContext` memo, hands every relocated body a new
-    // `useTabInfo()` answer on each render, and re-fires effects keyed on it.
-    // The spreadsheet grid does exactly that, and looped until React gave up
-    // with "Maximum update depth exceeded" (#185), crashing the slot entry.
-    // Nothing in this face varies with anything but the session, so one
-    // instance per session is both correct and stable.
-    inject: (sessionId: SessionId): FileViewInjected => {
-      const cached = faces.get(sessionId)
-      if (cached !== undefined) return cached
-      const modeStore = modeStores.for(sessionId)
-      const face: FileViewInjected = {
-        readFile: (workspaceId, path, signal) => {
-          const owner = resolveWorkspaceId(sessionId, workspaceId)
-          if (owner === undefined) {
-            return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
-          }
-          return unwrap(ctx.remote['workspace-files'].readFile({ workspaceId: owner, path }, signal))
-        },
-        openPath: async (path) => {
-          await unwrap(ctx.remote.session.openWorkspacePath({ path }, undefined))
-        },
-        getGitStatus: (workspaceId, signal) => {
-          const owner = resolveWorkspaceId(sessionId, workspaceId)
-          if (owner === undefined) {
-            return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
-          }
-          return unwrap(ctx.remote['workspace-git'].status({ workspaceId: owner }, signal))
-        },
-        getFileDiff: (workspaceId, path, signal) => {
-          const owner = resolveWorkspaceId(sessionId, workspaceId)
-          if (owner === undefined) {
-            return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
-          }
-          return unwrap(ctx.remote['workspace-files'].gitFileDiff({ workspaceId: owner, path }, signal))
-        },
-        writeFile: (workspaceId, path, content, expectedVersion, signal) => {
-          const owner = resolveWorkspaceId(sessionId, workspaceId)
-          if (owner === undefined) {
-            return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
-          }
-          return unwrap(ctx.remote['workspace-files'].writeFile({ workspaceId: owner, path, content, expectedVersion }, signal))
-            .then(value => value.version)
-        },
-        predictSentence: (path, lang, before, signal) => {
-          // Optional: see this module's own `inject` doc comment on why
-          // this one namespace is read through `ctx.get` rather than a
-          // hard dependency. Absent (never mounted — the Host process
-          // itself needs restarting after installing/rebuilding
-          // dsh-plugins-api-file-sentence-controller, since a page reload
-          // alone only reloads the Client bundle — or a fresh session with
-          // no route yet, handled Host-side, not here) degrades to no
-          // suggestion, identically to every other failure mode
-          // `predictSentence`'s own doc comment already covers.
-          const fileSentence = ctx.get('remote.fileSentence')
-          if (fileSentence === undefined) return Promise.resolve(null)
-          return unwrap(fileSentence.predict({ sessionId, path, before, ...(lang === undefined ? {} : { lang }) }, signal))
-        },
-        // The session the tab is drawn for is the session the address names:
-        // a document body reads its file through this address, and the file's
-        // workspace is resolved Host-side from that session.
-        fileAddress: path => fileAddressFor(sessionId, undefined, path),
-        // The same id `fileAddress` above stamps into every address this tab
-        // mints, so the tab can refuse one that names a different session.
-        sessionId,
-        // The same instance the document-toolbar entry above resolves for this
-        // session: that is what makes the two mounts one control.
-        modeStore,
-        // Dropped by identity, so a remount that already replaced this store
-        // is not evicted by the old tab's late cleanup.
-        releaseModeStore: () => { modeStores.release(sessionId, modeStore) },
-        tFiles,
-      }
-      faces.set(sessionId, face)
-      return face
-    },
-  }, FileView))
+      // Cached per session, and deliberately so. The framework calls this on
+      // every render, and a fresh object here means fresh `fileAddress`,
+      // `readFile` and `writeFile` identities every time — which churns
+      // `FileView`'s `documentContext` memo, hands every relocated body a new
+      // `useTabInfo()` answer on each render, and re-fires effects keyed on it.
+      // The spreadsheet grid does exactly that, and looped until React gave up
+      // with "Maximum update depth exceeded" (#185), crashing the slot entry.
+      // Nothing in this face varies with anything but the session, so one
+      // instance per session is both correct and stable.
+      inject: (sessionId: SessionId): FileViewInjected => {
+        const cached = faces.get(sessionId)
+        if (cached !== undefined) return cached
+        const modeStore = modeStores.for(sessionId)
+        const face: FileViewInjected = {
+          readFile: (workspaceId, path, signal) => {
+            const owner = resolveWorkspaceId(sessionId, workspaceId)
+            if (owner === undefined) {
+              return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
+            }
+            return unwrap(ctx.remote['workspace-files'].readFile({ workspaceId: owner, path }, signal))
+          },
+          openPath: async (path) => {
+            await unwrap(ctx.remote.session.openWorkspacePath({ path }, undefined))
+          },
+          getGitStatus: (workspaceId, signal) => {
+            const owner = resolveWorkspaceId(sessionId, workspaceId)
+            if (owner === undefined) {
+              return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
+            }
+            return unwrap(ctx.remote['workspace-git'].status({ workspaceId: owner }, signal))
+          },
+          getFileDiff: (workspaceId, path, signal) => {
+            const owner = resolveWorkspaceId(sessionId, workspaceId)
+            if (owner === undefined) {
+              return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
+            }
+            return unwrap(ctx.remote['workspace-files'].gitFileDiff({ workspaceId: owner, path }, signal))
+          },
+          writeFile: (workspaceId, path, content, expectedVersion, signal) => {
+            const owner = resolveWorkspaceId(sessionId, workspaceId)
+            if (owner === undefined) {
+              return Promise.reject(new Error(`dsh-plugins-client-ui-conversation-files: session "${sessionId}" has no owning workspace`))
+            }
+            return unwrap(ctx.remote['workspace-files'].writeFile({ workspaceId: owner, path, content, expectedVersion }, signal))
+              .then(value => value.version)
+          },
+          predictSentence: (path, lang, before, signal) => {
+            // Optional: see this module's own `inject` doc comment on why
+            // this one namespace is read through `ctx.get` rather than a
+            // hard dependency. Absent (never mounted — the Host process
+            // itself needs restarting after installing/rebuilding
+            // dsh-plugins-api-file-sentence-controller, since a page reload
+            // alone only reloads the Client bundle — or a fresh session with
+            // no route yet, handled Host-side, not here) degrades to no
+            // suggestion, identically to every other failure mode
+            // `predictSentence`'s own doc comment already covers.
+            const fileSentence = ctx.get('remote.fileSentence')
+            if (fileSentence === undefined) return Promise.resolve(null)
+            return unwrap(fileSentence.predict({ sessionId, path, before, ...(lang === undefined ? {} : { lang }) }, signal))
+          },
+          // The session the tab is drawn for is the session the address names:
+          // a document body reads its file through this address, and the file's
+          // workspace is resolved Host-side from that session.
+          fileAddress: path => fileAddressFor(sessionId, undefined, path),
+          // The same id `fileAddress` above stamps into every address this tab
+          // mints, so the tab can refuse one that names a different session.
+          sessionId,
+          // The same instance the document-toolbar entry above resolves for this
+          // session: that is what makes the two mounts one control.
+          modeStore,
+          // Dropped by identity, so a remount that already replaced this store
+          // is not evicted by the old tab's late cleanup.
+          releaseModeStore: () => { modeStores.release(sessionId, modeStore) },
+          tFiles,
+        }
+        faces.set(sessionId, face)
+        return face
+      },
+    }, FileView)
+  })
 }
