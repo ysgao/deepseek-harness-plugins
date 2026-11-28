@@ -8,8 +8,11 @@
     "src"
   ],
   "references": [
-    { "path": "../../_vendor/deepseek-harness/vendor/cordis" },
-    { "path": "../../_vendor/deepseek-harness/packages/client/ui-primitives" },
-    { "path": "../../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" }
+    {
+      "path": "../../_vendor/deepseek-harness/vendor/cordis"
+    },
+    {
+      "path": "../../_vendor/deepseek-harness/packages/client/ui-primitives"
+    }
   ]
 }

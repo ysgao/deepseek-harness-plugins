@@ -2,12 +2,17 @@
  * Publish connection-owned MCP resources and literal server instructions.
  *
  * Behaviourally identical to `@deepseek-ai/dsh-mcp-client`'s own
- * `src/server-context.ts` (vendor pin `0d1f5000`), reimplemented for the same
+ * `src/server-context.ts` (vendor pin `841f76d3`), reimplemented for the same
  * reason {@link module:dsh-plugins-mcp-client-oauth/tool-bridge} is: the
  * vendor keeps it behind its `./src/*` export, which a Host package cannot
  * load at runtime. Both optional consumers are reached through a nested
  * `ctx.inject`, so a composition with neither `mcpResources` nor
  * `systemPrompt` mounted still bridges the server's tools.
+ *
+ * `replacement`/`retirement` on the `systemPrompt.section()` call are new at
+ * this pin: a connection that loses its instructions (a reconnect whose new
+ * generation's server sent none, or final disposal) now leaves an explicit
+ * supersession notice instead of the section silently reading as empty text.
  *
  * @module dsh-plugins-mcp-client-oauth/server-context
  */
@@ -38,11 +43,15 @@ export function registerServerContext(ctx: Context, server: string, connection: 
     inner.mcpResources.register(server, connection.resources)
   })
   ctx.inject(['systemPrompt'], (inner) => {
+    // A connection without instructions yields empty text, so the replacement notice also has to read correctly alone.
+    const superseded = `The earlier instructions supplied by MCP server ${JSON.stringify(server)} no longer apply.`
     inner.systemPrompt.section({
       name: `mcp:${server}`,
       order: inner.systemPrompt.getSectionOrder('MCP_SERVERS'),
       interpolate: false,
       text: () => connection.instructions(),
+      replacement: superseded,
+      retirement: superseded,
     })
   })
 }

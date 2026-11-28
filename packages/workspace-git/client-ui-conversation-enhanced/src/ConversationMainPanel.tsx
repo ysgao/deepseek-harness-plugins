@@ -11,6 +11,17 @@
  * opened -- see ./ConversationHeader.tsx and ../ARCHITECTURE.md's "File
  * tab: a pristine slot, but a fork-only trigger".
  *
+ * Ported forward from this pin bump: `openWorkspace` is destructured from
+ * props (now injected once, root-level, onto main.conversation's own child
+ * declaration -- see ../apply.ts's shellInjected) and threaded through to
+ * conversation.content as `onWorkspaceSelected`, replacing the old
+ * per-session `selectWorkspace` conversation.content used to produce
+ * itself. The subagent-continuable `parentAvailabilityPending` term was
+ * dropped from `settling` by upstream (a real behavior simplification, not
+ * a divergence reason) -- ported as dropped. `CONTENT_SLOTS` is hoisted to
+ * a module-level constant (also upstream, not ours) so the `slots` prop
+ * keeps a stable reference across renders.
+ *
  * ./ConversationRoot.tsx is forked only to point at this file instead of
  * vendor's own ConversationMainPanel.tsx; conversation.content's own
  * Factory component (ConversationContent.tsx, registered unchanged by
@@ -26,16 +37,21 @@
  * match the SAME compiled CSS Modules scope their own selectors are
  * compiled against.
  */
-import type { InjectFace, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots/client'
 import { conversationPhase } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/snapshot.ts'
 import { ConversationWidthControls } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/ConversationWidthControls.tsx'
 import css from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/ConversationRoot.module.css'
 import type { ConversationRootInjected } from './apply.ts'
 
+const CONTENT_SLOTS = { widthControls: ConversationWidthControls }
+
 /**
  * Full props: the pristine root contract (was ConversationSlotProps),
  * reconstructed with this package's own additive ConversationRootInjected
- * face in place of the pristine row's own (now empty) contract.
+ * face in place of the pristine row's own ConversationShellInjected-only
+ * contract -- PropsRuntime<'main.conversation'> already carries
+ * `openWorkspace` since the pristine SlotMap now declares
+ * `inject: ConversationShellInjected` on the slot itself.
  */
 export type EnhancedConversationMainPanelProps =
   PropsRuntime<'main.conversation'>
@@ -50,7 +66,7 @@ export type EnhancedConversationMainPanelProps =
  */
 export function ConversationMainPanel(props: EnhancedConversationMainPanelProps) {
   const {
-    sessionId, useSession, useSessions, useConversation, useEverOpenedFile, renderSlot, renderFactorySlot,
+    sessionId, useSession, useSessions, useConversation, useEverOpenedFile, renderSlot, renderFactorySlot, openWorkspace,
   } = props
   const session = useSession(s => s)
   const conversation = useConversation(s => s)
@@ -70,15 +86,7 @@ export function ConversationMainPanel(props: EnhancedConversationMainPanelProps)
   // The exemption is deliberately open-state-wide, not loading-only: a
   // summary-blank session is the hero before its open starts (cold) and
   // after one fails (error) for the same reason -- there is no history.
-  // A restored continuable subagent waits for a Host summary to establish
-  // parent availability. This keeps the composer hidden instead of briefly
-  // rendering the parent-offline takeover.
-  const parentAvailabilityPending = session?.subagent?.address.mode === 'continuable'
-    && session.subagent.parentAvailable === undefined
-  const settling = sessionId !== undefined && (
-    (shellPhase === 'blank' && openState === 'loading' && summaryBlank !== true)
-    || parentAvailabilityPending
-  )
+  const settling = sessionId !== undefined && shellPhase === 'blank' && openState === 'loading' && summaryBlank !== true
   // everOpenedFile (sticky once a file has ever been opened for this
   // session -- see FileOpenRegistry) keeps this false even while the
   // session has genuinely never had a first turn: a File preview opened
@@ -96,8 +104,9 @@ export function ConversationMainPanel(props: EnhancedConversationMainPanelProps)
         variant: 'main',
         phase,
         hero,
+        onWorkspaceSelected: openWorkspace,
       }, {
-        slots: { widthControls: ConversationWidthControls },
+        slots: CONTENT_SLOTS,
       })}
     </div>
   )

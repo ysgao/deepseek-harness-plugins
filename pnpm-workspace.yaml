@@ -9,6 +9,14 @@ packages:
   # <root>/packages/, a deepseek-harness-internal-layout assumption baked
   # into dsh-typert-protocol recognition (see ARCHITECTURE.md).
   - packages/_vendor/deepseek-harness/vendor/*
+  # Added at vendor pin 841f76d3 (dsh-v0.2.3-alpha.3): vendor's own
+  # pnpm-workspace.yaml gained a second, deeper `vendor/im/*` glob alongside
+  # its existing `vendor/*` (first package under it: `cordis-plugin-im-core`,
+  # a real workspace dependency of packages/experimental/im — without this
+  # glob here too, pnpm install fails with ERR_PNPM_WORKSPACE_PKG_NOT_FOUND
+  # since `vendor/*` only reaches one level deep and never lists it). Mirror
+  # the vendored pnpm-workspace.yaml's own globs whenever it moves again.
+  - packages/_vendor/deepseek-harness/vendor/im/*
   - packages/_vendor/deepseek-harness/packages/*/*
   - packages/_vendor/deepseek-harness/native/system
   - packages/_vendor/deepseek-harness/native/system/packages/*
@@ -70,6 +78,14 @@ allowBuilds:
   # store-index rewriting only uses msgpackr's portable JavaScript codec.
   electron-winstaller: false
   msgpackr-extract: false
+  # Added at vendor pin 841f76d3, mirroring its own denials: the Feishu CLI
+  # downloads a native binary from GitHub Releases or npmmirror, and the
+  # Tencent Meeting CLI's install script only restores binary modes and runs
+  # `tmeet auth logout`. Repository installs skip both. Unlisted, pnpm's
+  # strictDepBuilds turns the pair into ERR_PNPM_IGNORED_BUILDS, which fails
+  # the install that `pnpm run` performs before every script.
+  '@larksuite/cli@1.0.97': false
+  '@tencentcloud/tmeet@1.0.18': false
   # Same package as vendor's own '@deepseek-ai/dsh-subprocess-local@file:
   # packages/subprocess/subprocess-local' entry (packages/_vendor/deepseek-
   # harness/pnpm-workspace.yaml) — restores node-pty's macOS spawn helper's
@@ -100,7 +116,7 @@ overrides:
   # was written and tested against (e.g. 0.84.4 adds catalog.ts fields the
   # pinned commit's drift gates don't classify yet) — never fix that by
   # editing vendor source; re-pin here to match the vendor's own lockfile.
-  '@earendil-works/pi-ai': '0.85.1'
+  '@earendil-works/pi-ai': '1.3.0'
   # Same drift-pin rationale as '@earendil-works/pi-ai' above: every package
   # (vendor's and this repo's own) declares "zod": "^4.4.3", and vendor's own
   # committed lockfile resolves that range to 4.4.3 everywhere, but a
@@ -112,25 +128,68 @@ overrides:
   # in schema` structural check elsewhere in this codebase exists precisely
   # because two same-named-but-different zod copies are otherwise
   # indistinguishable at the type level until they collide like this.
-  zod: '4.4.3'
+  zod: '4.6.6'
   # Same drift-pin rationale again: root and vendor both declare "vitest":
   # "^4.1.8", but a workspace-wide `pnpm install` re-resolves it (and its
   # @vitest/* siblings, versioned in lockstep with it) to whatever is newest
-  # on the registry (4.1.11 as of this pin) instead of reusing vendor's own
-  # committed 4.1.8 resolution — two copies of vitest's own internal
+  # on the registry instead of reusing vendor's own committed resolution
+  # (4.1.11 at vendor pin 841f76d3) — two copies of vitest's own internal
   # `MatcherState`/`TestContext` types then collide under
   # `exactOptionalPropertyTypes: true` while typechecking `benchmarks`
   # (folded into `tsconfig.host.json` — see ARCHITECTURE.md's "Dependency
   # source").
-  vitest: '4.1.8'
-  '@vitest/coverage-v8': '4.1.8'
-  '@vitest/expect': '4.1.8'
-  '@vitest/mocker': '4.1.8'
-  '@vitest/pretty-format': '4.1.8'
-  '@vitest/runner': '4.1.8'
-  '@vitest/snapshot': '4.1.8'
-  '@vitest/spy': '4.1.8'
-  '@vitest/utils': '4.1.8'
+  vitest: '4.1.11'
+  '@vitest/coverage-v8': '4.1.11'
+  '@vitest/expect': '4.1.11'
+  '@vitest/mocker': '4.1.11'
+  '@vitest/pretty-format': '4.1.11'
+  '@vitest/runner': '4.1.11'
+  '@vitest/snapshot': '4.1.11'
+  '@vitest/spy': '4.1.11'
+  '@vitest/utils': '4.1.11'
+  # Added at vendor pin 841f76d3 (dsh-v0.2.3-alpha.3): vendor/im/markdown
+  # declares "mdast-util-from-markdown": "^2.0.3" and vendor's lockfile
+  # resolves it to 2.1.0, but a workspace-wide install here left 2.0.3 beside
+  # it — two copies whose `Extension`/`Handle` types collide in
+  # `vendor/im/markdown/tests/convert.spec.ts`. Same fix as above: re-pin to
+  # vendor's own resolution, never edit vendor source.
+  mdast-util-from-markdown: '2.1.0'
+  # Same drift again: this workspace's lockfile re-resolves ranges the vendor's
+  # own lockfile holds back (~200 transitive packages differ; most are
+  # build-tool patch bumps and are left to float). Pinned here only where the
+  # difference reaches runtime: vendor's `subagent-oar` asks `^1.3.0` of
+  # pi-coding-agent, and unpinned the whole family floated to 1.6.1 beside the
+  # pinned pi-ai 1.3.0 above. (The vendor client gate's TS2883 failure after a
+  # root install was NOT a version drift — see the relink in
+  # scripts/build-vendor.mjs.)
+  '@earendil-works/pi-agent-core': '1.3.0'
+  '@earendil-works/pi-codemode': '1.3.0'
+  '@earendil-works/pi-coding-agent': '1.3.0'
+  '@earendil-works/pi-mcp': '1.3.0'
+  '@earendil-works/pi-tui': '1.3.0'
+
+# Mirrors the vendor's own `patchedDependencies` (its pnpm-workspace.yaml) for
+# every patched package that also resolves in this workspace's lockfile. Vendor
+# members are linked into THIS workspace's store, so without these the vendor's
+# own gates typecheck against unpatched copies — at vendor pin 841f76d3 that
+# fails `packages/experimental/subagent-oar/tests` outright, because
+# `@botiverse/oar@0.67.0`'s patch is what gives the installation probe its
+# `{ env }` option. Paths point INTO the vendor tree and are only read, never
+# edited (CONSTITUTION.md Article II). `@yao-pkg/pkg@6.21.0` is omitted: nothing
+# in this workspace resolves it, and pnpm rejects a patch with no target.
+# Re-sync this list whenever the vendor's own list moves.
+patchedDependencies:
+  '@botiverse/oar@0.67.0': packages/_vendor/deepseek-harness/patches/@botiverse__oar@0.67.0.patch
+  '@earendil-works/pi-ai@1.3.0': packages/_vendor/deepseek-harness/patches/@earendil-works__pi-ai@1.3.0.patch
+  '@electron/osx-sign@1.3.3': packages/_vendor/deepseek-harness/patches/@electron__osx-sign@1.3.3.patch
+  '@fortune-sheet/core@1.0.4': packages/_vendor/deepseek-harness/patches/@fortune-sheet__core@1.0.4.patch
+  '@fortune-sheet/react@1.0.4': packages/_vendor/deepseek-harness/patches/@fortune-sheet__react@1.0.4.patch
+  app-builder-lib@26.17.0: packages/_vendor/deepseek-harness/patches/app-builder-lib@26.17.0.patch
+  exceljs@4.4.0: packages/_vendor/deepseek-harness/patches/exceljs@4.4.0.patch
+  lexical@0.49.0: packages/_vendor/deepseek-harness/patches/lexical@0.49.0.patch
+  mdast-util-gfm-autolink-literal@2.0.1: packages/_vendor/deepseek-harness/patches/mdast-util-gfm-autolink-literal@2.0.1.patch
+  micromark-extension-gfm-autolink-literal@2.1.0: packages/_vendor/deepseek-harness/patches/micromark-extension-gfm-autolink-literal@2.1.0.patch
+  node-pty@1.2.0-beta.15: packages/_vendor/deepseek-harness/patches/node-pty@1.2.0-beta.15.patch
 
 peerDependencyRules:
   allowedVersions:

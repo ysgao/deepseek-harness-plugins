@@ -2,18 +2,16 @@ import { defineConfig } from 'tsdown'
 import { clientPluginBundle } from '../../../tsdown.client-plugin-preset.ts'
 
 /**
- * Two configs: the Host-safe no-op (`.`/`invariant`, plain Node ESM) and
- * the real browser bundle (`./client`, closure-factory format via
+ * Two configs: the Host-safe no-op (`.`, plain Node ESM) and the real
+ * browser bundle (`./client`, closure-factory format via
  * `clientPluginBundle` — see ../../../tsdown.client-plugin-preset.ts's doc
  * comment). See ../client-ui-workspace-files/tsdown.config.ts and
- * ../client-ui-conversation-files/tsdown.config.ts for the same shape and
- * the fuller "why a two-entry-point split" story.
+ * ../client-ui-conversation-files/tsdown.config.ts for the same shape.
  */
 export default defineConfig([
   {
     entry: {
       index: 'lib/types/index.js',
-      invariant: 'lib/types/invariant.js',
     },
     outDir: 'lib',
     format: ['esm'],
@@ -31,5 +29,13 @@ export default defineConfig([
     // disabled wherever this one is installed (cordis.patch.yml), so no
     // sibling instance exists to duplicate shared identity against.
     extraInlineSafe: /^@deepseek-ai\/dsh-client-ui-workspace\/src\//,
+    // dsh-client-ui-primitives IS a sibling plugin that stays installed and
+    // instantiated (nothing here disables its row), so unlike the
+    // extraInlineSafe case above, its own icon components genuinely must
+    // not be inlined — mirror this package's own package.json
+    // dsh.client.external declaration, verbatim, so the purity gate and the
+    // real client module loader agree on what this bundle resolves at
+    // runtime instead of bundling privately.
+    clientExternal: ['@deepseek-ai/dsh-client-ui-primitives/client'],
   }),
 ])

@@ -10,8 +10,13 @@
  * vendor's -- see that file's own doc comment for the actual behavior
  * change: the pending-file-open drain, the Chat-landing effect, and the
  * everOpenedFile gate).
+ *
+ * EnhancedConversationSessionInjected (../apply.ts) widens the pristine
+ * ConversationSessionInjected contract, which this pin bump also widened
+ * with an inspectRequest hook alongside the existing inspectCall one --
+ * both flow through unchanged via InjectFace below.
  */
-import type { InjectFace, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots/client'
 import type { ConversationStore } from '@deepseek-ai/dsh-client-ui-conversation/src/client/contract/slots.ts'
 import type { EnhancedConversationSessionInjected } from './apply.ts'
 import { EnhancedDefaultConversationViews } from './DefaultConversationViews.tsx'

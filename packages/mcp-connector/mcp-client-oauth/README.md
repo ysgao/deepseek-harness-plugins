@@ -13,7 +13,7 @@ Everything `dsh-mcp-client` does, this does, with the same names:
 | `transport: 'stdio'` | yes | yes — same `command`/`args`/`env`/`cwd`, same `scrubbedParentEnv()` scrub |
 | `transport: 'streamable-http'` | yes | yes — same `url`/`headers` |
 | `transport: 'streamable-http-oauth'` | — | **new** |
-| `serverName` reservation, reconnect policy, `maxInstructionBytes`, `failOnStartupError`, `toolCallTimeoutMs` | yes | identical fields and defaults |
+| `serverName` reservation, reconnect policy, `maxInstructionBytes`, `failOnStartupError`, `toolCallTimeoutMs`, `closeTimeoutMs` | yes | identical fields and defaults |
 | model-facing tool names | `mcp__<serverName>__<rawName>` | identical, hash-suffix rule included |
 | `mcpResources` / `systemPrompt` publication | yes | yes |
 

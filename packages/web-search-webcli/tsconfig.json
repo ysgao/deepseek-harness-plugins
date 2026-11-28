@@ -12,9 +12,14 @@
     "src"
   ],
   "references": [
-    { "path": "../_vendor/deepseek-harness/vendor/cordis" },
-    { "path": "../_vendor/deepseek-harness/packages/runtime-diagnostics/invariants" },
-    { "path": "../_vendor/deepseek-harness/packages/util/launch-environment" },
-    { "path": "../_vendor/deepseek-harness/packages/web/web" }
+    {
+      "path": "../_vendor/deepseek-harness/vendor/cordis"
+    },
+    {
+      "path": "../_vendor/deepseek-harness/packages/util/launch-environment"
+    },
+    {
+      "path": "../_vendor/deepseek-harness/packages/web/web"
+    }
   ]
 }

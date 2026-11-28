@@ -59,7 +59,7 @@ export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.DSH_BUILD_FACE)
   return {
     workspace: client ? CLIENT_PACKAGES : HOST_PACKAGES,
-    entry: ['lib/types/{index,invariant}.js'],
+    entry: ['lib/types/index.js'],
     outDir: 'lib',
     format: ['esm'],
     platform: 'node',

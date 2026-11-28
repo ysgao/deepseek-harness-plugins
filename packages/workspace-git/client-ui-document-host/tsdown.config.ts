@@ -142,6 +142,13 @@ const client = clientPluginBundle(ID, 'lib/types/client/index.js', {
   // installed the original row is disabled, so there is no sibling instance
   // to duplicate shared identity against.
   extraInlineSafe: /^@deepseek-ai\/dsh-client-ui-sidebar-documentpreview\/src\//,
+  // The inlined preview engine imports its own sibling plugins (ui-primitives,
+  // ui-slots, ...) the normal cross-plugin way; mirror this package's own
+  // package.json dsh.client.external declaration, verbatim.
+  clientExternal: [
+    '@deepseek-ai/dsh-client-ui-primitives/client',
+    '@deepseek-ai/dsh-client-ui-slots/client',
+  ],
   codeSplitting: true,
   clientBanner: fileName => fileName.endsWith('client.pdf.js') ? pdfLicenseBanner()
     : fileName.endsWith('client.excel.js') ? excelLicenseBanner() : undefined,

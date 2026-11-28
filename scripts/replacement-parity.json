@@ -5,7 +5,7 @@
     "enforces is CONSTITUTION.md's 'A replacement never subtracts'.",
     "",
     "`forks[].sha256` is the first 16 hex of the sha256 of the vendor file AS OF the",
-    "commit named by `vendorPin` \u2014 the revision each fork was last read against, not",
+    "commit named by `vendorPin` — the revision each fork was last read against, not",
     "a checksum of the fork itself. When a pin bump changes one of those files, the",
     "check goes red until a human re-reads it beside the fork, ports what changed,",
     "and re-records the hash with `--update`.",
@@ -24,9 +24,9 @@
     "this repo owns. There is no replacement package to compare against, so check",
     "6 asks the questions that still have answers: is the disable real, does the",
     "row still exist upstream, what covers it now, and what was actually given up.",
-    "`divergences` may not be empty \u2014 a disabled row always costs something."
+    "`divergences` may not be empty — a disabled row always costs something."
   ],
-  "vendorPin": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "vendorPin": "841f76d3c51966375ebed9b25512ebce4ac02079",
   "replacements": [
     {
       "row": "ui-workspace",
@@ -45,17 +45,17 @@
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-workspace/src/client/index.ts",
           "fork": "packages/workspace-git/client-ui-workspace-enhanced/src/apply.ts",
-          "sha256": "7baf048011cf24cf"
+          "sha256": "65a90c712a37a6d6"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx",
           "fork": "packages/workspace-git/client-ui-workspace-enhanced/src/WorkspaceBrowser.tsx",
-          "sha256": "21549a2c39407538"
+          "sha256": "8a78e2439f273342"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.module.css",
           "fork": "packages/workspace-git/client-ui-workspace-enhanced/src/WorkspaceBrowser.module.css",
-          "sha256": "208fe8d00ef6e428"
+          "sha256": "9ad304ecb79b8e6b"
         }
       ]
     },
@@ -73,23 +73,23 @@
         "ORs the per-session everOpenedFile bit into all three pristine blank-phase gates"
       ],
       "divergences": [
-        "Entering a conversation activates the landing View (Chat) instead of the Session's persisted View preference (readConversationViewPreference), because the forked File view cannot restore what it was showing \u2014 see src/apply.ts's activateLandingView and DefaultConversationViews.tsx's landing effect."
+        "Entering a conversation activates the landing View (Chat) instead of the Session's persisted View preference (readConversationViewPreference), because the forked File view cannot restore what it was showing — see src/apply.ts's activateLandingView and DefaultConversationViews.tsx's landing effect."
       ],
       "forks": [
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/apply.ts",
           "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/apply.ts",
-          "sha256": "cb02689e17f80dd8"
+          "sha256": "62b0459d2ebd51a2"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationMainPanel.tsx",
           "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/ConversationMainPanel.tsx",
-          "sha256": "8079942f608f4e9d"
+          "sha256": "7ecb198b0737439a"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/DefaultConversationViews.tsx",
           "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/DefaultConversationViews.tsx",
-          "sha256": "513f408c2b9adcac"
+          "sha256": "69deca4aa7c57fa5"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.tsx",
@@ -99,12 +99,12 @@
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationSession.tsx",
           "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/ConversationSession.tsx",
-          "sha256": "a7eecaec5677b04f"
+          "sha256": "f2fca90b1e707d04"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationHeader.tsx",
           "fork": "packages/workspace-git/client-ui-conversation-enhanced/src/ConversationHeader.tsx",
-          "sha256": "4d8eb123dfcda64d"
+          "sha256": "ef253335f6964a30"
         }
       ]
     },
@@ -122,40 +122,40 @@
         "call": "applyDocumentPreview"
       },
       "adds": [
-        "runs the vendor preview engine's own apply(), so every tab type, dictionary, service, seat, chip title and renderer it registers is registered here too \u2014 including renderers added in a later release, which nothing here enumerates",
+        "runs the vendor preview engine's own apply(), so every tab type, dictionary, service, seat, chip title and renderer it registers is registered here too — including renderers added in a later release, which nothing here enumerates",
         "redirects exactly one registration: the seat moves from the right Sidebar's sidebar.right.pane.tab to the File tab's conversation.file.document",
         "registers a hand-off body under the vacated Sidebar seat, so openResource (which throws for an unclaimed address) keeps resolving for conversation file links and tool line references, and forwards them to the File tab",
         "one document-host locale namespace holding the hand-off refusal line",
-        "re-exports the vendor row's own Host half (apply + Config) from this package's `.` entry, so the `webserver/index-inject` push of __DSH_DOCUMENT_PREVIEW_CONFIG__ \u2014 the preview engine's office/excel cache limits \u2014 survives the row being disabled instead of falling to schema defaults with no way to set them",
+        "re-exports the vendor row's own Host half (apply + Config) from this package's `.` entry, so the `webserver/index-inject` push of __DSH_DOCUMENT_PREVIEW_CONFIG__ — the preview engine's office/excel cache limits — survives the row being disabled instead of falling to schema defaults with no way to set them",
         "the File tab's own View/Edit/Diff/Save controls register into the engine's `sidebar.right.tab.document.actions` toolbar seat (from dsh-plugins-client-ui-conversation-files), so a previewed file carries one row of controls rather than the engine's toolbar under the tab's own header"
       ],
       "divergences": [
-        "A file resource opened through openResource no longer renders in the right Sidebar: the tab claims the address, forwards it to the conversation's File tab, and closes itself. That is the point of the replacement, not a shortfall \u2014 but a caller that expected the content to appear in the Sidebar column sees it appear in the middle instead.",
+        "A file resource opened through openResource no longer renders in the right Sidebar: the tab claims the address, forwards it to the conversation's File tab, and closes itself. That is the point of the replacement, not a shortfall — but a caller that expected the content to appear in the Sidebar column sees it appear in the middle instead.",
         "The hand-off needs dsh-plugins-client-ui-conversation-files (the File tab) and dsh-plugins-client-ui-conversation-enhanced (the cross-session opener) composed in. Without them the Sidebar tab shows a refusal line instead of a preview, where the vendor row would have previewed the file. Both ship in this same bundle, so the gap only opens if the bundle is taken apart.",
-        "The seat reports a settled presentation to its bodies \u2014 expanded, never fullscreen, one pane id \u2014 because the File tab has no collapsed or fullscreen state to report. A body that varies its behaviour by those flags behaves as though the Sidebar were always open, which in the File tab it effectively is.",
+        "The seat reports a settled presentation to its bodies — expanded, never fullscreen, one pane id — because the File tab has no collapsed or fullscreen state to report. A body that varies its behaviour by those flags behaves as though the Sidebar were always open, which in the File tab it effectively is.",
         "Preview settings are configured on this row rather than the vendor's: a profile that set `ui-sidebar-documentpreview`'s office/excel limits sets them on `document-host` now. The schema, its defaults and the injected global are upstream's own, re-exported unchanged, so only the key moves.",
-        "The Sidebar hand-off forwards `dsh-resource://file/session/...` addresses only. An `absolute`-scope file address \u2014 a scope the vendor row's own resource provider and tests cover \u2014 gets the refusal line instead of a preview, because the File tab resolves every path against a session's workspace and has no session to resolve an absolute address against. Latent rather than live: no current vendor app code mints one."
+        "The Sidebar hand-off forwards `dsh-resource://file/session/...` addresses only. An `absolute`-scope file address — a scope the vendor row's own resource provider and tests cover — gets the refusal line instead of a preview, because the File tab resolves every path against a session's workspace and has no session to resolve an absolute address against. Latent rather than live: no current vendor app code mints one."
       ],
       "forks": [
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-sidebar-documentpreview/src/client/index.ts",
           "fork": "packages/workspace-git/client-ui-document-host/src/client/index.ts",
-          "sha256": "f487b83f40bba076"
+          "sha256": "3c33d8cba032f7c4"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-sidebar-documentpreview/src/client/definition.ts",
           "fork": "packages/workspace-git/client-ui-document-host/src/relocate.ts",
-          "sha256": "d07e9e82dd390d2f"
+          "sha256": "6cf2dd02bb5edda4"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-sidebar-right/src/client/tab-info.ts",
           "fork": "packages/workspace-git/client-ui-conversation-files/src/document-seat.ts",
-          "sha256": "62c868ace87d44bb"
+          "sha256": "ae3056451658bf11"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-sidebar-documentpreview/tsdown.config.ts",
           "fork": "packages/workspace-git/client-ui-document-host/tsdown.config.ts",
-          "sha256": "8efad6735aee0980"
+          "sha256": "c18e0aa9b0a2f1cd"
         }
       ]
     },
@@ -182,28 +182,28 @@
         "four signIn* copy keys in both dictionaries"
       ],
       "divergences": [
-        "apply() does not fall back to the pristine ui-settings-models apply() on setup failure (the other two replacements do) \u2014 importing that file for its apply value pulls in its narrower LocaleNamespaceMap declaration, which this package's wider one conflicts with. See src/client/index.ts's own doc comment."
+        "apply() does not fall back to the pristine ui-settings-models apply() on setup failure (the other two replacements do) — importing that file for its apply value pulls in its narrower LocaleNamespaceMap declaration, which this package's wider one conflicts with. See src/client/index.ts's own doc comment."
       ],
       "forks": [
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/index.ts",
           "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/index.ts",
-          "sha256": "bd72851513f472f6"
+          "sha256": "bdaecec1d2edb3f3"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/ModelsSection.tsx",
           "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/ModelsSection.tsx",
-          "sha256": "6f0b8ce55adea7b9"
+          "sha256": "97c935df9ef1f9b5"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/ProviderEditor.tsx",
           "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/ProviderEditor.tsx",
-          "sha256": "b4ee7cbf5ef55213"
+          "sha256": "52b67bd036b22afe"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/client/ui-settings-models/src/client/locales.ts",
           "fork": "packages/anthropic-subscription/client-ui-settings-anthropic-subscription/src/client/locales.ts",
-          "sha256": "d7949c08668c2459"
+          "sha256": "f1f6da45930765fe"
         }
       ]
     }
@@ -217,22 +217,22 @@
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/connection.ts",
           "fork": "packages/mcp-connector/mcp-client-oauth/src/connection.ts",
-          "sha256": "06dc1b3a1297b8b2"
+          "sha256": "713cb989284761ff"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/transport.ts",
           "fork": "packages/mcp-connector/mcp-client-oauth/src/transport.ts",
-          "sha256": "6f3fca685af3d565"
+          "sha256": "3cac54fb22a2fe72"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/tools.ts",
           "fork": "packages/mcp-connector/mcp-client-oauth/src/tool-bridge.ts",
-          "sha256": "59203150bda479a9"
+          "sha256": "ba3d90e2be1851f8"
         },
         {
           "vendor": "packages/_vendor/deepseek-harness/packages/mcp/mcp-client/src/server-context.ts",
           "fork": "packages/mcp-connector/mcp-client-oauth/src/server-context.ts",
-          "sha256": "02ca9fe759891788"
+          "sha256": "75ece71113f29587"
         }
       ]
     }
@@ -245,17 +245,17 @@
       "vendorPackage": "packages/_vendor/deepseek-harness/packages/client/ui-sidebar-files",
       "why": "A second file tree, in the other Sidebar. This bundle's own tree predates it, is the one carrying git status and in-app editing, and is where this bundle's users already work. Keeping both means two trees disagreeing about the same directory, so the vendor row is switched off rather than mirrored.",
       "covers": [
-        "the tree itself, its lazy one-level-at-a-time listing and its open-a-file gesture \u2014 dsh-plugins-client-ui-workspace-files' FilesNode, in the left Sidebar",
-        "live per-directory watching, the auto-refresh pause/resume toggle and manual reload \u2014 ported into FilesNode/useLevel over this bundle's own workspace-scoped workspace-files.watchDirectory stream",
-        "per-directory failure lines instead of one generic load error \u2014 FilesNode's failureLine",
-        "directories-first natural name order \u2014 moved Host-side into listWorkspaceEntries' collator",
-        "the shared per-extension FileTypeIcon glyphs \u2014 FileRow",
+        "the tree itself, its lazy one-level-at-a-time listing and its open-a-file gesture — dsh-plugins-client-ui-workspace-files' FilesNode, in the left Sidebar",
+        "live per-directory watching, the auto-refresh pause/resume toggle and manual reload — ported into FilesNode/useLevel over this bundle's own workspace-scoped workspace-files.watchDirectory stream",
+        "per-directory failure lines instead of one generic load error — FilesNode's failureLine",
+        "directories-first natural name order — moved Host-side into listWorkspaceEntries' collator",
+        "the shared per-extension FileTypeIcon glyphs — FileRow",
         "the workspace.files command (same id, same Cmd+P / Ctrl+Alt+P defaults, same regions), re-registered by dsh-plugins-client-ui-workspace-files' own apply(), now revealing the left-Sidebar tree"
       ],
       "divergences": [
         "The `files` right-Sidebar tab type is not re-registered anywhere: there is no second tree, which is the point of the retirement. Nothing else registered that kind, so no other package's openTab('files') breaks.",
         "Its Start-page guide tile is gone with the type. The left tree is always present in the Sidebar it lives in, so it needs no entry box to be discovered.",
-        "The retired tree was Session-scoped (it listed the Session's workspace root). The left tree is Workspace-scoped, so it also works with a Workspace selected and no Session started \u2014 strictly more, but not the same addressing.",
+        "The retired tree was Session-scoped (it listed the Session's workspace root). The left tree is Workspace-scoped, so it also works with a Workspace selected and no Session started — strictly more, but not the same addressing.",
         "The root path is shown on the header row's hover title rather than as a dedicated PathLabel header line: the enclosing Workspace group already names the workspace, so a standalone page's need to state where it is does not apply."
       ]
     }

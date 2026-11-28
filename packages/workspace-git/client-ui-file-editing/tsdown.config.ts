@@ -14,7 +14,7 @@ import { defineConfig } from 'tsdown'
  * their src-relative path so that relative import resolves on disk.
  */
 export default defineConfig({
-  entry: ['lib/types/{index,invariant}.js'],
+  entry: ['lib/types/index.js'],
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',

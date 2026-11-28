@@ -4,6 +4,42 @@
     "noEmit": true,
     "rewriteRelativeImportExtensions": false
   },
+  // This repos own host packages (the ones pnpm run build:lib:host /
+  // scripts/install-plugins.mjs actually build and install), followed by
+  // every vendor host package that merges a declaration into one of the
+  // cross-cutting interfaces (TypertResourceMap, SessionEventMap,
+  // TypertLookupMap) this workspaces own Remote surface touches through a
+  // branded resource id (SessionId, WorkspaceId) or a shared lookup key
+  // (workspaceFileScope). The typert generators own workspace-
+  // registration discovery (loadRegistrations() in analyzer.ts) reads ONLY
+  // this files own top-level references, non-recursively: a vendor
+  // package reached merely transitively (e.g. core/session, two levels
+  // down through api-file-sentence-controller) is invisible to it, and
+  // resolving the wire type of a branded id walks the FULL merged
+  // interface it participates in, erroring "contains a declaration
+  // outside this face" the moment it reaches an unregistered contributor.
+  // Matching tsconfig.base.jsons paths overrides (see its own comment)
+  // are required alongside this list -- registering a package here
+  // without ALSO overriding its source path reproduces the same bug in a
+  // different shape (a duplicate declaration, an export that is not
+  // found, or an outright checker crash), because the registered copy
+  // (read via this list, straight from source) and an ordinary importers
+  // copy (read via node_modules .d.ts) are two different file objects to
+  // TypeScript even though they describe the same package.
+  //
+  // Deliberately NOT the vendored tsconfig.host.json own full ~377-entry
+  // list: mirroring it wholesale was tried and reverted (see git history
+  // on this file) -- it also registers foundational/unrelated-feature
+  // packages (vendor/cordis, vendor/http, vendor/hmr, vendor/im/*,
+  // interaction/action-cards, ...) that trip the generators OWN unrelated
+  // style/shape checks, or cross-reference EACH OTHER in ways this
+  // narrower list never needs to resolve. A pin bump that adds a new
+  // contributor to any of the three interfaces above (grep the vendored
+  // tree for "interface TypertResourceMap" / "interface SessionEventMap"
+  // / "interface TypertLookupMap" -- a real `declare module` merge, not a
+  // string literal inside a catalog/documentation file such as
+  // extensions/cordis-host-runners api-catalog.ts) needs the new package
+  // added here AND to tsconfig.base.jsons paths, the same way.
   "include": [],
   "references": [
     { "path": "packages/anthropic-subscription/api-authorization-controller" },
@@ -15,6 +51,38 @@
     { "path": "packages/workspace-git/api-workspace-git-controller" },
     { "path": "packages/workspace-git/api-workspace-file-controller" },
     { "path": "packages/workspace-git/api-file-sentence-controller" },
-    { "path": "packages/_vendor/deepseek-harness/packages/typert/protocol" }
+    { "path": "packages/_vendor/deepseek-harness/packages/compaction/compaction" },
+    { "path": "packages/_vendor/deepseek-harness/packages/compaction/compaction-image-offload" },
+    { "path": "packages/_vendor/deepseek-harness/packages/core/agent" },
+    { "path": "packages/_vendor/deepseek-harness/packages/core/session" },
+    { "path": "packages/_vendor/deepseek-harness/packages/core/tool-registry-ptc" },
+    { "path": "packages/_vendor/deepseek-harness/packages/deliverables/tool-present" },
+    { "path": "packages/_vendor/deepseek-harness/packages/deliverables/workspace-changes" },
+    { "path": "packages/_vendor/deepseek-harness/packages/experimental/hook-protocol" },
+    { "path": "packages/_vendor/deepseek-harness/packages/feedback/command-feedback" },
+    { "path": "packages/_vendor/deepseek-harness/packages/feedback/message-feedback" },
+    { "path": "packages/_vendor/deepseek-harness/packages/goal/goal" },
+    { "path": "packages/_vendor/deepseek-harness/packages/interaction/commands" },
+    { "path": "packages/_vendor/deepseek-harness/packages/interaction/permission-presets" },
+    { "path": "packages/_vendor/deepseek-harness/packages/interaction/user-approval" },
+    { "path": "packages/_vendor/deepseek-harness/packages/jobs/jobs" },
+    { "path": "packages/_vendor/deepseek-harness/packages/llm/llm-retry" },
+    { "path": "packages/_vendor/deepseek-harness/packages/plan/plan-mode" },
+    { "path": "packages/_vendor/deepseek-harness/packages/preset/agent-preset-registry" },
+    { "path": "packages/_vendor/deepseek-harness/packages/sandbox/sandbox-policy" },
+    { "path": "packages/_vendor/deepseek-harness/packages/schedule/schedule" },
+    { "path": "packages/_vendor/deepseek-harness/packages/session/session-log-deepseek" },
+    { "path": "packages/_vendor/deepseek-harness/packages/session/session-title" },
+    { "path": "packages/_vendor/deepseek-harness/packages/session/session-title-llm" },
+    { "path": "packages/_vendor/deepseek-harness/packages/session/working-directory" },
+    { "path": "packages/_vendor/deepseek-harness/packages/subagent/subagent" },
+    { "path": "packages/_vendor/deepseek-harness/packages/subagent/tool-subagent" },
+    { "path": "packages/_vendor/deepseek-harness/packages/team/agent-team" },
+    { "path": "packages/_vendor/deepseek-harness/packages/todo/tool-todo" },
+    { "path": "packages/_vendor/deepseek-harness/packages/typert/protocol" },
+    { "path": "packages/_vendor/deepseek-harness/packages/web/web-search-deepseek" },
+    { "path": "packages/_vendor/deepseek-harness/packages/workflow/tool-workflow" },
+    { "path": "packages/_vendor/deepseek-harness/packages/workspace/workspace" },
+    { "path": "packages/_vendor/deepseek-harness/packages/api/workspace-files/tsconfig.host.json" }
   ]
 }

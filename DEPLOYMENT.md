@@ -58,15 +58,19 @@ boot-probe step to exercise on its own; step 3 is their real test.
 
 Every `@deepseek-ai/*` package in this workspace is a `workspace:*` link
 except one: `@deepseek-ai/libreoffice-kit`, a real npm-published package
-`packages/_vendor/deepseek-harness/packages/bundle/web-app` depends on
-(`^0.1.1`). If a vendor pin bump ever adds another real (non-workspace)
-dependency under a scope that has so far been 100% workspace links, step 1
-or 2 above can fail even though nothing in this repo changed and the
-package is already sitting in this checkout's own `node_modules` — fully
-installed, nothing missing:
+`packages/_vendor/deepseek-harness/packages/bundle/web-app` depends on. As
+of vendor pin `841f76d3` that dependency reads `0.2.4` — an exact pin, where
+an earlier vendor release (`477b4f42`) had it as the range `^0.1.1`; the
+version number and the range-vs-exact shape both move with upstream, so
+treat both as current-pin facts rather than assuming either stays put
+through the next bump. If a vendor pin bump ever adds another real
+(non-workspace) dependency under a scope that has so far been 100%
+workspace links, step 1 or 2 above can fail even though nothing in this
+repo changed and the package is already sitting in this checkout's own
+`node_modules` — fully installed, nothing missing:
 
 ```
-[ERR_PNPM_NO_OFFLINE_META] Failed to resolve @deepseek-ai/libreoffice-kit@>=0.1.1 <0.2.0-0 in package mirror
+[ERR_PNPM_NO_OFFLINE_META] Failed to resolve @deepseek-ai/libreoffice-kit@0.2.4 in package mirror
   /Users/you/Library/Caches/pnpm/v11/metadata/registry.npmjs.org/@deepseek-ai/libreoffice-kit.jsonl
 
 This error happened while installing a direct dependency of .../packages/bundle/web-app
@@ -84,8 +88,10 @@ the one package's closure to copy, so any one project's unresolvable
 dependency anywhere in the workspace blocks every `--offline` deploy, not
 just deploys of that project.
 
-The actual cause: resolving a semver *range* (`^0.1.1`, not the lockfile's
-exact pinned `0.1.1`) offline needs pnpm's local registry-metadata mirror —
+The actual cause, as diagnosed against vendor pin `477b4f42` (where the
+manifest read the range `^0.1.1` against the lockfile's exact pinned
+`0.1.1`): resolving a semver *range* offline needs pnpm's local
+registry-metadata mirror —
 one `.jsonl` file per package under `~/Library/Caches/pnpm/v11/metadata/
 registry.npmjs.org/<scope>/<name>.jsonl` — and that scope has never needed
 one before, so the file has never been created. A plain `pnpm install` in
